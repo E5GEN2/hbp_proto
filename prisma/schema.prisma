@@ -1,0 +1,755 @@
+// HBP Proto — Prisma schema
+// Unified backend powering both the admin panel and the client portal.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USERS & AUTH ──────────────────────────────────────────────────────────
+
+enum UserRole {
+  CLIENT
+  ADMIN_SUPER
+  ADMIN_OPS
+  ADMIN_SUPPORT
+}
+
+enum UserTier {
+  STANDARD
+  PRO
+  VIP
+}
+
+enum UserStatus {
+  ACTIVE
+  CHURNED
+  BLOCKED
+}
+
+enum RiskLevel {
+  NONE
+  REVIEW
+  FLAG
+}
+
+model User {
+  id                       String       @id // USR-00001 / ADM-001
+  name                     String
+  email                    String       @unique
+  passwordHash             String
+  role                     UserRole     @default(CLIENT)
+
+  telegram                 String?
+  country                  String?
+  tier                     UserTier     @default(STANDARD)
+
+  // Admin-facing classification
+  status                   UserStatus   @default(ACTIVE)
+  risk                     RiskLevel    @default(NONE)
+  riskNote                 String?
+  preferredCarrier         String?
+  preferredRegion          String?
+  acquisition              String?
+
+  // Wallet
+  balance                  Decimal      @default(0) @db.Decimal(12, 2)
+
+  // Notification prefs
+  emailRenewal             Boolean      @default(true)
+  emailIncidents           Boolean      @default(true)
+  emailMarketing           Boolean      @default(false)
+  telegramAll              Boolean      @default(true)
+  preRenewalReminderHours  Int          @default(72)
+
+  // 2FA
+  twoFactorEnabled         Boolean      @default(false)
+  twoFactorSecret          String?
+  twoFactorRecoveryCodes   String[]     @default([])
+
+  // Admin-only fields
+  initials                 String?
+  ipAddress                String?
+  avatarColor              String?
+  blockedAt                DateTime?
+  blockedReason            String?
+
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+  notifLastReadAt          DateTime     @default(now())
+
+  orders                   Order[]      @relation("OrderClient")
+  payments                 Payment[]    @relation("PaymentClient")
+  invoices                 Invoice[]    @relation("InvoiceClient")
+  paymentMethods           PaymentMethod[]
+  notifications            Notification[]
+  proxyWhitelistEntries    ProxyWhitelist[]
+  balanceLedger            BalanceLedgerEntry[]
+  tickets                  Ticket[]     @relation("TicketClient")
+  ticketReplies            TicketReply[]
+  entityNotes              EntityNote[] @relation("NoteAuthor")
+  logsAsActor              Log[]        @relation("LogActor")
+  checkoutDraft            CheckoutDraft?
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+// ─── CATALOG / PLANS ───────────────────────────────────────────────────────
+
+enum PlanVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum CapacityState {
+  LOW
+  SOLD_OUT
+  BLOCKED_GRACE
+  WAITING_RELEASE
+}
+
+model Plan {
+  id                       String          @id // PLAN-VRZN-30D or PLAN-XXXX
+  name                     String
+  internalSku              String?         @unique
+  description              String?         @db.Text
+  visibility               PlanVisibility  @default(PUBLIC)
+
+  carrier                  String
+  region                   String
+  pool                     String
+  poolOverride             Boolean         @default(false)
+
+  durationDays             Int
+  price                    Decimal         @db.Decimal(10, 2)
+  currency                 String          @default("USD")
+
+  protocols                String?
+  rotation                 String?
+  traffic                  String?
+
+  availableQuota           Int
+  // capacityState is set manually or by seed; derived state computed at query time
+  capacityState            CapacityState?
+  lowCapacityThresholdPct  Int?
+
+  renewalDiscountPct       Int             @default(0)
+  active                   Boolean         @default(true)
+
+  autoProvision            Boolean         @default(true)
+  autoRenewDefault         Boolean         @default(true)
+  renewalAllowed           Boolean         @default(true)
+  preRenewalReminderHours  Int             @default(72)
+  gracePeriodHours         Int             @default(48)
+
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  deletedAt                DateTime?
+
+  orders                   Order[]
+
+  @@index([active, deletedAt])
+  @@index([carrier, region])
+  @@map("plans")
+}
+
+// ─── ORDERS ────────────────────────────────────────────────────────────────
+
+enum OrderStatus {
+  NEW
+  AWAITING
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  PENDING_RENEWAL
+}
+
+enum PaymentStatus {
+  PENDING
+  AWAITING
+  CONFIRMED
+  PAID
+  FREE
+  FAILED
+  REFUNDED
+  REFUND_REQUESTED
+  CANCELLED
+  REPLACEMENT
+  MANUAL_REVIEW
+}
+
+enum OrderException {
+  PAID_NOT_PROVISIONED
+  RENEWAL_NOT_EXTENDED
+  RENEWAL_FAULTY_PROXY
+  REPLACEMENT_PENDING
+  REFUND_PENDING
+}
+
+enum CredentialsChannel {
+  EMAIL
+  TELEGRAM
+  BOTH
+}
+
+enum RenewalBucket {
+  H24
+  D3
+  D7
+  GRACE
+  EXPIRED
+  RENEWED
+}
+
+model Order {
+  id                                 String              @id // ORD-#####
+  clientId                           String
+  planId                             String
+  qty                                Int
+  unitPrice                          Decimal             @db.Decimal(10, 2)
+  amount                             Decimal             @db.Decimal(10, 2) // qty * unitPrice
+  discountPct                        Int                 @default(0)
+  region                             String
+
+  paymentStatus                      PaymentStatus
+  status                             OrderStatus
+
+  autoRenew                          Boolean             @default(false)
+  autoProvision                      Boolean             @default(true)
+
+  source                             String? // marketing / in-portal / admin
+  ref                                String?
+
+  createdAt                          DateTime            @default(now())
+  activatedAt                        DateTime?
+  expiresAt                          DateTime?
+  cancelledAt                        DateTime?
+  cancelledReason                    String?
+
+  exception                          OrderException?
+  excInfo                            String?
+
+  replacesOrderId                    String?             @unique
+  renewalGraceUntil                  DateTime?
+  renewalCarryoverProxyIds           String[]            @default([])
+  renewalAddProxyIds                 String[]            @default([])
+  renewalBucket                      RenewalBucket?
+  lastReminderAt                     DateTime?
+
+  credentialsSentAt                  DateTime?
+  credentialsChannel                 CredentialsChannel?
+
+  manualProvisioning                 Boolean             @default(false)
+  manualFulfillmentOverride          Boolean             @default(false)
+  manualFulfillmentOverridePayState  String?
+
+  autoRenewBeforeSuspend             Boolean?
+  credentialsBeforeSuspend           String?
+
+  updatedAt                          DateTime            @updatedAt
+
+  client                             User                @relation("OrderClient", fields: [clientId], references: [id])
+  plan                               Plan                @relation(fields: [planId], references: [id])
+  replaces                           Order?              @relation("OrderReplaces", fields: [replacesOrderId], references: [id])
+  replacedBy                         Order?              @relation("OrderReplaces")
+  payments                           Payment[]
+  invoices                           Invoice[]
+  assignments                        Assignment[]
+
+  @@index([clientId])
+  @@index([planId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([exception])
+  @@map("orders")
+}
+
+// ─── PAYMENTS / INVOICES ───────────────────────────────────────────────────
+
+model Payment {
+  id              String        @id // PAY-#####
+  orderId         String?
+  clientId        String
+  provider        String
+  method          String
+  gross           Decimal       @db.Decimal(10, 2)
+  fees            Decimal       @default(0) @db.Decimal(10, 2)
+  net             Decimal       @db.Decimal(10, 2)
+  status          PaymentStatus
+  refundedAmount  Decimal?      @db.Decimal(10, 2)
+  externalRef     String?
+  source          String?
+  createdAt       DateTime      @default(now())
+  confirmedAt     DateTime?
+  refundedAt      DateTime?
+
+  order           Order?        @relation(fields: [orderId], references: [id])
+  client          User          @relation("PaymentClient", fields: [clientId], references: [id])
+  invoice         Invoice?
+
+  @@index([orderId])
+  @@index([clientId])
+  @@index([status])
+  @@map("payments")
+}
+
+model Invoice {
+  id         String   @id // INV-#####
+  paymentId  String   @unique
+  orderId    String?
+  clientId   String
+  amount     Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+
+  payment    Payment  @relation(fields: [paymentId], references: [id])
+  order      Order?   @relation(fields: [orderId], references: [id])
+  client     User     @relation("InvoiceClient", fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@map("invoices")
+}
+
+// ─── PROXIES ───────────────────────────────────────────────────────────────
+
+enum ProxyStatus {
+  AVAILABLE
+  ASSIGNED
+  PROVISIONING
+  RELEASED
+  FAULTY
+  MAINTENANCE
+}
+
+enum ProxyHealth {
+  HEALTHY
+  DEGRADED
+  OFFLINE
+}
+
+model Proxy {
+  id                String       @id // PXY-#####
+  modem             String
+  imei              String?
+  carrier           String
+  region            String
+  city              String?
+  pool              String
+
+  ip                String
+  port              Int
+  username          String
+  password          String
+  rotateToken       String?
+
+  status            ProxyStatus  @default(AVAILABLE)
+  health            ProxyHealth  @default(HEALTHY)
+
+  uptime            Float        @default(99)
+  speedMbps         Int          @default(50)
+  latency           Int?
+
+  trafficUsedMB     Int          @default(0)
+  trafficLimitMB    Int          @default(0)
+
+  autoRotateMin     Int          @default(0)
+  lastRotated       DateTime?
+
+  label             String?
+
+  currentOrderId    String?
+
+  registeredAt      DateTime     @default(now())
+  securityResetAt   DateTime?
+  passwordRotatedAt DateTime?
+  ipRotatedAt       DateTime?
+  updatedAt         DateTime     @updatedAt
+
+  assignments       Assignment[]
+  whitelist         ProxyWhitelist[]
+
+  @@index([status])
+  @@index([health])
+  @@index([currentOrderId])
+  @@index([carrier, region])
+  @@map("proxies")
+}
+
+enum AssignmentReason {
+  CANCEL
+  ORDER_EXPIRED
+  QTY_DOWN_ON_RENEWAL
+  RENEWAL_CARRYOVER
+  MIGRATED
+  PRE_BIND_PENDING_RENEWAL
+  RENEWAL_CANCELLED_BY_OPERATOR
+  REPLACEMENT
+}
+
+model Assignment {
+  id            String            @id // ASN-#####
+  orderId       String
+  proxyId       String
+  assignedAt    DateTime          @default(now())
+  releasedAt    DateTime?
+  reason        AssignmentReason?
+  reasonDetail  String?
+  actorId       String
+  suspendedAt   DateTime?
+
+  order         Order             @relation(fields: [orderId], references: [id])
+  proxy         Proxy             @relation(fields: [proxyId], references: [id])
+
+  @@index([orderId])
+  @@index([proxyId])
+  @@index([releasedAt])
+  @@map("assignments")
+}
+
+model ProxyWhitelist {
+  id        Int      @id @default(autoincrement())
+  proxyId   String
+  ip        String
+  addedAt   DateTime @default(now())
+  addedBy   String
+
+  proxy     Proxy    @relation(fields: [proxyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [addedBy], references: [id])
+
+  @@unique([proxyId, ip])
+  @@map("proxy_whitelist")
+}
+
+// ─── PAYMENT METHODS / BALANCE LEDGER ──────────────────────────────────────
+
+enum PaymentMethodKind {
+  BALANCE
+  CARD
+  CRYPTO
+}
+
+model PaymentMethod {
+  id         String              @id // pm_balance or pm_<random>
+  userId     String
+  kind       PaymentMethodKind
+  brand      String
+  last4      String?
+  exp        String?
+  isDefault  Boolean             @default(false)
+  locked     Boolean             @default(false)
+  addedAt    DateTime            @default(now())
+
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("payment_methods")
+}
+
+enum LedgerOp {
+  TOPUP
+  ORDER_DEBIT
+  REFUND_CREDIT
+  MANUAL_ADJUST
+}
+
+model BalanceLedgerEntry {
+  id            Int       @id @default(autoincrement())
+  userId        String
+  op            LedgerOp
+  amount        Decimal   @db.Decimal(12, 2)
+  balanceAfter  Decimal   @db.Decimal(12, 2)
+  refOrderId    String?
+  refPaymentId  String?
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("balance_ledger")
+}
+
+// ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
+
+enum NotificationKind {
+  INFO
+  SUCCESS
+  WARNING
+  DANGER
+}
+
+model Notification {
+  id        String           @id // n1, n2, ...
+  userId    String
+  title     String
+  kind      NotificationKind @default(INFO)
+  link      String?
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+enum NotificationChannel {
+  EMAIL
+  TELEGRAM
+}
+
+enum NotificationTrigger {
+  EXPIRING_3D
+  EXPIRING_24H
+  AWAITING
+  GRACE
+  REPLACEMENT_PENDING
+  ORDER_CREATED
+  PAYMENT_CONFIRMED
+  PROXY_ASSIGNED
+  REFUND_ISSUED
+  ORDER_EXPIRED_FINAL
+  REPLACEMENT_COMPLETED
+  ADMIN_NEW_ORDER
+  ADMIN_PAYMENT_FAILED
+  ADMIN_PROXY_FAULTY
+  ADMIN_QUOTA_85
+  ADMIN_CHARGEBACK
+  ADMIN_REFUND_REQUEST
+}
+
+model NotificationTemplate {
+  id        String              @id // TPL-###
+  name      String
+  channel   NotificationChannel
+  trigger   NotificationTrigger
+  subject   String?
+  body      String              @db.Text
+  enabled   Boolean             @default(true)
+  updatedAt DateTime            @updatedAt
+  createdAt DateTime            @default(now())
+
+  @@unique([channel, trigger])
+  @@map("notification_templates")
+}
+
+// ─── PROVISIONING ──────────────────────────────────────────────────────────
+
+model ProvisioningRule {
+  id            String   @id // PRV-###
+  carrier       String
+  region        String
+  defaultPool   String
+  fallbackPools String[] @default([])
+  autoAssign    Boolean  @default(true)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([carrier, region])
+  @@map("provisioning_rules")
+}
+
+// ─── SUPPORT TICKETS ───────────────────────────────────────────────────────
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  ANSWERED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  GENERAL
+  ORDER
+  PROXY
+  PAYMENT
+  REFUND
+  OTHER
+}
+
+model Ticket {
+  id          String         @id // TCK-#####
+  clientId    String
+  subject     String
+  category    TicketCategory @default(GENERAL)
+  status      TicketStatus   @default(OPEN)
+
+  refOrderId  String?
+  refProxyId  String?
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  resolvedAt  DateTime?
+
+  client      User           @relation("TicketClient", fields: [clientId], references: [id], onDelete: Cascade)
+  replies     TicketReply[]
+
+  @@index([clientId])
+  @@index([status])
+  @@map("tickets")
+}
+
+model TicketReply {
+  id        String   @id @default(cuid())
+  ticketId  String
+  authorId  String
+  isStaff   Boolean  @default(false)
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_replies")
+}
+
+// ─── ENTITY NOTES (polymorphic) ────────────────────────────────────────────
+
+enum NoteObjectType {
+  ORDER
+  PAYMENT
+  PROXY
+  CLIENT
+  PLAN
+}
+
+model EntityNote {
+  id         String          @id @default(cuid())
+  objectType NoteObjectType
+  objectId   String
+  authorId   String
+  body       String          @db.Text
+  createdAt  DateTime        @default(now())
+
+  author     User            @relation("NoteAuthor", fields: [authorId], references: [id])
+
+  @@index([objectType, objectId])
+  @@map("entity_notes")
+}
+
+// ─── AUDIT LOGS (polymorphic) ──────────────────────────────────────────────
+
+enum LogObjectType {
+  ORDER
+  PAYMENT
+  PROXY
+  CLIENT
+  PLAN
+  AUTH
+  SYSTEM
+  ASSIGNMENT
+  TICKET
+}
+
+model Log {
+  id          String         @id @default(cuid())
+  at          DateTime       @default(now())
+  actorId     String?
+  action      String
+  objectType  LogObjectType
+  objectId    String?
+  detail      String?        @db.Text
+
+  actor       User?          @relation("LogActor", fields: [actorId], references: [id])
+
+  @@index([objectType, objectId])
+  @@index([at])
+  @@index([action])
+  @@map("logs")
+}
+
+// ─── SYSTEM SETTINGS ───────────────────────────────────────────────────────
+
+// Flexible KV bucket for system flags, grace rules, payment provider toggles, etc.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// Master catalog lists (carriers, regions, pools, protocols, ...)
+enum CatalogKind {
+  CARRIER
+  REGION
+  POOL
+  PROTOCOL
+  ROTATION
+  TRAFFIC
+  DURATION
+  VISIBILITY
+  CURRENCY
+}
+
+model CatalogItem {
+  id        Int         @id @default(autoincrement())
+  kind      CatalogKind
+  value     String
+  sortOrder Int         @default(0)
+  enabled   Boolean     @default(true)
+
+  @@unique([kind, value])
+  @@map("catalog_items")
+}
+
+// API keys + webhooks (Settings → API tab)
+model ApiKey {
+  id         String    @id // key_<random>
+  name       String
+  keyMasked  String
+  keyHash    String
+  createdAt  DateTime  @default(now())
+  rotatedAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@map("api_keys")
+}
+
+model Webhook {
+  id             String    @id @default(cuid())
+  endpoint       String
+  events         String[]
+  active         Boolean   @default(true)
+  lastDeliveryAt DateTime?
+  lastStatus     String?
+  createdAt      DateTime  @default(now())
+
+  @@map("webhooks")
+}
+
+// ─── CHECKOUT DRAFT (per-user, server-side) ────────────────────────────────
+
+model CheckoutDraft {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  kind               String?
+  planId             String?
+  duration           Int?
+  qty                Int      @default(1)
+  autoExtend         Boolean  @default(true)
+  location           String?
+  paymentMethod      String?
+  step               String   @default("details")
+  depositAmount      Decimal? @db.Decimal(10, 2)
+  draftOrderId       String?
+  draftPaymentId     String?
+  resumeFromOrderId  String?
+  returnTo           String?
+  ref                String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("checkout_drafts")
+}

@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { money } from '@/lib/money';
 
+// Don't pre-render at build time — needs the DB
+export const dynamic = 'force-dynamic';
+
 export default async function MarketingPage() {
   const plans = await prisma.plan.findMany({
     where: { active: true, visibility: 'PUBLIC', deletedAt: null },

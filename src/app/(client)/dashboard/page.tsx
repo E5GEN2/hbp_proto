@@ -161,10 +161,10 @@ async function EmptyState() {
           {tiers.map((p, idx) => (
             <div key={p.id} style={{
               background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-              padding: 20, position: 'relative',
+              padding: 20, position: 'relative', overflow: 'visible',
             }}>
               {idx === 1 && (
-                <div style={{ position: 'absolute', top: -10, right: 16, background: 'var(--accent)', color: 'white', padding: '2px 10px', borderRadius: 999, fontSize: 10.5, fontWeight: 600 }}>Most popular</div>
+                <div style={{ position: 'absolute', top: -11, right: 16, background: 'var(--accent)', color: 'white', padding: '3px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>Most popular</div>
               )}
               <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Mobile · 3 locations</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>{p.durationDays} days</div>

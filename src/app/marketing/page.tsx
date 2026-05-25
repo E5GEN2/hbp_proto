@@ -31,9 +31,9 @@ export default async function MarketingPage() {
 
         <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
           {tiers.map((p, idx) => (
-            <div key={p.id} className="panel" style={{ padding: 24, position: 'relative' }}>
+            <div key={p.id} className="panel" style={{ padding: 24, position: 'relative', overflow: 'visible' }}>
               {idx === 1 && (
-                <div style={{ position: 'absolute', top: -10, right: 20, background: 'var(--accent)', color: 'white', padding: '3px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 600 }}>Most popular</div>
+                <div style={{ position: 'absolute', top: -11, right: 20, background: 'var(--accent)', color: 'white', padding: '4px 14px', borderRadius: 999, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>Most popular</div>
               )}
               <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Mobile · 3 locations</div>
               <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text)', marginTop: 6 }}>{p.durationDays} days</div>

@@ -4,6 +4,9 @@ import { authOptions, isAdminRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientSidebar } from '@/components/client/Sidebar';
 
+// All client pages need session + DB at request time
+export const dynamic = 'force-dynamic';
+
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');

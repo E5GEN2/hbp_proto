@@ -4,6 +4,9 @@ import { authOptions, isAdminRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { AdminSidebar } from '@/components/admin/Sidebar';
 
+// All admin pages need the DB at request time, never at build time
+export const dynamic = 'force-dynamic';
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login?return=/admin');

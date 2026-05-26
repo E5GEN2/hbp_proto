@@ -22,8 +22,7 @@ export async function POST(req: Request) {
 
   const awaitingPay = order.payments.find(p => p.status === 'AWAITING');
   const now = new Date();
-  const willActivate = order.plan.autoProvision;
-  const expiresAt = willActivate ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
+  const wantsAutoProvision = order.plan.autoProvision;
 
   await prisma.$transaction(async tx => {
     if (awaitingPay) {
@@ -33,30 +32,43 @@ export async function POST(req: Request) {
         data: { id: invoiceId, paymentId: awaitingPay.id, orderId: order.id, clientId: order.clientId, amount: Number(order.amount) },
       });
     }
-    await tx.order.update({
-      where: { id: order.id },
-      data: {
-        paymentStatus: 'PAID',
-        status: willActivate ? 'ACTIVE' : 'PROVISIONING',
-        activatedAt: willActivate ? now : null,
-        expiresAt,
-        credentialsSentAt: willActivate ? now : null,
-        credentialsChannel: willActivate ? 'EMAIL' : null,
-      },
-    });
 
-    if (willActivate) {
-      const need = order.qty;
+    // Try to assign proxies first
+    let assignedCount = 0;
+    if (wantsAutoProvision) {
       const candidates = await tx.proxy.findMany({
         where: { carrier: order.plan.carrier, region: order.region, status: 'AVAILABLE', health: 'HEALTHY' },
-        take: need,
+        take: order.qty,
       });
       for (const p of candidates) {
         const aid = await nextAssignmentId();
         await tx.assignment.create({ data: { id: aid, orderId: order.id, proxyId: p.id, actorId: 'ADM-SYS', assignedAt: now } });
         await tx.proxy.update({ where: { id: p.id }, data: { status: 'ASSIGNED', currentOrderId: order.id } });
+        assignedCount++;
       }
     }
+
+    const fullyAssigned = assignedCount >= order.qty;
+    const finalStatus =
+      wantsAutoProvision && fullyAssigned ? 'ACTIVE' as const
+      : 'PROVISIONING' as const;
+    const finalActivated = finalStatus === 'ACTIVE' ? now : null;
+    const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
+    const finalException = wantsAutoProvision && !fullyAssigned ? 'PAID_NOT_PROVISIONED' as const : null;
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        paymentStatus: 'PAID',
+        status: finalStatus,
+        activatedAt: finalActivated,
+        expiresAt: finalExpires,
+        credentialsSentAt: finalActivated,
+        credentialsChannel: finalActivated ? 'EMAIL' : null,
+        exception: finalException,
+        excInfo: finalException ? `Pool exhausted — ${assignedCount}/${order.qty} provisioned` : null,
+      },
+    });
 
     await tx.log.create({
       data: {
@@ -64,7 +76,7 @@ export async function POST(req: Request) {
         action: 'PAYMENT.CONFIRM',
         objectType: 'PAYMENT',
         objectId: awaitingPay?.id ?? null,
-        detail: `Crypto payment confirmed for order ${order.id}`,
+        detail: `Crypto payment confirmed for ${order.id} · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`,
       },
     });
   });

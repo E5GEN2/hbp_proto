@@ -863,6 +863,35 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     const orderId = await nextOrderIdInTx(tx);
     const payId = await nextPaymentIdInTx(tx);
 
+    // Pre-assign attempt — try to grab proxies before we commit the order's final status
+    const candidatesToAssign: { id: string }[] = [];
+    if (willActivate && (input.autoAssign ?? true)) {
+      const c1 = await tx.proxy.findMany({
+        where: { carrier: plan.carrier, region: plan.region, pool: plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
+        take: input.qty,
+      });
+      candidatesToAssign.push(...c1);
+      if (c1.length < input.qty) {
+        const c2 = await tx.proxy.findMany({
+          where: { carrier: plan.carrier, region: plan.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: c1.map(c => c.id) } },
+          take: input.qty - c1.length,
+        });
+        candidatesToAssign.push(...c2);
+      }
+    }
+    const fullyAssigned = candidatesToAssign.length >= input.qty;
+    const finalStatus =
+      input.paymentMethod === 'comp' && fullyAssigned ? 'ACTIVE' as const
+      : willActivate && fullyAssigned ? 'ACTIVE' as const
+      : isInstant || input.paymentMethod === 'comp' ? 'PROVISIONING' as const
+      : 'NEW' as const;
+    const finalActivated = finalStatus === 'ACTIVE' ? now : null;
+    const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+    const finalException =
+      (willActivate || input.paymentMethod === 'comp') && (input.autoAssign ?? true) && !fullyAssigned
+        ? 'PAID_NOT_PROVISIONED' as const : null;
+    const finalExcInfo = finalException ? `Pool exhausted — only ${candidatesToAssign.length}/${input.qty} provisioned` : null;
+
     await tx.order.create({
       data: {
         id: orderId,
@@ -874,14 +903,16 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         discountPct: discount,
         region: plan.region,
         paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
-        status: willActivate ? 'ACTIVE' : (isInstant || input.paymentMethod === 'comp' ? 'PROVISIONING' : 'NEW'),
+        status: finalStatus,
         autoRenew: input.autoRenew ?? plan.autoRenewDefault,
         autoProvision: plan.autoProvision,
         source: 'admin',
-        activatedAt: willActivate ? now : null,
-        expiresAt,
-        credentialsSentAt: willActivate ? now : null,
-        credentialsChannel: willActivate ? 'EMAIL' : null,
+        activatedAt: finalActivated,
+        expiresAt: finalExpires,
+        credentialsSentAt: finalActivated,
+        credentialsChannel: finalActivated ? 'EMAIL' : null,
+        exception: finalException,
+        excInfo: finalExcInfo,
       },
     });
 
@@ -907,45 +938,29 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
       });
     }
 
-    // Auto-assign proxies if autoProvision + isInstant
-    let assigned = 0;
-    if (willActivate && (input.autoAssign ?? true)) {
-      const candidates = await tx.proxy.findMany({
-        where: { carrier: plan.carrier, region: plan.region, pool: plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
-        take: input.qty,
-      });
-      if (candidates.length < input.qty) {
-        const more = await tx.proxy.findMany({
-          where: { carrier: plan.carrier, region: plan.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
-          take: input.qty - candidates.length,
-        });
-        candidates.push(...more);
-      }
-      const ids = await newAssignmentIds(tx, candidates.length);
-      for (let i = 0; i < candidates.length; i++) {
+    // Persist the actual assignments
+    if (candidatesToAssign.length > 0) {
+      const ids = await newAssignmentIds(tx, candidatesToAssign.length);
+      for (let i = 0; i < candidatesToAssign.length; i++) {
         await tx.assignment.create({
-          data: { id: ids[i], orderId, proxyId: candidates[i].id, actorId: actor.id, assignedAt: now },
+          data: { id: ids[i], orderId, proxyId: candidatesToAssign[i].id, actorId: actor.id, assignedAt: now },
         });
-        await tx.proxy.update({ where: { id: candidates[i].id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
-        assigned++;
-      }
-      if (assigned < input.qty) {
-        await tx.order.update({
-          where: { id: orderId },
-          data: { exception: 'PAID_NOT_PROVISIONED', excInfo: `Pool exhausted — only ${assigned}/${input.qty} provisioned` },
-        });
+        await tx.proxy.update({ where: { id: candidatesToAssign[i].id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
       }
     }
 
     await notify(tx, input.clientId,
-      willActivate && assigned >= input.qty ? `Order ${orderId} activated — ${input.qty} ${input.qty === 1 ? 'proxy' : 'proxies'} ready`
-      : isInstant ? `Order ${orderId} received — fulfilment in progress`
-      : `Order ${orderId} created — awaiting payment`,
-      willActivate && assigned >= input.qty ? 'SUCCESS' : 'INFO',
+      finalStatus === 'ACTIVE'
+        ? `Order ${orderId} activated — ${input.qty} ${input.qty === 1 ? 'proxy' : 'proxies'} ready`
+        : finalException === 'PAID_NOT_PROVISIONED'
+          ? `Order ${orderId} received — provisioning in progress (capacity hit)`
+          : isInstant ? `Order ${orderId} received — fulfilment in progress`
+          : `Order ${orderId} created — awaiting payment`,
+      finalStatus === 'ACTIVE' ? 'SUCCESS' : finalException ? 'WARNING' : 'INFO',
       `/orders/${orderId}`,
     );
     await log(tx, actor.id, 'ORDER.CREATE', 'ORDER', orderId,
-      `Admin-created · ${client.name} (${client.id}) · ${plan.name} · qty ${input.qty} · ${input.paymentMethod} · $${total.toFixed(2)}`);
+      `Admin-created · ${client.name} (${client.id}) · ${plan.name} · qty ${input.qty} · ${input.paymentMethod} · $${total.toFixed(2)} · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`);
 
     return { ok: true, orderId };
   });

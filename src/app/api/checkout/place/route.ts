@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { nextOrderId, nextPaymentId, nextInvoiceId, nextProxyId, nextAssignmentId } from '@/lib/id';
+import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 
 const Schema = z.object({
   planId: z.string(),
@@ -47,31 +47,12 @@ export async function POST(req: Request) {
   const paymentId = await nextPaymentId();
 
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
-  const willActivate = isInstant && plan.autoProvision;
+  const wantsAutoProvision = isInstant && plan.autoProvision;
 
   const now = new Date();
-  const expiresAt = willActivate ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
 
   await prisma.$transaction(async tx => {
-    await tx.order.create({
-      data: {
-        id: orderId,
-        clientId: userId,
-        planId: plan.id,
-        qty, unitPrice, amount: total,
-        region: plan.region,
-        paymentStatus: isInstant ? 'PAID' : (paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING'),
-        status: willActivate ? 'ACTIVE' : (isInstant ? 'PROVISIONING' : 'NEW'),
-        autoRenew: autoExtend,
-        autoProvision: plan.autoProvision,
-        source: 'in-portal',
-        activatedAt: willActivate ? now : null,
-        expiresAt,
-        credentialsSentAt: willActivate ? now : null,
-        credentialsChannel: willActivate ? 'EMAIL' : null,
-      },
-    });
-
+    // 1. Create payment first (always)
     await tx.payment.create({
       data: {
         id: paymentId,
@@ -87,6 +68,76 @@ export async function POST(req: Request) {
       },
     });
 
+    // 2. Try to assign proxies if auto-provision wanted
+    let assignedIds: string[] = [];
+    if (wantsAutoProvision) {
+      const candidates = await tx.proxy.findMany({
+        where: { carrier: plan.carrier, region: plan.region, pool: plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
+        take: qty,
+      });
+      if (candidates.length < qty) {
+        const more = await tx.proxy.findMany({
+          where: { carrier: plan.carrier, region: plan.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
+          take: qty - candidates.length,
+        });
+        candidates.push(...more);
+      }
+      assignedIds = candidates.slice(0, qty).map(c => c.id);
+    }
+
+    // 3. Decide final order state based on what actually happened
+    //    - Not instant (crypto/awaiting) → NEW
+    //    - Instant + autoProvision OFF (plan-level) → PROVISIONING (manual fulfillment)
+    //    - Instant + autoProvision ON + fully assigned → ACTIVE
+    //    - Instant + autoProvision ON + couldn't assign all → PROVISIONING + PAID_NOT_PROVISIONED
+    const fullyAssigned = assignedIds.length >= qty;
+    const finalStatus: 'NEW' | 'PROVISIONING' | 'ACTIVE' =
+      !isInstant ? 'NEW'
+      : !wantsAutoProvision ? 'PROVISIONING'
+      : fullyAssigned ? 'ACTIVE'
+      : 'PROVISIONING';
+    const finalActivated = finalStatus === 'ACTIVE' ? now : null;
+    const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+    const finalCredsSent = finalStatus === 'ACTIVE' ? now : null;
+    const finalException = (wantsAutoProvision && !fullyAssigned)
+      ? 'PAID_NOT_PROVISIONED' as const
+      : null;
+    const finalExcInfo = finalException
+      ? `Pool exhausted — ${assignedIds.length}/${qty} proxies available at checkout`
+      : null;
+
+    // 4. Create the order with the correct final state
+    await tx.order.create({
+      data: {
+        id: orderId,
+        clientId: userId,
+        planId: plan.id,
+        qty, unitPrice, amount: total,
+        region: plan.region,
+        paymentStatus: isInstant ? 'PAID' : (paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING'),
+        status: finalStatus,
+        autoRenew: autoExtend,
+        autoProvision: plan.autoProvision,
+        source: 'in-portal',
+        activatedAt: finalActivated,
+        expiresAt: finalExpires,
+        credentialsSentAt: finalCredsSent,
+        credentialsChannel: finalCredsSent ? 'EMAIL' : null,
+        exception: finalException,
+        excInfo: finalExcInfo,
+      },
+    });
+
+    // 5. Persist assignments now that the order exists
+    for (const pid of assignedIds) {
+      const aid = await nextAssignmentId();
+      await tx.assignment.create({
+        data: { id: aid, orderId, proxyId: pid, actorId: 'ADM-SYS', assignedAt: now },
+      });
+      await tx.proxy.update({ where: { id: pid }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
+    }
+
+    // 6. Invoice + balance debit (only for confirmed/paid)
     if (isInstant) {
       const invoiceId = await nextInvoiceId();
       await tx.invoice.create({
@@ -101,45 +152,32 @@ export async function POST(req: Request) {
       }
     }
 
-    if (willActivate) {
-      // Assign proxies from the matching pool
-      const candidates = await tx.proxy.findMany({
-        where: { carrier: plan.carrier, region: plan.region, pool: plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
-        take: qty,
-      });
-      if (candidates.length < qty) {
-        // Try fallback: just match carrier+region
-        const more = await tx.proxy.findMany({
-          where: { carrier: plan.carrier, region: plan.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
-          take: qty - candidates.length,
-        });
-        candidates.push(...more);
-      }
-      for (const p of candidates.slice(0, qty)) {
-        const aid = await nextAssignmentId();
-        await tx.assignment.create({
-          data: { id: aid, orderId, proxyId: p.id, actorId: 'ADM-SYS', assignedAt: now },
-        });
-        await tx.proxy.update({ where: { id: p.id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
-      }
-    }
-
+    // 7. Audit + client notification
     await tx.log.create({
       data: {
         actorId: userId,
         action: 'ORDER.CREATE',
         objectType: 'ORDER',
         objectId: orderId,
-        detail: `Order created via client portal · ${user.name} (${user.id}) · ${paymentMethod}`,
+        detail: `Order created via client portal · ${user.name} (${user.id}) · ${paymentMethod} · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`,
       },
     });
 
     await tx.notification.create({
       data: {
-        id: `n${Date.now()}`,
+        id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         userId,
-        title: willActivate ? `Order ${orderId} confirmed — proxies ready` : `Order ${orderId} received`,
-        kind: willActivate ? 'SUCCESS' : 'INFO',
+        title:
+          finalStatus === 'ACTIVE'
+            ? `Order ${orderId} activated — ${qty} ${qty === 1 ? 'proxy' : 'proxies'} ready`
+            : finalException === 'PAID_NOT_PROVISIONED'
+              ? `Order ${orderId} received — provisioning in progress (capacity hit)`
+              : `Order ${orderId} received — fulfilment in progress`,
+        kind:
+          finalStatus === 'ACTIVE' ? 'SUCCESS'
+          : finalException === 'PAID_NOT_PROVISIONED' ? 'WARNING'
+          : 'INFO',
+        link: `/orders/${orderId}`,
       },
     });
   });

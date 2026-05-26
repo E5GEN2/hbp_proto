@@ -3,12 +3,15 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 
+// Per the original prototype + ROADMAP.md, the client sidebar has 5 items:
+// Dashboard · Proxies · Orders · Billing · My Settings. Support tickets are
+// v2-deferred (ROADMAP.md / IMPLEMENTATION_BACKLOG.md) — for now, support
+// happens via the Telegram link on the checkout pages.
 const NAV = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/proxies',   label: 'Proxies'   },
   { href: '/orders',    label: 'Orders'    },
   { href: '/billing',   label: 'Billing'   },
-  { href: '/support',   label: 'Support'   },
 ];
 
 export function ClientSidebar({ user }: { user: { name: string; email: string; tier?: string } }) {

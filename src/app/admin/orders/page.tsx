@@ -4,8 +4,7 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { OrdersToolbar } from '@/components/admin/toolbars/OrdersToolbar';
 import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
-import { money } from '@/lib/money';
-import { fmtAdminStamp } from '@/lib/date';
+import { OrdersBulkTable } from '@/components/admin/OrdersBulkTable';
 
 const PER_PAGE = 12;
 
@@ -120,38 +119,13 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
             { kind: 'select', name: 'region', label: 'All regions', options: regions },
           ]}
         />
-        <div className="table-wrap" style={{ marginTop: 8 }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Order ID</th><th>Client</th><th>Plan</th><th>Carrier</th><th>Region</th><th>Amount</th><th>Payment</th><th>Status</th><th>Created</th><th>Expires</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
-                <tr><td colSpan={10}><div className="empty"><div className="empty-desc">No orders match these filters. Adjust or reset.</div></div></td></tr>
-              ) : orders.map(o => (
-                <tr key={o.id}>
-                  <td><Link href={`/admin/orders/${o.id}`} className="mono td-link">{o.id}</Link></td>
-                  <td><Link href={`/admin/clients/${o.client.id}`} className="mono td-link">{o.client.id}</Link></td>
-                  <td>{o.plan.name}</td>
-                  <td>{o.plan.carrier}</td>
-                  <td>{o.region}</td>
-                  <td>{money(Number(o.amount))}</td>
-                  <td><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
-                  <td>
-                    {o.exception ? (
-                      <span className="chip danger">{o.exception.toLowerCase().replace(/_/g, ' ')}</span>
-                    ) : (
-                      <span className={`chip ${o.status.toLowerCase().replace('_','-')}`}>{o.status.toLowerCase()}</span>
-                    )}
-                  </td>
-                  <td>{fmtAdminStamp(o.createdAt)}</td>
-                  <td>{fmtAdminStamp(o.expiresAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ marginTop: 8 }}>
+          <OrdersBulkTable orders={orders.map(o => ({
+            id: o.id, clientId: o.client.id, planName: o.plan.name, planCarrier: o.plan.carrier,
+            region: o.region, amount: Number(o.amount),
+            paymentStatus: o.paymentStatus, status: o.status, exception: o.exception,
+            createdAt: o.createdAt, expiresAt: o.expiresAt,
+          }))} />
         </div>
         <Pagination total={totalForView} page={page} perPage={PER_PAGE} basePath="/admin/orders" search={sp} />
       </main>

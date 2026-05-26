@@ -55,7 +55,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <ClientDetailActions clientId={c.id} initial={editInitial} blocked={c.status === 'BLOCKED'} carriers={carriers} regions={regions} />
+            <ClientDetailActions clientId={c.id} initial={editInitial} blocked={c.status === 'BLOCKED'} risk={c.risk} carriers={carriers} regions={regions} />
           </div>
         </div>
 

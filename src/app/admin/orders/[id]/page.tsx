@@ -23,6 +23,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const activeAssignments = order.assignments.filter(a => a.releasedAt === null).length;
   const qtyNeeded = Math.max(0, order.qty - activeAssignments);
   const showAssign = qtyNeeded > 0 && order.paymentStatus === 'PAID' || order.exception === 'PAID_NOT_PROVISIONED';
+  const wasPaid = order.paymentStatus === 'PAID' || order.paymentStatus === 'CONFIRMED';
 
   const candidates = showAssign ? await prisma.proxy.findMany({
     where: {
@@ -50,11 +51,20 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
 
         {/* Lifecycle actions — wired to transition library */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          {order.status === 'ACTIVE' && <><ExtendButton orderId={order.id} /><SuspendButton orderId={order.id} /><CancelOrderButton orderId={order.id} /></>}
-          {order.status === 'SUSPENDED' && <><ResumeButton orderId={order.id} /><CancelOrderButton orderId={order.id} /></>}
-          {(order.status === 'NEW' || order.status === 'AWAITING' || order.status === 'PROVISIONING') && <CancelOrderButton orderId={order.id} />}
+          {order.status === 'ACTIVE' && <>
+            <ExtendButton orderId={order.id} currentQty={order.qty} currentDuration={order.plan.durationDays} currentExpiry={order.expiresAt} />
+            <SuspendButton orderId={order.id} />
+            <CancelOrderButton orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />
+          </>}
+          {order.status === 'SUSPENDED' && <>
+            <ResumeButton orderId={order.id} />
+            <CancelOrderButton orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />
+          </>}
+          {(order.status === 'NEW' || order.status === 'AWAITING' || order.status === 'PROVISIONING') &&
+            <CancelOrderButton orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />}
           {order.status === 'PROVISIONING' && activeAssignments >= order.qty && !order.credentialsSentAt && <SendCredentialsButton orderId={order.id} />}
-          {(order.status === 'EXPIRED' || order.status === 'CANCELLED') && <ExtendButton orderId={order.id} />}
+          {(order.status === 'EXPIRED' || order.status === 'CANCELLED') &&
+            <ExtendButton orderId={order.id} currentQty={order.qty} currentDuration={order.plan.durationDays} currentExpiry={order.expiresAt} />}
           <OrderDetailActions
             orderId={order.id}
             qtyNeeded={qtyNeeded}

@@ -2,38 +2,87 @@ import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { ClientsToolbar } from '@/components/admin/toolbars/ClientsToolbar';
+import { FilterBar } from '@/components/admin/FilterBar';
+import { Pagination } from '@/components/admin/Pagination';
 import { fmtAdminStamp } from '@/lib/date';
 import { money } from '@/lib/money';
 
-export default async function AdminClientsPage({ searchParams }: { searchParams: { status?: string } }) {
-  const view = searchParams.status ?? 'all';
-  const where = view === 'all' ? { role: 'CLIENT' as const } : { role: 'CLIENT' as const, status: view.toUpperCase() as any };
-  const clients = await prisma.user.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { orders: true } } },
-  });
+const PER_PAGE = 12;
 
-  const allCount = await prisma.user.count({ where: { role: 'CLIENT' } });
-  const activeCount = await prisma.user.count({ where: { role: 'CLIENT', status: 'ACTIVE' } });
-  const churnedCount = await prisma.user.count({ where: { role: 'CLIENT', status: 'CHURNED' } });
-  const blockedCount = await prisma.user.count({ where: { role: 'CLIENT', status: 'BLOCKED' } });
+export default async function AdminClientsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  const view = searchParams.status ?? 'all';
+  const tier = searchParams.tier ?? '';
+  const risk = searchParams.risk ?? '';
+  const q = searchParams.q?.trim() ?? '';
+  const page = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+
+  const where: any = { role: 'CLIENT' };
+  if (view !== 'all') where.status = view.toUpperCase();
+  if (tier) where.tier = tier;
+  if (risk) where.risk = risk;
+  if (q) {
+    where.OR = [
+      { id: { contains: q, mode: 'insensitive' } },
+      { name: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
+      { telegram: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+
+  const [clients, total, allCount, activeCount, churnedCount, blockedCount] = await Promise.all([
+    prisma.user.findMany({
+      where, orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { orders: true } } },
+      skip: (page - 1) * PER_PAGE, take: PER_PAGE,
+    }),
+    prisma.user.count({ where }),
+    prisma.user.count({ where: { role: 'CLIENT' } }),
+    prisma.user.count({ where: { role: 'CLIENT', status: 'ACTIVE' } }),
+    prisma.user.count({ where: { role: 'CLIENT', status: 'CHURNED' } }),
+    prisma.user.count({ where: { role: 'CLIENT', status: 'BLOCKED' } }),
+  ]);
+
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(searchParams)) if (v) sp.set(k, v);
 
   return (
     <>
       <AdminTopbar title="Clients" action={<ClientsToolbar />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
-        <div className="tabs" style={{ marginBottom: 16 }}>
-          <Link href="/admin/clients?status=all"     className={`tab ${view === 'all' ? 'active' : ''}`}>All     <span className="tab-count">{allCount}</span></Link>
-          <Link href="/admin/clients?status=active"  className={`tab ${view === 'active' ? 'active' : ''}`}>Active  <span className="tab-count">{activeCount}</span></Link>
-          <Link href="/admin/clients?status=churned" className={`tab ${view === 'churned' ? 'active' : ''}`}>Churned <span className="tab-count">{churnedCount}</span></Link>
-          <Link href="/admin/clients?status=blocked" className={`tab ${view === 'blocked' ? 'active' : ''}`}>Blocked <span className="tab-count">{blockedCount}</span></Link>
+        <div className="tabs" style={{ marginBottom: 8 }}>
+          {[
+            { v: 'all',     l: 'All',     n: allCount     },
+            { v: 'active',  l: 'Active',  n: activeCount  },
+            { v: 'churned', l: 'Churned', n: churnedCount },
+            { v: 'blocked', l: 'Blocked', n: blockedCount },
+          ].map(t => {
+            const tsp = new URLSearchParams(sp);
+            tsp.set('status', t.v); tsp.delete('page');
+            return (
+              <Link key={t.v} href={`/admin/clients?${tsp.toString()}`} className={`tab ${view === t.v ? 'active' : ''}`}>
+                {t.l}<span className="tab-count">{t.n}</span>
+              </Link>
+            );
+          })}
         </div>
-        <div className="table-wrap">
+        <FilterBar
+          filters={[
+            { kind: 'search', name: 'q', placeholder: 'Search by ID, name, email, telegram…' },
+            { kind: 'select', name: 'tier', label: 'All tiers', options: [
+              { value: 'STANDARD', label: 'Standard' }, { value: 'PRO', label: 'Pro' }, { value: 'VIP', label: 'VIP' },
+            ]},
+            { kind: 'select', name: 'risk', label: 'All risk', options: [
+              { value: 'NONE', label: 'None' }, { value: 'REVIEW', label: 'Under review' }, { value: 'FLAG', label: 'Flagged' },
+            ]},
+          ]}
+        />
+        <div className="table-wrap" style={{ marginTop: 8 }}>
           <table className="table">
             <thead><tr><th>Client</th><th>ID</th><th>Tier</th><th>Country</th><th>Orders</th><th>Balance</th><th>Status</th><th>Risk</th><th>Joined</th></tr></thead>
             <tbody>
-              {clients.map(c => (
+              {clients.length === 0 ? (
+                <tr><td colSpan={9}><div className="empty"><div className="empty-desc">No clients match these filters.</div></div></td></tr>
+              ) : clients.map(c => (
                 <tr key={c.id}>
                   <td>
                     <Link href={`/admin/clients/${c.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -57,6 +106,7 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
             </tbody>
           </table>
         </div>
+        <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/clients" search={sp} />
       </main>
     </>
   );

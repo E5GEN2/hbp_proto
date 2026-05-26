@@ -2,14 +2,15 @@
 import { useState } from 'react';
 import { EditClientModal, type EditClientInitial } from '../modals/EditClientModal';
 import { AddNoteModal } from '../modals/AddNoteModal';
-import { AdjustBalanceButton, BlockUnblockButton } from '../ActionButtons';
+import { AdjustBalanceButton, BlockUnblockButton, SetRiskButton } from '../ActionButtons';
 
 export function ClientDetailActions({
-  clientId, initial, blocked, carriers, regions,
+  clientId, initial, blocked, risk, carriers, regions,
 }: {
   clientId: string;
   initial: EditClientInitial;
   blocked: boolean;
+  risk: 'NONE' | 'REVIEW' | 'FLAG';
   carriers: string[];
   regions: string[];
 }) {
@@ -18,6 +19,7 @@ export function ClientDetailActions({
   return (
     <>
       <button className="btn" onClick={() => setEditOpen(true)}>Edit client</button>
+      <SetRiskButton userId={clientId} currentRisk={risk} />
       <button className="btn" onClick={() => setNoteOpen(true)}>+ Add note</button>
       <AdjustBalanceButton userId={clientId} />
       <BlockUnblockButton userId={clientId} blocked={blocked} />

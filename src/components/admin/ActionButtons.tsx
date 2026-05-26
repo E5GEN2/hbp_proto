@@ -2,176 +2,122 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import * as A from '@/lib/admin-actions';
+import { useToast } from '@/components/ui/Toast';
+import { ConfirmAction } from '@/components/ui/ConfirmAction';
+import { MarkPaidModal } from './modals/MarkPaidModal';
+import { RefundModal } from './modals/RefundModal';
+import { MarkFaultyModal } from './modals/MarkFaultyModal';
+import { RiskModal } from './modals/RiskModal';
+import { BlockClientModal } from './modals/BlockClientModal';
+import { CancelOrderModal } from './modals/CancelOrderModal';
+import { SuspendOrderModal } from './modals/SuspendOrderModal';
+import { ExtendOrderModal } from './modals/ExtendOrderModal';
 
 function useAction<T extends (...args: any[]) => Promise<any>>(fn: T) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
-  const call = (...args: Parameters<T>) => {
-    setErr(null);
-    start(async () => {
-      try {
-        await fn(...args);
-        router.refresh();
-      } catch (e: any) { setErr(e.message ?? 'Failed'); }
+  const call = (...args: Parameters<T>) =>
+    new Promise<Awaited<ReturnType<T>>>((resolve, reject) => {
+      setErr(null);
+      start(async () => {
+        try {
+          const r = await fn(...args);
+          router.refresh();
+          resolve(r as any);
+        } catch (e: any) {
+          setErr(e?.message ?? 'Failed');
+          reject(e);
+        }
+      });
     });
-  };
   return { call, pending, err, setErr };
-}
-
-function Prompt({ open, onClose, onConfirm, title, fields, confirmLabel = 'Confirm', tone = 'primary', busy }:
-  { open: boolean; onClose: () => void; onConfirm: (vals: Record<string, string>) => void; title: string; fields: { name: string; label: string; type?: string; placeholder?: string; default?: string }[]; confirmLabel?: string; tone?: 'primary' | 'danger'; busy?: boolean }) {
-  const [vals, setVals] = useState<Record<string, string>>(() => Object.fromEntries(fields.map(f => [f.name, f.default ?? ''])));
-  if (!open) return null;
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>×</button></div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {fields.map(f => (
-            <div key={f.name}>
-              <label className="form-label">{f.label}</label>
-              {f.type === 'textarea'
-                ? <textarea className="form-textarea" placeholder={f.placeholder} value={vals[f.name]} onChange={e => setVals(v => ({ ...v, [f.name]: e.target.value }))} />
-                : <input className="form-input" type={f.type ?? 'text'} placeholder={f.placeholder} value={vals[f.name]} onChange={e => setVals(v => ({ ...v, [f.name]: e.target.value }))} />}
-            </div>
-          ))}
-        </div>
-        <div className="modal-footer">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className={`btn ${tone}`} disabled={busy} onClick={() => onConfirm(vals)}>{busy ? '…' : confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /* ─── PAYMENT BUTTONS ──────────────────────────────────────────────── */
 
-export function MarkPaidButton({ paymentId, label = 'Mark paid' }: { paymentId: string; label?: string }) {
+export function MarkPaidButton({ paymentId, label = 'Mark paid', paymentLabel }: { paymentId: string; label?: string; paymentLabel?: string }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.markPaidAction);
   return (
     <>
-      <button className="btn primary" onClick={() => setOpen(true)} disabled={pending}>{label}</button>
-      <Prompt
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Mark payment confirmed"
-        fields={[
-          { name: 'source', label: 'Confirmation source', placeholder: 'bank-transfer / on-chain / cash / other', default: 'bank-transfer' },
-          { name: 'ref', label: 'Reference / txn ID (optional)' },
-        ]}
-        confirmLabel="Confirm payment"
-        busy={pending}
-        onConfirm={async (v) => {
-          await call(paymentId, v.source || 'manual', v.ref || undefined);
-          setOpen(false);
-        }}
-      />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      <button className="btn primary" onClick={() => setOpen(true)}>{label}</button>
+      <MarkPaidModal open={open} onClose={() => setOpen(false)} paymentId={paymentId} paymentLabel={paymentLabel} />
     </>
   );
 }
 
 export function RefundButton({ paymentId, amount }: { paymentId: string; amount: number }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.refundPaymentAction);
   return (
     <>
-      <button className="btn danger" onClick={() => setOpen(true)} disabled={pending}>Refund</button>
-      <Prompt
-        open={open}
-        onClose={() => setOpen(false)}
-        title={`Refund payment`}
-        fields={[
-          { name: 'amount', label: 'Refund amount (USD)', type: 'number', default: String(amount) },
-          { name: 'reason', label: 'Reason', type: 'textarea', placeholder: 'Customer-not-satisfied / Service-not-delivered / Goodwill / Other' },
-        ]}
-        confirmLabel="Issue refund"
-        tone="danger"
-        busy={pending}
-        onConfirm={async (v) => {
-          await call(paymentId, parseFloat(v.amount), v.reason || 'no reason given');
-          setOpen(false);
-        }}
-      />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      <button className="btn danger" onClick={() => setOpen(true)}>Refund</button>
+      <RefundModal open={open} onClose={() => setOpen(false)} paymentId={paymentId} maxAmount={amount} />
     </>
   );
 }
 
 /* ─── ORDER BUTTONS ────────────────────────────────────────────────── */
 
-export function CancelOrderButton({ orderId }: { orderId: string }) {
+export function CancelOrderButton({ orderId, wasPaid = false, assignmentCount = 0 }: { orderId: string; wasPaid?: boolean; assignmentCount?: number }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.cancelOrderAction);
   return (
     <>
-      <button className="btn danger" onClick={() => setOpen(true)} disabled={pending}>Cancel order</button>
-      <Prompt
-        open={open}
-        onClose={() => setOpen(false)}
-        title={`Cancel order ${orderId}`}
-        fields={[{ name: 'reason', label: 'Reason', type: 'textarea', placeholder: 'Why cancelling? (audited)' }]}
-        confirmLabel="Cancel order"
-        tone="danger"
-        busy={pending}
-        onConfirm={async (v) => {
-          await call(orderId, v.reason || 'no reason given');
-          setOpen(false);
-        }}
-      />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      <button className="btn danger" onClick={() => setOpen(true)}>Cancel order</button>
+      <CancelOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} wasPaid={wasPaid} assignmentCount={assignmentCount} />
     </>
   );
 }
 
 export function SuspendButton({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.suspendOrderAction);
   return (
     <>
-      <button className="btn" onClick={() => setOpen(true)} disabled={pending}>Suspend</button>
-      <Prompt open={open} onClose={() => setOpen(false)} title={`Suspend ${orderId}`}
-        fields={[{ name: 'reason', label: 'Reason', type: 'textarea' }]}
-        confirmLabel="Suspend" busy={pending}
-        onConfirm={async (v) => { await call(orderId, v.reason || ''); setOpen(false); }} />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
+      <button className="btn" onClick={() => setOpen(true)}>Suspend</button>
+      <SuspendOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} />
     </>
   );
 }
 
 export function ResumeButton({ orderId }: { orderId: string }) {
+  const router = useRouter();
+  const toast = useToast();
   const { call, pending, err } = useAction(A.resumeOrderAction);
   return (
     <>
-      <button className="btn primary" onClick={() => call(orderId)} disabled={pending}>{pending ? '…' : 'Resume'}</button>
+      <button className="btn primary" onClick={async () => { try { await call(orderId); toast('Order resumed', orderId, 'success'); } catch {} }} disabled={pending}>
+        {pending ? '…' : 'Resume'}
+      </button>
       {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
     </>
   );
 }
 
-export function ExtendButton({ orderId }: { orderId: string }) {
+export function ExtendButton({
+  orderId, currentQty = 1, currentDuration = 30, currentExpiry,
+}: { orderId: string; currentQty?: number; currentDuration?: number; currentExpiry?: Date | null }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.extendOrderAction);
   return (
     <>
-      <button className="btn" onClick={() => setOpen(true)} disabled={pending}>Extend</button>
-      <Prompt open={open} onClose={() => setOpen(false)} title={`Extend ${orderId}`}
-        fields={[{ name: 'days', label: 'Additional days', type: 'number', default: '30' }]}
-        confirmLabel="Extend" busy={pending}
-        onConfirm={async (v) => { await call(orderId, parseInt(v.days, 10) || 30); setOpen(false); }} />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
+      <button className="btn" onClick={() => setOpen(true)}>Extend</button>
+      <ExtendOrderModal
+        open={open} onClose={() => setOpen(false)}
+        orderId={orderId}
+        currentQty={currentQty}
+        currentDuration={currentDuration}
+        currentExpiry={currentExpiry ?? null}
+      />
     </>
   );
 }
 
 export function SendCredentialsButton({ orderId }: { orderId: string }) {
+  const toast = useToast();
   const { call, pending, err } = useAction(A.sendCredentialsAction);
   return (
     <>
-      <button className="btn" onClick={() => call(orderId, 'EMAIL')} disabled={pending}>{pending ? '…' : 'Send credentials'}</button>
+      <button className="btn" onClick={async () => { try { await call(orderId, 'EMAIL'); toast('Credentials sent', orderId + ' · email', 'success'); } catch {} }} disabled={pending}>
+        {pending ? '…' : 'Send credentials'}
+      </button>
       {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
     </>
   );
@@ -181,31 +127,39 @@ export function SendCredentialsButton({ orderId }: { orderId: string }) {
 
 export function MarkFaultyButton({ proxyId }: { proxyId: string }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.markProxyFaultyAction);
   return (
     <>
-      <button className="btn danger" onClick={() => setOpen(true)} disabled={pending}>Mark faulty</button>
-      <Prompt open={open} onClose={() => setOpen(false)} title={`Mark proxy ${proxyId} faulty`}
-        fields={[
-          { name: 'reason', label: 'Fault category', placeholder: 'connection-loss / high-latency / banned / other' },
-          { name: 'autoReplace', label: 'Auto-replace? (yes/no)', default: 'yes' },
-        ]}
-        confirmLabel="Mark faulty" tone="danger" busy={pending}
-        onConfirm={async (v) => {
-          await call(proxyId, v.reason || 'unspecified', /^(y|yes|true|1)$/i.test(v.autoReplace));
-          setOpen(false);
-        }} />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      <button className="btn danger" onClick={() => setOpen(true)}>Mark faulty</button>
+      <MarkFaultyModal open={open} onClose={() => setOpen(false)} proxyId={proxyId} />
     </>
   );
 }
 
 export function ReleaseProxyButton({ proxyId }: { proxyId: string }) {
-  const { call, pending, err } = useAction(A.releaseProxyAction);
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
   return (
     <>
-      <button className="btn" onClick={() => { if (confirm(`Release ${proxyId} to pool?`)) call(proxyId); }} disabled={pending}>{pending ? '…' : 'Release'}</button>
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
+      <button className="btn" onClick={() => setOpen(true)}>Release</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title="Release proxy"
+        entityLabel={`Proxy · ${proxyId}`}
+        message="The proxy returns to the available pool. Any current assignment is closed."
+        impact={[
+          'Active assignment closed with reason "admin-release"',
+          'Proxy status → RELEASED',
+          'Order may need re-assignment if it was active',
+        ]}
+        confirmLabel="Release"
+        confirmTone="danger"
+        onConfirm={async () => {
+          await A.releaseProxyAction(proxyId);
+          toast('Proxy released', proxyId, 'warning');
+          router.refresh();
+        }}
+      />
     </>
   );
 }
@@ -213,14 +167,42 @@ export function ReleaseProxyButton({ proxyId }: { proxyId: string }) {
 /* ─── PLAN BUTTONS ─────────────────────────────────────────────────── */
 
 export function TogglePlanButton({ planId, active }: { planId: string; active: boolean }) {
-  const { call, pending, err } = useAction(A.togglePlanActiveAction);
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  if (active) {
+    return (
+      <>
+        <button className="btn" onClick={() => setOpen(true)}>Disable plan</button>
+        <ConfirmAction
+          open={open} onClose={() => setOpen(false)}
+          title="Disable plan"
+          entityLabel={`Plan · ${planId}`}
+          message="The plan stops accepting new orders. Existing orders + renewals continue normally."
+          impact={[
+            'Hidden from the client portal catalog immediately',
+            'New purchases blocked',
+            'Existing active orders unaffected',
+            'You can re-enable from this same screen',
+          ]}
+          requireReason
+          confirmLabel="Disable plan"
+          confirmTone="danger"
+          onConfirm={async ({ reason }) => {
+            await A.togglePlanActiveAction(planId, false, reason);
+            toast('Plan disabled', planId, 'warning');
+            router.refresh();
+          }}
+        />
+      </>
+    );
+  }
   return (
-    <>
-      <button className={`btn ${active ? '' : 'primary'}`} onClick={() => call(planId, !active)} disabled={pending}>
-        {pending ? '…' : active ? 'Disable plan' : 'Enable plan'}
-      </button>
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
-    </>
+    <button className="btn primary" onClick={async () => {
+      await A.togglePlanActiveAction(planId, true);
+      toast('Plan enabled', planId, 'success');
+      router.refresh();
+    }}>Enable plan</button>
   );
 }
 
@@ -228,52 +210,77 @@ export function TogglePlanButton({ planId, active }: { planId: string; active: b
 
 export function AdjustBalanceButton({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
-  const { call, pending, err } = useAction(A.adjustBalanceAction);
+  const router = useRouter();
+  const toast = useToast();
+  const [delta, setDelta] = useState('50');
+  const [reason, setReason] = useState('Goodwill credit');
+  const [note, setNote] = useState('');
   return (
     <>
-      <button className="btn" onClick={() => setOpen(true)} disabled={pending}>Adjust balance</button>
-      <Prompt open={open} onClose={() => setOpen(false)} title="Adjust balance"
-        fields={[
-          { name: 'delta', label: 'Amount (signed, USD)', type: 'number', placeholder: '+50 or -25', default: '50' },
-          { name: 'reason', label: 'Reason', placeholder: 'goodwill / promo / dispute resolution' },
-          { name: 'note', label: 'Internal note (optional)', type: 'textarea' },
-        ]}
-        confirmLabel="Apply" busy={pending}
-        onConfirm={async (v) => {
-          await call(userId, parseFloat(v.delta), v.reason || 'manual adjust', v.note || undefined);
-          setOpen(false);
-        }} />
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      <button className="btn" onClick={() => setOpen(true)}>Adjust balance</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title="Adjust balance"
+        entityLabel={`Client · ${userId}`}
+        message={
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12.5 }}>Signed amount in USD. Positive = credit, negative = debit. A ledger entry is created and the client gets notified.</div>
+            <div>
+              <label className="form-label">Amount (signed)</label>
+              <input className="form-input mono" type="number" step="0.01" value={delta} onChange={e => setDelta(e.target.value)} placeholder="+50 or -25" />
+            </div>
+            <div>
+              <label className="form-label">Reason</label>
+              <input className="form-input" value={reason} onChange={e => setReason(e.target.value)} placeholder="goodwill / promo / dispute" />
+            </div>
+            <div>
+              <label className="form-label">Internal note (optional)</label>
+              <textarea className="form-textarea" rows={2} value={note} onChange={e => setNote(e.target.value)} />
+            </div>
+          </div>
+        }
+        confirmLabel="Apply adjustment"
+        confirmTone="primary"
+        onConfirm={async () => {
+          const d = parseFloat(delta);
+          if (isNaN(d) || d === 0) throw new Error('Amount must be a non-zero number');
+          if (!reason.trim()) throw new Error('Reason required');
+          const r = await A.adjustBalanceAction(userId, d, reason.trim(), note.trim() || undefined);
+          toast(d >= 0 ? `Credited $${d}` : `Debited $${Math.abs(d)}`, `New balance: $${r.newBalance}`, 'success');
+          router.refresh();
+        }}
+      />
     </>
   );
 }
 
 export function BlockUnblockButton({ userId, blocked }: { userId: string; blocked: boolean }) {
   const [open, setOpen] = useState(false);
-  const block = useAction(A.blockClientAction);
-  const unblock = useAction(A.unblockClientAction);
+  const router = useRouter();
+  const toast = useToast();
   if (blocked) {
     return (
-      <>
-        <button className="btn primary" onClick={() => unblock.call(userId)} disabled={unblock.pending}>{unblock.pending ? '…' : 'Unblock client'}</button>
-        {unblock.err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{unblock.err}</span>}
-      </>
+      <button className="btn primary" onClick={async () => {
+        await A.unblockClientAction(userId);
+        toast('Client unblocked', userId, 'success');
+        router.refresh();
+      }}>Unblock client</button>
     );
   }
   return (
     <>
-      <button className="btn danger" onClick={() => setOpen(true)} disabled={block.pending}>Block client</button>
-      <Prompt open={open} onClose={() => setOpen(false)} title="Block client"
-        fields={[
-          { name: 'reason', label: 'Reason', placeholder: 'Fraud / TOS violation / Abuse / Other' },
-          { name: 'suspend', label: 'Suspend active orders? (yes/no)', default: 'yes' },
-        ]}
-        confirmLabel="Block" tone="danger" busy={block.pending}
-        onConfirm={async (v) => {
-          await block.call(userId, v.reason || 'unspecified', /^(y|yes|true|1)$/i.test(v.suspend));
-          setOpen(false);
-        }} />
-      {block.err && <span style={{ color: 'var(--danger)', fontSize: 12, marginLeft: 8 }}>{block.err}</span>}
+      <button className="btn danger" onClick={() => setOpen(true)}>Block client</button>
+      <BlockClientModal open={open} onClose={() => setOpen(false)} userId={userId} />
+    </>
+  );
+}
+
+export function SetRiskButton({ userId, currentRisk }: { userId: string; currentRisk: 'NONE' | 'REVIEW' | 'FLAG' }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>Set risk flag</button>
+      <RiskModal open={open} onClose={() => setOpen(false)} userId={userId} currentRisk={currentRisk} />
     </>
   );
 }

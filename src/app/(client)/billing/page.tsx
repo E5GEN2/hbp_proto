@@ -6,6 +6,7 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { fmtDate } from '@/lib/date';
 import { Stage15Pill } from '@/components/ui/Stage15Badge';
+import { PaymentMethodsList } from '@/components/client/PaymentMethods';
 
 export default async function BillingPage({ searchParams }: { searchParams: { tab?: string } }) {
   const session = await getServerSession(authOptions);
@@ -69,22 +70,13 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
         <div>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Payment methods</span></div>
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {methods.map(m => (
-                <div key={m.id} style={{ padding: 14, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{m.brand}</div>
-                    {m.isDefault && <span className="chip accent sm">Default</span>}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-                    {m.last4 ? `•• ${m.last4}` : m.kind === 'BALANCE' ? `Balance: ${money(Number(me?.balance ?? 0))}` : '—'}
-                    {m.exp && ` · exp ${m.exp}`}
-                    {m.locked && ' · Locked'}
-                  </div>
-                </div>
-              ))}
-              <button className="btn" style={{ borderStyle: 'dashed' }}>+ Add payment method</button>
-            </div>
+            <PaymentMethodsList
+              methods={methods.map(m => ({
+                id: m.id, kind: m.kind as any, brand: m.brand,
+                last4: m.last4, exp: m.exp, isDefault: m.isDefault, locked: m.locked,
+              }))}
+              balance={Number(me?.balance ?? 0)}
+            />
           </div>
         </div>
       </main>

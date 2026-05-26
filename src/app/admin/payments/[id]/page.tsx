@@ -31,7 +31,7 @@ export default async function PaymentDetail({ params }: { params: { id: string }
           {(p.status === 'CONFIRMED' || p.status === 'PAID') && <RefundButton paymentId={p.id} amount={Number(p.gross)} />}
           <AddNoteToolbar objectType="PAYMENT" objectId={p.id} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Payment summary</span></div>
             <div className="panel-body">
@@ -56,7 +56,7 @@ export default async function PaymentDetail({ params }: { params: { id: string }
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
 
           <EntityNotesPanel objectType="PAYMENT" objectId={p.id} />
 

@@ -46,7 +46,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
           <KpiTile label="Avg latency" value={proxy.latency ? `${proxy.latency} ms` : '—'} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Technical details</span></div>
             <div className="panel-body">
@@ -95,7 +95,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
             </tbody>
           </table>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
 
           <EntityNotesPanel objectType="PROXY" objectId={proxy.id} />
 

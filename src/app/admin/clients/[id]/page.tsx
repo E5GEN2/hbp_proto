@@ -71,7 +71,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
           <div className="panel" style={{ padding: '14px 18px' }}><div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Lifetime value</div><div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>{money(ltv)}</div></div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Orders</span></div>
             <table className="table">
@@ -104,7 +104,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
 
           <EntityNotesPanel objectType="CLIENT" objectId={c.id} />
 

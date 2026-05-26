@@ -73,7 +73,7 @@ export default async function AdminEditPlanPage({ params }: { params: { id: stri
           capacity={{ allocated, displayAvailable, state }}
           canDelete={activeOrders === 0}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
 
           <EntityNotesPanel objectType="PLAN" objectId={plan.id} />
 

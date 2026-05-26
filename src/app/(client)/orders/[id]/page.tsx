@@ -47,7 +47,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   return (
     <>
       <ClientTopbar title="Order detail" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1080, margin: '0 auto' }}>
+      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1416, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{order.id}</h2>
           <span className={`chip ${order.status.toLowerCase().replace('_','-')}`}>{order.status.toLowerCase()}</span>
@@ -64,7 +64,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Order snapshot</span></div>
@@ -75,39 +75,47 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
                 <div className="kv-row total"><span className="kv-label">Amount</span><span className="kv-val">{money(Number(order.amount))}</span></div>
               </div>
             </div>
-            <div className="panel">
-              <div className="panel-header"><span className="panel-title">Activity</span></div>
-              <div className="panel-body" style={{ padding: 0 }}>
-                <ul style={{ margin: 0, padding: '12px 0', listStyle: 'none' }}>
-                  {events.map((e, i) => (
-                    <li key={i} style={{ padding: '8px 20px', display: 'flex', gap: 12 }}>
-                      <span style={{ marginTop: 5, flexShrink: 0, width: 8, height: 8, borderRadius: '50%', background: `var(--${e.tone === 'muted' ? 'muted' : e.tone})` }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{fmtTimelineStamp(e.at)}</div>
-                        <div style={{ fontSize: 12.5, color: 'var(--text)', fontWeight: 500, marginTop: 2 }}>{e.title}</div>
-                        {e.detail && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{e.detail}</div>}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            {order.assignments.length > 0 && (
+            {/* Split row per the original prototype: Activity + Assigned Proxies (1fr 1fr).
+                When no proxies, Activity expands to full width. */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: order.assignments.length > 0 ? '1fr 1fr' : '1fr',
+              gap: 16,
+            }}>
               <div className="panel">
-                <div className="panel-header">
-                  <span className="panel-title">Assigned proxies ({order.assignments.length})</span>
-                  <Link href={`/proxies?order=${order.id}`} className="panel-action">My Proxies →</Link>
+                <div className="panel-header"><span className="panel-title">Activity</span></div>
+                <div className="panel-body" style={{ padding: 0 }}>
+                  <ul style={{ margin: 0, padding: '12px 0', listStyle: 'none' }}>
+                    {events.map((e, i) => (
+                      <li key={i} style={{ padding: '8px 20px', display: 'flex', gap: 12 }}>
+                        <span style={{ marginTop: 5, flexShrink: 0, width: 8, height: 8, borderRadius: '50%', background: `var(--${e.tone === 'muted' ? 'muted' : e.tone})` }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{fmtTimelineStamp(e.at)}</div>
+                          <div style={{ fontSize: 12.5, color: 'var(--text)', fontWeight: 500, marginTop: 2 }}>{e.title}</div>
+                          {e.detail && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{e.detail}</div>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                  {order.assignments.map(a => (
-                    <li key={a.id} style={{ padding: '10px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Link href={`/proxies/${a.proxy.id}`} className="mono td-link">{a.proxy.id}</Link>
-                      <span className={`chip ${a.proxy.health.toLowerCase()}`}>{a.proxy.health.toLowerCase()}</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
-            )}
+              {order.assignments.length > 0 && (
+                <div className="panel">
+                  <div className="panel-header">
+                    <span className="panel-title">Assigned proxies ({order.assignments.length})</span>
+                    <Link href={`/proxies?order=${order.id}`} className="panel-action">My Proxies →</Link>
+                  </div>
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                    {order.assignments.map(a => (
+                      <li key={a.id} style={{ padding: '10px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Link href={`/proxies/${a.proxy.id}`} className="mono td-link">{a.proxy.id}</Link>
+                        <span className={`chip ${a.proxy.health.toLowerCase()}`}>{a.proxy.health.toLowerCase()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Lifecycle</span></div>

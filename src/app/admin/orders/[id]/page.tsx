@@ -79,7 +79,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Order summary</span></div>
             <div className="panel-body">
@@ -148,7 +148,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
           </table>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
 
           <EntityNotesPanel objectType="ORDER" objectId={order.id} />
 

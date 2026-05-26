@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { fmtDate } from '@/lib/date';
+import { Stage15Pill } from '@/components/ui/Stage15Badge';
 
 export default async function BillingPage({ searchParams }: { searchParams: { tab?: string } }) {
   const session = await getServerSession(authOptions);
@@ -27,7 +28,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
       <main style={{ padding: 24, overflowY: 'auto', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         <div>
           <div className="panel" style={{ padding: 24, marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Account balance</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Account balance <Stage15Pill /></div>
             <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)', marginTop: 6 }}>{money(Number(me?.balance ?? 0))}</div>
             <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 6 }}>Use balance at checkout for instant order activation.</div>
             <Link href="/checkout?kind=deposit" className="btn primary" style={{ marginTop: 14 }}>Add funds</Link>
@@ -43,7 +44,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
               </div>
             </div>
             <table className="table">
-              <thead><tr><th>Payment</th><th>Amount</th><th>Date</th><th>Type</th><th>Order</th><th>Status</th><th>Invoice</th></tr></thead>
+              <thead><tr><th>Payment</th><th>Amount</th><th>Date</th><th>Type</th><th>Order</th><th>Status</th><th>Invoice <Stage15Pill /></th></tr></thead>
               <tbody>
                 {payments.length === 0
                   ? <tr><td colSpan={7}><div className="empty"><div className="empty-desc">No transactions in this view.</div></div></td></tr>

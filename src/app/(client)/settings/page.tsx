@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
+import { ProfileForm, ChangePasswordForm, NotifPrefsForm } from '@/components/client/SettingsForm';
 import Link from 'next/link';
 
 export default async function SettingsPage({ searchParams }: { searchParams: { tab?: string } }) {
@@ -33,53 +34,36 @@ export default async function SettingsPage({ searchParams }: { searchParams: { t
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{me.email}</div>
               </div>
             </div>
-            <form style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-              <div><label className="form-label">Display name</label><input className="form-input" defaultValue={me.name} /></div>
-              <div><label className="form-label">Telegram</label><input className="form-input" defaultValue={me.telegram ?? ''} placeholder="@handle" /></div>
-              <div><label className="form-label">Country</label><select className="form-select" defaultValue={me.country ?? 'US'}><option>US</option><option>UK</option><option>DE</option><option>FR</option><option>IT</option><option>JP</option></select></div>
-            </form>
-            <div style={{ marginTop: 20 }}><button className="btn primary">Save</button></div>
+            <ProfileForm initial={{ name: me.name, telegram: me.telegram, country: me.country }} />
           </div>
         )}
+
         {tab === 'security' && (
           <div className="panel" style={{ padding: 24, maxWidth: 720 }}>
             <h3 style={{ marginTop: 0, color: 'var(--text)' }}>Change password</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-              <div><label className="form-label">New password</label><input className="form-input" type="password" /></div>
-              <div><label className="form-label">Confirm</label><input className="form-input" type="password" /></div>
-            </div>
-            <button className="btn primary" style={{ marginTop: 16 }}>Update password</button>
+            <ChangePasswordForm />
             <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '24px 0' }} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600 }}>Two-factor authentication</div>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Add an extra step to sign-in.</div>
               </div>
-              <span className={`toggle ${me.twoFactorEnabled ? 'on' : ''}`} />
+              <span className={`toggle ${me.twoFactorEnabled ? 'on' : ''}`} style={{ opacity: 0.5, cursor: 'not-allowed' }} title="2FA wizard ships in a follow-up batch" />
             </div>
           </div>
         )}
+
         {tab === 'notifications' && (
           <div className="panel" style={{ padding: 24, maxWidth: 720 }}>
-            <h3 style={{ marginTop: 0, color: 'var(--text)' }}>Email notifications</h3>
-            <PrefRow label="Renewal reminders"  value={me.emailRenewal} />
-            <PrefRow label="Service incidents"  value={me.emailIncidents} />
-            <PrefRow label="Product updates"    value={me.emailMarketing} />
-            <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '24px 0' }} />
-            <h3 style={{ marginTop: 0, color: 'var(--text)' }}>Telegram notifications</h3>
-            <PrefRow label="All notifications" value={me.telegramAll} />
+            <NotifPrefsForm initial={{
+              emailRenewal: me.emailRenewal,
+              emailIncidents: me.emailIncidents,
+              emailMarketing: me.emailMarketing,
+              telegramAll: me.telegramAll,
+            }} />
           </div>
         )}
       </main>
     </>
-  );
-}
-
-function PrefRow({ label, value }: { label: string; value: boolean }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <span style={{ fontSize: 13, color: 'var(--text)' }}>{label}</span>
-      <span className={`toggle ${value ? 'on' : ''}`} />
-    </div>
   );
 }

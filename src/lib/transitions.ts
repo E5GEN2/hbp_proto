@@ -10,6 +10,7 @@
 
 import { prisma } from './prisma';
 import { nextInvoiceId } from './id';
+import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
 type Tx = Prisma.TransactionClient;
@@ -692,6 +693,341 @@ export async function unblockClient({ userId, actor }: { userId: string; actor: 
   return prisma.$transaction(async tx => {
     await tx.user.update({ where: { id: userId }, data: { status: 'ACTIVE', blockedAt: null, blockedReason: null } });
     await log(tx, actor.id, 'CLIENT.UPDATE', 'CLIENT', userId, 'Unblocked');
+    return { ok: true };
+  });
+}
+
+export type NewClientInput = {
+  name: string;
+  email: string;
+  password?: string;
+  telegram?: string | null;
+  country?: string | null;
+  tier?: 'STANDARD' | 'PRO' | 'VIP';
+  risk?: 'NONE' | 'REVIEW' | 'FLAG';
+  riskNote?: string | null;
+  acquisition?: string | null;
+};
+
+async function nextUserIdInTx(tx: Tx) {
+  const rows = await tx.user.findMany({ where: { id: { startsWith: 'USR-' } }, select: { id: true } });
+  let max = 0;
+  for (const r of rows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `USR-${String(max + 1).padStart(5, '0')}`;
+}
+
+export async function createClient({ input, actor }: { input: NewClientInput; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    if (!input.name?.trim()) throw new Error('Name required');
+    if (!input.email?.trim()) throw new Error('Email required');
+    const email = input.email.trim().toLowerCase();
+    const dup = await tx.user.findUnique({ where: { email } });
+    if (dup) throw new Error('Email already in use');
+    const id = await nextUserIdInTx(tx);
+    const password = input.password?.trim() || Math.random().toString(36).slice(2, 14);
+    const passwordHash = await bcrypt.hash(password, 10);
+    await tx.user.create({
+      data: {
+        id,
+        name: input.name.trim(),
+        email,
+        passwordHash,
+        role: 'CLIENT',
+        tier: input.tier ?? 'STANDARD',
+        risk: input.risk ?? 'NONE',
+        riskNote: input.riskNote?.trim() || null,
+        telegram: input.telegram?.trim() || null,
+        country: input.country?.trim() || null,
+        acquisition: input.acquisition?.trim() || null,
+      },
+    });
+    // Seed locked balance method
+    await tx.paymentMethod.create({
+      data: { id: `pm_balance_${id.toLowerCase()}`, userId: id, kind: 'BALANCE', brand: 'Account balance', locked: true },
+    });
+    await log(tx, actor.id, 'CLIENT.CREATE', 'CLIENT', id,
+      `Created ${input.name.trim()} · ${email}${input.tier && input.tier !== 'STANDARD' ? ' · ' + input.tier : ''}${input.risk && input.risk !== 'NONE' ? ' · risk=' + input.risk : ''}`);
+    return { ok: true, clientId: id, generatedPassword: input.password ? undefined : password };
+  });
+}
+
+export type UpdateClientInput = {
+  name?: string;
+  telegram?: string | null;
+  country?: string | null;
+  tier?: 'STANDARD' | 'PRO' | 'VIP';
+  risk?: 'NONE' | 'REVIEW' | 'FLAG';
+  riskNote?: string | null;
+  preferredCarrier?: string | null;
+  preferredRegion?: string | null;
+  emailRenewal?: boolean;
+  emailIncidents?: boolean;
+  emailMarketing?: boolean;
+  telegramAll?: boolean;
+  preRenewalReminderHours?: number;
+};
+
+export async function updateClient({
+  userId, input, actor,
+}: { userId: string; input: UpdateClientInput; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const before = await tx.user.findUnique({ where: { id: userId } });
+    if (!before || before.role !== 'CLIENT') throw new Error('Client not found');
+    const data: any = {};
+    const diffs: string[] = [];
+    for (const k of Object.keys(input) as (keyof UpdateClientInput)[]) {
+      const v = (input as any)[k];
+      if (v === undefined) continue;
+      const old = (before as any)[k];
+      if (old !== v) {
+        data[k] = v;
+        if (k === 'riskNote') continue; // long text — skip diff
+        diffs.push(`${k}: ${old ?? '∅'} → ${v ?? '∅'}`);
+      }
+    }
+    if (Object.keys(data).length === 0) return { ok: true, noop: true };
+    await tx.user.update({ where: { id: userId }, data });
+    const action = input.risk !== undefined && input.risk !== before.risk ? 'CLIENT.RISK_UPDATE' : 'CLIENT.UPDATE';
+    await log(tx, actor.id, action, 'CLIENT', userId, diffs.join(' · ') || 'updated');
+    return { ok: true };
+  });
+}
+
+export type NewOrderInput = {
+  clientId: string;
+  planId: string;
+  qty: number;
+  discountPct?: number;
+  paymentMethod: 'stripe' | 'invoice' | 'crypto' | 'comp';
+  autoAssign?: boolean;
+  autoRenew?: boolean;
+};
+
+async function nextOrderIdInTx(tx: Tx) {
+  const rows = await tx.order.findMany({ where: { id: { startsWith: 'ORD-' } }, select: { id: true } });
+  let max = 0;
+  for (const r of rows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `ORD-${String(max + 1).padStart(5, '0')}`;
+}
+async function nextPaymentIdInTx(tx: Tx) {
+  const rows = await tx.payment.findMany({ where: { id: { startsWith: 'PAY-' } }, select: { id: true } });
+  let max = 0;
+  for (const r of rows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `PAY-${String(max + 1).padStart(5, '0')}`;
+}
+async function nextInvoiceIdInTx(tx: Tx) {
+  const rows = await tx.invoice.findMany({ where: { id: { startsWith: 'INV-' } }, select: { id: true } });
+  let max = 0;
+  for (const r of rows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `INV-${String(max + 1).padStart(5, '0')}`;
+}
+
+export async function createOrderByAdmin({ input, actor }: { input: NewOrderInput; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const client = await tx.user.findUnique({ where: { id: input.clientId } });
+    if (!client || client.role !== 'CLIENT') throw new Error('Client not found');
+    if (client.status === 'BLOCKED') throw new Error('Client is blocked');
+
+    const plan = await tx.plan.findUnique({ where: { id: input.planId } });
+    if (!plan || !plan.active || plan.deletedAt) throw new Error('Plan unavailable');
+
+    if (input.qty < 1) throw new Error('Quantity must be ≥ 1');
+
+    // Capacity check
+    const alloc = await tx.order.aggregate({
+      _sum: { qty: true },
+      where: { planId: plan.id, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+    });
+    if (plan.availableQuota - (alloc._sum.qty ?? 0) < input.qty) throw new Error('Plan capacity insufficient');
+
+    const discount = input.discountPct ?? 0;
+    const unitPrice = Number(plan.price) * (1 - discount / 100);
+    const total = unitPrice * input.qty;
+    const isInstant = input.paymentMethod === 'comp' || input.paymentMethod === 'stripe';
+    const willActivate = isInstant && plan.autoProvision;
+    const now = new Date();
+    const expiresAt = willActivate ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+
+    const orderId = await nextOrderIdInTx(tx);
+    const payId = await nextPaymentIdInTx(tx);
+
+    await tx.order.create({
+      data: {
+        id: orderId,
+        clientId: input.clientId,
+        planId: plan.id,
+        qty: input.qty,
+        unitPrice,
+        amount: total,
+        discountPct: discount,
+        region: plan.region,
+        paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
+        status: willActivate ? 'ACTIVE' : (isInstant || input.paymentMethod === 'comp' ? 'PROVISIONING' : 'NEW'),
+        autoRenew: input.autoRenew ?? plan.autoRenewDefault,
+        autoProvision: plan.autoProvision,
+        source: 'admin',
+        activatedAt: willActivate ? now : null,
+        expiresAt,
+        credentialsSentAt: willActivate ? now : null,
+        credentialsChannel: willActivate ? 'EMAIL' : null,
+      },
+    });
+
+    await tx.payment.create({
+      data: {
+        id: payId,
+        orderId,
+        clientId: input.clientId,
+        provider: input.paymentMethod === 'stripe' ? 'Stripe' : input.paymentMethod === 'crypto' ? 'CoinPayments' : input.paymentMethod === 'invoice' ? 'Bank transfer' : 'Comp',
+        method: input.paymentMethod === 'stripe' ? 'Visa •• 4242' : input.paymentMethod === 'crypto' ? 'USDT-TRC20' : input.paymentMethod === 'invoice' ? 'Bank wire' : 'Comp',
+        gross: total,
+        fees: isInstant && input.paymentMethod === 'stripe' ? total * 0.03 : 0,
+        net: total,
+        status: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'CONFIRMED' : 'AWAITING'),
+        confirmedAt: isInstant ? now : null,
+      },
+    });
+
+    if (isInstant || input.paymentMethod === 'comp') {
+      const invId = await nextInvoiceIdInTx(tx);
+      await tx.invoice.create({
+        data: { id: invId, paymentId: payId, orderId, clientId: input.clientId, amount: total },
+      });
+    }
+
+    // Auto-assign proxies if autoProvision + isInstant
+    let assigned = 0;
+    if (willActivate && (input.autoAssign ?? true)) {
+      const candidates = await tx.proxy.findMany({
+        where: { carrier: plan.carrier, region: plan.region, pool: plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
+        take: input.qty,
+      });
+      if (candidates.length < input.qty) {
+        const more = await tx.proxy.findMany({
+          where: { carrier: plan.carrier, region: plan.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
+          take: input.qty - candidates.length,
+        });
+        candidates.push(...more);
+      }
+      const ids = await newAssignmentIds(tx, candidates.length);
+      for (let i = 0; i < candidates.length; i++) {
+        await tx.assignment.create({
+          data: { id: ids[i], orderId, proxyId: candidates[i].id, actorId: actor.id, assignedAt: now },
+        });
+        await tx.proxy.update({ where: { id: candidates[i].id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
+        assigned++;
+      }
+      if (assigned < input.qty) {
+        await tx.order.update({
+          where: { id: orderId },
+          data: { exception: 'PAID_NOT_PROVISIONED', excInfo: `Pool exhausted — only ${assigned}/${input.qty} provisioned` },
+        });
+      }
+    }
+
+    await notify(tx, input.clientId,
+      willActivate && assigned >= input.qty ? `Order ${orderId} activated — ${input.qty} ${input.qty === 1 ? 'proxy' : 'proxies'} ready`
+      : isInstant ? `Order ${orderId} received — fulfilment in progress`
+      : `Order ${orderId} created — awaiting payment`,
+      willActivate && assigned >= input.qty ? 'SUCCESS' : 'INFO',
+      `/orders/${orderId}`,
+    );
+    await log(tx, actor.id, 'ORDER.CREATE', 'ORDER', orderId,
+      `Admin-created · ${client.name} (${client.id}) · ${plan.name} · qty ${input.qty} · ${input.paymentMethod} · $${total.toFixed(2)}`);
+
+    return { ok: true, orderId };
+  });
+}
+
+export type RegisterProxyInput = {
+  modem: string;
+  imei?: string | null;
+  carrier: string;
+  region: string;
+  pool: string;
+  city?: string | null;
+  ip: string;
+  port: number;
+  username: string;
+  password: string;
+};
+
+async function nextProxyIdInTx(tx: Tx) {
+  const rows = await tx.proxy.findMany({ where: { id: { startsWith: 'PXY-' } }, select: { id: true } });
+  let max = 0;
+  for (const r of rows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `PXY-${String(max + 1).padStart(5, '0')}`;
+}
+
+export async function registerProxy({ input, actor }: { input: RegisterProxyInput; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    if (!input.modem.trim() || !input.ip.trim() || !input.username.trim() || !input.password.trim()) {
+      throw new Error('All proxy fields required');
+    }
+    if (input.port < 1 || input.port > 65535) throw new Error('Port out of range');
+    const id = await nextProxyIdInTx(tx);
+    await tx.proxy.create({
+      data: {
+        id,
+        modem: input.modem.trim(),
+        imei: input.imei?.trim() || null,
+        carrier: input.carrier,
+        region: input.region,
+        pool: input.pool,
+        city: input.city?.trim() || null,
+        ip: input.ip.trim(),
+        port: input.port,
+        username: input.username.trim(),
+        password: input.password.trim(),
+        rotateToken: Math.random().toString(36).slice(2, 18),
+        status: 'AVAILABLE',
+        health: 'HEALTHY',
+      },
+    });
+    await log(tx, actor.id, 'PROXY.REGISTER', 'PROXY', id,
+      `Registered ${id} · ${input.carrier} · ${input.region} · ${input.pool} · ${input.modem}`);
+    return { ok: true, proxyId: id };
+  });
+}
+
+export async function addEntityNote({
+  objectType, objectId, body, actor,
+}: { objectType: 'ORDER' | 'PAYMENT' | 'PROXY' | 'CLIENT' | 'PLAN'; objectId: string; body: string; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    if (!body.trim()) throw new Error('Note body required');
+    await tx.entityNote.create({
+      data: { objectType, objectId, body: body.trim(), authorId: actor.id },
+    });
+    await log(tx, actor.id, `${objectType}.NOTE_ADD`, objectType, objectId, body.trim().slice(0, 200));
+    return { ok: true };
+  });
+}
+
+export async function setClientRisk({
+  userId, risk, note, actor,
+}: { userId: string; risk: 'NONE' | 'REVIEW' | 'FLAG'; note?: string; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const before = await tx.user.findUnique({ where: { id: userId } });
+    if (!before) throw new Error('Client not found');
+    if (risk !== 'NONE' && !note?.trim()) throw new Error('Note required when raising risk');
+    await tx.user.update({ where: { id: userId }, data: { risk, riskNote: note?.trim() || null } });
+    await log(tx, actor.id, 'CLIENT.RISK_UPDATE', 'CLIENT', userId,
+      `Risk ${before.risk} → ${risk}${note ? ' · ' + note.trim() : ''}`);
     return { ok: true };
   });
 }

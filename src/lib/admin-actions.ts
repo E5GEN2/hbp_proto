@@ -120,6 +120,52 @@ export async function deletePlanAction(planId: string) {
   return r;
 }
 
+export async function createOrderAction(input: T.NewOrderInput) {
+  const actor = await getAdminActor();
+  const r = await T.createOrderByAdmin({ input, actor });
+  bust();
+  return r;
+}
+
+export async function createClientAction(input: T.NewClientInput) {
+  const actor = await getAdminActor();
+  const r = await T.createClient({ input, actor });
+  bust();
+  return r;
+}
+
+export async function updateClientAction(userId: string, input: T.UpdateClientInput) {
+  const actor = await getAdminActor();
+  const r = await T.updateClient({ userId, input, actor });
+  bust();
+  return r;
+}
+
+export async function setClientRiskAction(userId: string, risk: 'NONE' | 'REVIEW' | 'FLAG', note?: string) {
+  const actor = await getAdminActor();
+  const r = await T.setClientRisk({ userId, risk, note, actor });
+  bust();
+  return r;
+}
+
+export async function registerProxyAction(input: T.RegisterProxyInput) {
+  const actor = await getAdminActor();
+  const r = await T.registerProxy({ input, actor });
+  bust();
+  return r;
+}
+
+export async function addNoteAction(
+  objectType: 'ORDER' | 'PAYMENT' | 'PROXY' | 'CLIENT' | 'PLAN',
+  objectId: string,
+  body: string,
+) {
+  const actor = await getAdminActor();
+  const r = await T.addEntityNote({ objectType, objectId, body, actor });
+  bust();
+  return r;
+}
+
 export async function adjustBalanceAction(userId: string, delta: number, reason: string, note?: string) {
   const actor = await getAdminActor();
   const r = await T.adjustBalance({ userId, actor, delta, reason, note });

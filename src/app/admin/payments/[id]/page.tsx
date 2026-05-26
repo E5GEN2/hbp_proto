@@ -5,6 +5,7 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { MarkPaidButton, RefundButton } from '@/components/admin/ActionButtons';
+import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
   const p = await prisma.payment.findUnique({
@@ -22,6 +23,7 @@ export default async function PaymentDetail({ params }: { params: { id: string }
           <div style={{ flex: 1 }} />
           {['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'].includes(p.status) && <MarkPaidButton paymentId={p.id} />}
           {(p.status === 'CONFIRMED' || p.status === 'PAID') && <RefundButton paymentId={p.id} amount={Number(p.gross)} />}
+          <AddNoteToolbar objectType="PAYMENT" objectId={p.id} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
           <div className="panel">

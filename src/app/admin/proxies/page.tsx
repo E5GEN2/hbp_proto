@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
+import { ProxiesToolbar } from '@/components/admin/toolbars/ProxiesToolbar';
 
 export default async function AdminProxiesPage({ searchParams }: { searchParams: { health?: string; status?: string } }) {
   const where: any = {};
@@ -8,18 +9,22 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
   if (searchParams.health === 'faulty') where.OR = [{ status: 'FAULTY' }, { health: 'OFFLINE' }];
   if (searchParams.health === 'maintenance') where.status = 'MAINTENANCE';
 
-  const [proxies, total, faulty, maint, available, assigned] = await Promise.all([
+  const [proxies, total, faulty, maint, available, assigned, catalogItems] = await Promise.all([
     prisma.proxy.findMany({ where, orderBy: { id: 'asc' }, take: 50 }),
     prisma.proxy.count(),
     prisma.proxy.count({ where: { OR: [{ status: 'FAULTY' }, { health: 'OFFLINE' }] } }),
     prisma.proxy.count({ where: { status: 'MAINTENANCE' } }),
     prisma.proxy.count({ where: { status: 'AVAILABLE' } }),
     prisma.proxy.count({ where: { status: 'ASSIGNED' } }),
+    prisma.catalogItem.findMany(),
   ]);
+  const carriers = catalogItems.filter(c => c.kind === 'CARRIER').map(c => c.value);
+  const regions = catalogItems.filter(c => c.kind === 'REGION').map(c => c.value);
+  const pools = catalogItems.filter(c => c.kind === 'POOL').map(c => c.value);
 
   return (
     <>
-      <AdminTopbar title="Proxies" action={<button className="btn primary">+ Register proxy</button>} />
+      <AdminTopbar title="Proxies" action={<ProxiesToolbar carriers={carriers} regions={regions} pools={pools} />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 16 }}>
           <Link href="/admin/proxies?health=faulty"      className={`tab ${searchParams.health === 'faulty' ? 'active' : ''}`}>⚠ Health Issues <span className="tab-count">{faulty}</span></Link>

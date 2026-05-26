@@ -1,0 +1,28 @@
+'use client';
+import { useState } from 'react';
+import { EditClientModal, type EditClientInitial } from '../modals/EditClientModal';
+import { AddNoteModal } from '../modals/AddNoteModal';
+import { AdjustBalanceButton, BlockUnblockButton } from '../ActionButtons';
+
+export function ClientDetailActions({
+  clientId, initial, blocked, carriers, regions,
+}: {
+  clientId: string;
+  initial: EditClientInitial;
+  blocked: boolean;
+  carriers: string[];
+  regions: string[];
+}) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  return (
+    <>
+      <button className="btn" onClick={() => setEditOpen(true)}>Edit client</button>
+      <button className="btn" onClick={() => setNoteOpen(true)}>+ Add note</button>
+      <AdjustBalanceButton userId={clientId} />
+      <BlockUnblockButton userId={clientId} blocked={blocked} />
+      <EditClientModal open={editOpen} onClose={() => setEditOpen(false)} clientId={clientId} initial={initial} carriers={carriers} regions={regions} />
+      <AddNoteModal open={noteOpen} onClose={() => setNoteOpen(false)} objectType="CLIENT" objectId={clientId} />
+    </>
+  );
+}

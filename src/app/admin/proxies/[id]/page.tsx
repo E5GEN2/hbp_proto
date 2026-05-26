@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { fmtAdminStamp } from '@/lib/date';
 import { MarkFaultyButton, ReleaseProxyButton } from '@/components/admin/ActionButtons';
+import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 
 export default async function AdminProxyDetail({ params }: { params: { id: string } }) {
   const proxy = await prisma.proxy.findUnique({
@@ -30,6 +31,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
           <div style={{ flex: 1 }} />
           {proxy.status !== 'FAULTY' && <MarkFaultyButton proxyId={proxy.id} />}
           {(proxy.status === 'ASSIGNED' || proxy.status === 'FAULTY') && <ReleaseProxyButton proxyId={proxy.id} />}
+          <AddNoteToolbar objectType="PROXY" objectId={proxy.id} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>

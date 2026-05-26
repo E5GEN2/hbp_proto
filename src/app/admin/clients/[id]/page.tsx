@@ -3,8 +3,8 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
-import { fmtAdminStamp } from '@/lib/date';
-import { AdjustBalanceButton, BlockUnblockButton } from '@/components/admin/ActionButtons';
+import { fmtAdminStamp, fmtRel } from '@/lib/date';
+import { ClientDetailActions } from '@/components/admin/toolbars/ClientDetailActions';
 
 export default async function AdminClientDetail({ params }: { params: { id: string } }) {
   const c = await prisma.user.findUnique({
@@ -18,6 +18,24 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
 
   const activeOrders = c.orders.filter(o => o.status === 'ACTIVE').length;
   const ltv = c.payments.filter(p => p.status === 'CONFIRMED' || p.status === 'PAID').reduce((s, p) => s + Number(p.net), 0);
+
+  const catalogItems = await prisma.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION'] } } });
+  const carriers = catalogItems.filter(i => i.kind === 'CARRIER').map(i => i.value);
+  const regions = catalogItems.filter(i => i.kind === 'REGION').map(i => i.value);
+
+  const editInitial = {
+    name: c.name,
+    telegram: c.telegram,
+    country: c.country,
+    tier: c.tier,
+    preferredCarrier: c.preferredCarrier,
+    preferredRegion: c.preferredRegion,
+    emailRenewal: c.emailRenewal,
+    emailIncidents: c.emailIncidents,
+    emailMarketing: c.emailMarketing,
+    telegramAll: c.telegramAll,
+    preRenewalReminderHours: c.preRenewalReminderHours,
+  };
 
   return (
     <>
@@ -37,8 +55,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <AdjustBalanceButton userId={c.id} />
-            <BlockUnblockButton userId={c.id} blocked={c.status === 'BLOCKED'} />
+            <ClientDetailActions clientId={c.id} initial={editInitial} blocked={c.status === 'BLOCKED'} carriers={carriers} regions={regions} />
           </div>
         </div>
 

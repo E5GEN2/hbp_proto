@@ -5,6 +5,7 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton, MarkPaidButton, RefundButton } from '@/components/admin/ActionButtons';
+import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 
 export default async function AdminOrderDetail({ params }: { params: { id: string } }) {
   const order = await prisma.order.findUnique({
@@ -17,6 +18,22 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     },
   });
   if (!order) notFound();
+
+  // Calculate proxies still needed and prefetch candidates for the Assign modal
+  const activeAssignments = order.assignments.filter(a => a.releasedAt === null).length;
+  const qtyNeeded = Math.max(0, order.qty - activeAssignments);
+  const showAssign = qtyNeeded > 0 && order.paymentStatus === 'PAID' || order.exception === 'PAID_NOT_PROVISIONED';
+
+  const candidates = showAssign ? await prisma.proxy.findMany({
+    where: {
+      carrier: order.plan.carrier,
+      region: order.region,
+      status: 'AVAILABLE',
+      health: 'HEALTHY',
+    },
+    take: 20,
+    orderBy: [{ pool: 'asc' }, { id: 'asc' }],
+  }) : [];
 
   return (
     <>
@@ -36,8 +53,14 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
           {order.status === 'ACTIVE' && <><ExtendButton orderId={order.id} /><SuspendButton orderId={order.id} /><CancelOrderButton orderId={order.id} /></>}
           {order.status === 'SUSPENDED' && <><ResumeButton orderId={order.id} /><CancelOrderButton orderId={order.id} /></>}
           {(order.status === 'NEW' || order.status === 'AWAITING' || order.status === 'PROVISIONING') && <CancelOrderButton orderId={order.id} />}
-          {order.status === 'PROVISIONING' && order.assignments.length >= order.qty && !order.credentialsSentAt && <SendCredentialsButton orderId={order.id} />}
+          {order.status === 'PROVISIONING' && activeAssignments >= order.qty && !order.credentialsSentAt && <SendCredentialsButton orderId={order.id} />}
           {(order.status === 'EXPIRED' || order.status === 'CANCELLED') && <ExtendButton orderId={order.id} />}
+          <OrderDetailActions
+            orderId={order.id}
+            qtyNeeded={qtyNeeded}
+            candidates={candidates.map(p => ({ id: p.id, carrier: p.carrier, region: p.region, pool: p.pool, ip: p.ip, port: p.port, health: p.health }))}
+            showAssign={showAssign}
+          />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>

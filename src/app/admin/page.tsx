@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
+import { OrdersToolbar } from '@/components/admin/toolbars/OrdersToolbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 
@@ -64,9 +65,33 @@ export default async function AdminDashboardPage() {
     return { plan: p, allocated, displayAvail, state };
   }));
 
+  // Toolbar data — same as Orders page
+  const [allClientsForOrder, allPlansForOrder] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: 'CLIENT', status: { not: 'BLOCKED' } },
+      select: { id: true, name: true, email: true, balance: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    }),
+    prisma.plan.findMany({ where: { active: true, deletedAt: null }, orderBy: { name: 'asc' } }),
+  ]);
+  const allocByPlanForOrder = new Map(
+    (await prisma.order.groupBy({
+      by: ['planId'],
+      where: { status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+      _sum: { qty: true },
+    })).map(a => [a.planId, a._sum.qty ?? 0])
+  );
+  const orderClientOpts = allClientsForOrder.map(c => ({ id: c.id, name: c.name, email: c.email, balance: Number(c.balance) }));
+  const orderPlanOpts = allPlansForOrder.map(p => ({
+    id: p.id, name: p.name, price: Number(p.price), durationDays: p.durationDays,
+    carrier: p.carrier, region: p.region,
+    available: Math.max(0, p.availableQuota - (allocByPlanForOrder.get(p.id) ?? 0)),
+  }));
+
   return (
     <>
-      <AdminTopbar title="Dashboard" action={<button className="btn primary">+ New Order</button>} />
+      <AdminTopbar title="Dashboard" action={<OrdersToolbar clients={orderClientOpts} plans={orderPlanOpts} />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         {/* KPI strip — 6 tiles */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 20 }}>

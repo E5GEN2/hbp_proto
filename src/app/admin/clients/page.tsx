@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
+import { ClientsToolbar } from '@/components/admin/toolbars/ClientsToolbar';
 import { fmtAdminStamp } from '@/lib/date';
 import { money } from '@/lib/money';
 
@@ -20,7 +21,7 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <AdminTopbar title="Clients" action={<button className="btn primary">+ New Client</button>} />
+      <AdminTopbar title="Clients" action={<ClientsToolbar />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 16 }}>
           <Link href="/admin/clients?status=all"     className={`tab ${view === 'all' ? 'active' : ''}`}>All     <span className="tab-count">{allCount}</span></Link>

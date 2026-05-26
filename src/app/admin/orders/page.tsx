@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
+import { OrdersToolbar } from '@/components/admin/toolbars/OrdersToolbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 
@@ -26,6 +27,33 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     take: 50,
   });
 
+  // Prefetch options for the New Order modal
+  const [allClients, allPlans] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: 'CLIENT', status: { not: 'BLOCKED' } },
+      select: { id: true, name: true, email: true, balance: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    }),
+    prisma.plan.findMany({
+      where: { active: true, deletedAt: null },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
+  const allocByPlan = new Map(
+    (await prisma.order.groupBy({
+      by: ['planId'],
+      where: { status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+      _sum: { qty: true },
+    })).map(a => [a.planId, a._sum.qty ?? 0])
+  );
+  const clientOpts = allClients.map(c => ({ id: c.id, name: c.name, email: c.email, balance: Number(c.balance) }));
+  const planOpts = allPlans.map(p => ({
+    id: p.id, name: p.name, price: Number(p.price), durationDays: p.durationDays,
+    carrier: p.carrier, region: p.region,
+    available: Math.max(0, p.availableQuota - (allocByPlan.get(p.id) ?? 0)),
+  }));
+
   const counts = await prisma.order.groupBy({ by: ['status'], _count: { _all: true } });
   const exceptionCount = await prisma.order.count({ where: { exception: { not: null } } });
   const ct = (s: string) => counts.find(c => c.status === s)?._count._all ?? 0;
@@ -42,7 +70,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <AdminTopbar title="Orders" action={<button className="btn primary">+ New Order</button>} />
+      <AdminTopbar title="Orders" action={<OrdersToolbar clients={clientOpts} plans={planOpts} />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 16 }}>
           {tabs.map(t => (

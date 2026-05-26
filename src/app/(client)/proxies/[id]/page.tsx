@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
+import { ClientProxyRequestReplacement } from '@/components/client/ProxyDetailActions';
 
 export default async function ClientProxyDetail({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -27,6 +28,7 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
           <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{proxy.id}</h2>
           <span className={`chip ${proxy.health.toLowerCase()}`}>{proxy.health.toLowerCase()}</span>
           <div style={{ flex: 1 }} />
+          <ClientProxyRequestReplacement proxyId={proxy.id} health={proxy.health} />
           <button className="btn">Copy credentials</button>
           <button className="btn">Rotate IP</button>
         </div>

@@ -1018,6 +1018,158 @@ export async function addEntityNote({
   });
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   CLIENT-INITIATED ACTIONS (request flows)
+   Per LIFECYCLE_CONTRACT.md:
+     - Renewal      : client-initiated, direct execution
+     - Replacement  : client-initiated REQUEST → admin executes
+     - Refund       : client-initiated REQUEST → admin approves
+     - Cancel       : admin-only EXCEPT for `new`+pending orders
+   ════════════════════════════════════════════════════════════════════════ */
+
+export async function clientCancelNewOrder({ orderId, clientId }: { orderId: string; clientId: string }) {
+  return prisma.$transaction(async tx => {
+    const o = await tx.order.findUnique({ where: { id: orderId } });
+    if (!o) throw new Error('Order not found');
+    if (o.clientId !== clientId) throw new Error('Forbidden');
+    if (o.status !== 'NEW') throw new Error('Only pending orders can be cancelled by the client. Active orders run until expiry.');
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Cancelled by client before payment' },
+    });
+    await tx.payment.updateMany({
+      where: { orderId, status: { in: ['AWAITING', 'PENDING'] } },
+      data: { status: 'CANCELLED' },
+    });
+    await log(tx, clientId, 'ORDER.CANCEL', 'ORDER', orderId, 'Cancelled by client (pending payment)');
+    return { ok: true };
+  });
+}
+
+export async function clientToggleAutoRenew({ orderId, clientId, on }: { orderId: string; clientId: string; on: boolean }) {
+  return prisma.$transaction(async tx => {
+    const o = await tx.order.findUnique({ where: { id: orderId } });
+    if (!o) throw new Error('Order not found');
+    if (o.clientId !== clientId) throw new Error('Forbidden');
+    if (o.status === 'CANCELLED' || o.status === 'EXPIRED') throw new Error('Cannot change auto-renew on a closed order');
+    await tx.order.update({ where: { id: orderId }, data: { autoRenew: on } });
+    await log(tx, clientId, 'ORDER.UPDATE', 'ORDER', orderId, `Auto-renew ${on ? 'enabled' : 'disabled'} by client`);
+    return { ok: true };
+  });
+}
+
+/** Client requests a refund. This DOESN'T issue the refund — it raises a flag for admin review. */
+export async function clientRequestRefund({
+  paymentId, clientId, reason,
+}: { paymentId: string; clientId: string; reason: string }) {
+  return prisma.$transaction(async tx => {
+    const pay = await tx.payment.findUnique({ where: { id: paymentId }, include: { order: true } });
+    if (!pay) throw new Error('Payment not found');
+    if (pay.clientId !== clientId) throw new Error('Forbidden');
+    if (pay.status !== 'CONFIRMED' && pay.status !== 'PAID') throw new Error('Only confirmed payments can be refund-requested');
+    if (!reason?.trim()) throw new Error('Reason required');
+
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: { status: 'REFUND_REQUESTED' as any },
+    });
+    if (pay.order) {
+      await tx.order.update({
+        where: { id: pay.order.id },
+        data: { exception: 'REFUND_PENDING', excInfo: `Client requested refund: ${reason.trim().slice(0, 100)}` },
+      });
+    }
+    await log(tx, clientId, 'PAYMENT.REFUND_REQUEST', 'PAYMENT', paymentId,
+      `Client refund request · ${reason.trim()}`);
+    return { ok: true };
+  });
+}
+
+/** Client requests replacement for a proxy. Doesn't swap — raises an admin queue item. */
+export async function clientRequestReplacement({
+  proxyId, clientId, reason,
+}: { proxyId: string; clientId: string; reason: string }) {
+  return prisma.$transaction(async tx => {
+    const proxy = await tx.proxy.findUnique({
+      where: { id: proxyId },
+      include: { assignments: { where: { releasedAt: null }, include: { order: true } } },
+    });
+    if (!proxy) throw new Error('Proxy not found');
+    const a = proxy.assignments[0];
+    if (!a || a.order.clientId !== clientId) throw new Error('Forbidden');
+
+    await tx.order.update({
+      where: { id: a.orderId },
+      data: { exception: 'REPLACEMENT_PENDING', excInfo: `Client requested replacement: ${reason.trim().slice(0, 100)}` },
+    });
+    await log(tx, clientId, 'PROXY.REPLACE_REQUEST', 'PROXY', proxyId,
+      `Client replacement request for ${proxyId} on ${a.orderId} · ${reason.trim()}`);
+    return { ok: true, orderId: a.orderId };
+  });
+}
+
+/** Client-initiated renewal. Direct execution when balance suffices, else returns a checkout redirect target. */
+export async function clientRenewOrder({ orderId, clientId }: { orderId: string; clientId: string }) {
+  // Snapshot — branch decision happens outside the tx so we can return redirect data
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { plan: true, client: true },
+  });
+  if (!o) throw new Error('Order not found');
+  if (o.clientId !== clientId) throw new Error('Forbidden');
+  if (o.status === 'CANCELLED' || o.status === 'PENDING_RENEWAL') throw new Error('Cannot renew this order');
+
+  const price = Number(o.plan.price) * o.qty;
+  const balance = Number(o.client.balance);
+
+  if (balance < price) {
+    // Insufficient — redirect to checkout
+    return {
+      ok: true,
+      redirect: `/checkout?duration=${o.plan.durationDays}&qty=${o.qty}&location=${encodeURIComponent(o.region)}&renewOf=${orderId}`,
+    };
+  }
+
+  // Balance covers — direct extend + new payment + invoice
+  return prisma.$transaction(async tx => {
+    const now = new Date();
+    const newBalance = balance - price;
+    await tx.user.update({ where: { id: clientId }, data: { balance: newBalance } });
+    await tx.balanceLedgerEntry.create({
+      data: { userId: clientId, op: 'ORDER_DEBIT', amount: -price, balanceAfter: newBalance, refOrderId: orderId, note: `Renewal of ${orderId}` },
+    });
+    const payId = await nextPaymentIdInTx(tx);
+    await tx.payment.create({
+      data: {
+        id: payId, orderId, clientId,
+        provider: 'Balance', method: 'Balance',
+        gross: price, fees: 0, net: price,
+        status: 'CONFIRMED', confirmedAt: now,
+      },
+    });
+    const invId = await nextInvoiceIdInTx(tx);
+    await tx.invoice.create({ data: { id: invId, paymentId: payId, orderId, clientId, amount: price } });
+
+    const base = o.expiresAt && o.expiresAt > now ? o.expiresAt : now;
+    const newExpiry = new Date(base.getTime() + o.plan.durationDays * 86_400_000);
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        expiresAt: newExpiry,
+        status: o.status === 'EXPIRED' ? 'ACTIVE' : o.status,
+        activatedAt: o.activatedAt ?? now,
+        renewalBucket: 'RENEWED',
+        lastReminderAt: null,
+        exception: o.exception === 'RENEWAL_NOT_EXTENDED' ? null : o.exception,
+      },
+    });
+    await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
+      `Client renewal · $${price} from balance · new expiry ${newExpiry.toDateString()}`);
+    await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${newExpiry.toLocaleDateString()}`, 'SUCCESS', `/orders/${orderId}`);
+    return { ok: true, redirect: null, newExpiry: newExpiry.toISOString() };
+  });
+}
+
 export async function setClientRisk({
   userId, risk, note, actor,
 }: { userId: string; risk: 'NONE' | 'REVIEW' | 'FLAG'; note?: string; actor: Actor }) {

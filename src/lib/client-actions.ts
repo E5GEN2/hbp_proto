@@ -109,3 +109,63 @@ export async function saveNotifPrefsAction(prefs: {
   bust();
   return { ok: true };
 }
+
+export async function depositAction({ amount, method }: { amount: number; method: 'card' | 'crypto' }) {
+  const clientId = await getClientUserId();
+  if (!Number.isFinite(amount) || amount < 1 || amount > 10000) throw new Error('Deposit must be between $1 and $10,000');
+  const me = await prisma.user.findUnique({ where: { id: clientId } });
+  if (!me) throw new Error('Not found');
+
+  const rows = await prisma.payment.findMany({ where: { id: { startsWith: 'PAY-' } }, select: { id: true } });
+  let max = 0;
+  for (const r of rows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  const payId = `PAY-${String(max + 1).padStart(5, '0')}`;
+  const invRows = await prisma.invoice.findMany({ where: { id: { startsWith: 'INV-' } }, select: { id: true } });
+  let invMax = 0;
+  for (const r of invRows) {
+    const m = /(\d+)/.exec(r.id);
+    if (m) invMax = Math.max(invMax, parseInt(m[1], 10));
+  }
+  const invId = `INV-${String(invMax + 1).padStart(5, '0')}`;
+
+  const isInstant = method === 'card';
+  const now = new Date();
+
+  await prisma.$transaction(async tx => {
+    await tx.payment.create({
+      data: {
+        id: payId,
+        orderId: null,
+        clientId,
+        provider: method === 'card' ? 'Stripe' : 'CoinPayments',
+        method: method === 'card' ? 'Wallet top-up' : 'USDT-TRC20',
+        gross: amount, fees: 0, net: amount,
+        status: isInstant ? 'CONFIRMED' : 'AWAITING',
+        confirmedAt: isInstant ? now : null,
+      },
+    });
+    if (isInstant) {
+      const newBal = Number(me.balance) + amount;
+      await tx.user.update({ where: { id: clientId }, data: { balance: newBal } });
+      await tx.balanceLedgerEntry.create({
+        data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payId, note: `Deposit ${method}` },
+      });
+      await tx.invoice.create({ data: { id: invId, paymentId: payId, orderId: null, clientId, amount } });
+      await tx.notification.create({
+        data: { id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId: clientId,
+                title: `Deposit of $${amount} added to your balance · new bal $${newBal}`,
+                kind: 'SUCCESS', link: '/billing' },
+      });
+    }
+    await tx.log.create({
+      data: { actorId: clientId, action: isInstant ? 'PAYMENT.CONFIRM' : 'PAYMENT.PENDING', objectType: 'PAYMENT', objectId: payId,
+              detail: `Deposit ${method} · $${amount}` },
+    });
+  });
+
+  bust();
+  return { ok: true, paymentId: payId, instant: isInstant };
+}

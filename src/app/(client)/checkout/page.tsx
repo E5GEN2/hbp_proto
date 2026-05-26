@@ -1,32 +1,69 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth';
+import type { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { CheckoutFlow } from './CheckoutFlow';
+import { DepositFlow } from './DepositFlow';
 
-export default async function CheckoutPage({ searchParams }: { searchParams: { duration?: string; qty?: string; autoExtend?: string; location?: string; step?: string; kind?: string; amount?: string } }) {
+type OrderWithPlan = Prisma.OrderGetPayload<{ include: { plan: true } }>;
+
+export default async function CheckoutPage({ searchParams }: {
+  searchParams: {
+    duration?: string; qty?: string; autoExtend?: string; location?: string; step?: string;
+    kind?: string; amount?: string; returnTo?: string;
+    resume?: string; renewOf?: string; ref?: string;
+  };
+}) {
   const session = await getServerSession(authOptions);
   const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
   if (!me) return null;
 
+  // Deposit branch
   if (searchParams.kind === 'deposit') {
+    const presetAmount = searchParams.amount ? parseFloat(searchParams.amount) : undefined;
     return (
       <>
         <ClientTopbar title="Deposit" balance={Number(me.balance)} />
-        <main style={{ padding: 24, overflowY: 'auto', maxWidth: 760, margin: '0 auto' }}>
-          <div className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0, color: 'var(--text)' }}>Add funds</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>Top-up balance flow — coming in next iteration. For now, balance can be adjusted from the admin panel (Clients → Edit).</p>
-            <Link href="/billing" className="btn">Back to billing</Link>
-          </div>
+        <main style={{ padding: 24, overflowY: 'auto' }}>
+          <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} />
         </main>
       </>
     );
   }
 
-  const duration = parseInt(searchParams.duration ?? '30', 10);
+  // Resume branch — hydrate from existing pending order
+  let resumeOrder: OrderWithPlan | null = null;
+  if (searchParams.resume) {
+    resumeOrder = await prisma.order.findUnique({ where: { id: searchParams.resume }, include: { plan: true } });
+    if (!resumeOrder || resumeOrder.clientId !== session!.user.id) {
+      notFound();
+    }
+    if (resumeOrder.status !== 'NEW') {
+      // Already paid or cancelled — bounce
+      return (
+        <>
+          <ClientTopbar title="Checkout" balance={Number(me.balance)} />
+          <main style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
+            <div className="panel" style={{ padding: 24 }}>
+              <h2 style={{ marginTop: 0, color: 'var(--text)' }}>This order is no longer pending</h2>
+              <p style={{ color: 'var(--muted)' }}>Status is <strong>{resumeOrder.status}</strong>. No need to resume.</p>
+              <Link href={`/orders/${resumeOrder.id}`} className="btn primary">View order</Link>
+            </div>
+          </main>
+        </>
+      );
+    }
+  }
+
+  const duration = resumeOrder ? resumeOrder.plan.durationDays : parseInt(searchParams.duration ?? '30', 10);
+  const presetQty = resumeOrder ? resumeOrder.qty : parseInt(searchParams.qty ?? '1', 10);
+  const presetLocation = resumeOrder ? resumeOrder.region : searchParams.location;
+  const presetAutoExtend = resumeOrder ? resumeOrder.autoRenew : searchParams.autoExtend !== '0';
+
   const plans = await prisma.plan.findMany({
     where: { durationDays: duration, active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { price: 'asc' },
@@ -65,15 +102,29 @@ export default async function CheckoutPage({ searchParams }: { searchParams: { d
     available: Math.max(0, p.availableQuota - (allocationByPlan.get(p.id) ?? 0)),
   }));
 
+  // Hint banner copy
+  const headerHint = resumeOrder
+    ? `Resuming order ${resumeOrder.id} — pick up where you left off.`
+    : searchParams.renewOf
+    ? `Renewing ${searchParams.renewOf} — your balance was insufficient. Top up or use a different method below.`
+    : null;
+
   return (
     <>
-      <ClientTopbar title="Checkout" balance={Number(me.balance)} />
+      <ClientTopbar title={resumeOrder ? `Resume ${resumeOrder.id}` : searchParams.renewOf ? 'Renew' : 'Checkout'} balance={Number(me.balance)} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
+        {headerHint && (
+          <div style={{
+            maxWidth: 1080, margin: '0 auto 16px', padding: '10px 14px',
+            background: 'var(--info-dim)', color: 'var(--info)',
+            borderRadius: 'var(--radius-md)', fontSize: 12.5,
+          }}>{headerHint}</div>
+        )}
         <CheckoutFlow
           duration={duration}
-          qty={parseInt(searchParams.qty ?? '1', 10)}
-          autoExtend={searchParams.autoExtend !== '0'}
-          location={searchParams.location ?? plans[0].region}
+          qty={presetQty}
+          autoExtend={presetAutoExtend}
+          location={presetLocation ?? plans[0].region}
           step={(searchParams.step ?? 'details') as any}
           balance={Number(me.balance)}
           plans={planSummaries}

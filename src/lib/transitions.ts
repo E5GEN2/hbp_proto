@@ -509,6 +509,124 @@ export async function togglePlanActive({
   });
 }
 
+export type PlanInput = {
+  name: string;
+  description?: string | null;
+  visibility: 'PUBLIC' | 'INTERNAL';
+  carrier: string;
+  region: string;
+  pool: string;
+  durationDays: number;
+  price: number;
+  currency: string;
+  availableQuota: number;
+  protocols?: string | null;
+  rotation?: string | null;
+  traffic?: string | null;
+  active: boolean;
+  autoProvision: boolean;
+  autoRenewDefault: boolean;
+  renewalAllowed: boolean;
+  preRenewalReminderHours: number;
+  gracePeriodHours: number;
+  renewalDiscountPct: number;
+  lowCapacityThresholdPct?: number | null;
+};
+
+async function nextPlanId(tx: Tx, carrier: string, durationDays: number) {
+  // Try human-readable form first: PLAN-VRZN-30D
+  const carrierAbbr = carrier.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase();
+  const base = `PLAN-${carrierAbbr}-${durationDays}D`;
+  const exists = await tx.plan.findUnique({ where: { id: base } });
+  if (!exists) return base;
+  // Fallback to numeric suffix
+  let n = 2;
+  while (await tx.plan.findUnique({ where: { id: `${base}-${n}` } })) n++;
+  return `${base}-${n}`;
+}
+
+export async function createPlan({ input, actor }: { input: PlanInput; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    if (!input.name?.trim()) throw new Error('Plan name is required');
+    if (input.price < 0 || input.price > 99999) throw new Error('Price must be between 0 and 99999');
+    if (input.availableQuota < 0 || input.availableQuota > 9999) throw new Error('Quota must be between 0 and 9999');
+    if (input.durationDays <= 0) throw new Error('Duration must be > 0');
+
+    const id = await nextPlanId(tx, input.carrier, input.durationDays);
+    const sku = id.replace('PLAN-', 'SKU-');
+
+    const plan = await tx.plan.create({
+      data: {
+        id,
+        name: input.name.trim(),
+        internalSku: sku,
+        description: input.description?.trim() || null,
+        visibility: input.visibility,
+        carrier: input.carrier,
+        region: input.region,
+        pool: input.pool,
+        durationDays: input.durationDays,
+        price: input.price,
+        currency: input.currency || 'USD',
+        protocols: input.protocols?.trim() || null,
+        rotation: input.rotation?.trim() || null,
+        traffic: input.traffic?.trim() || null,
+        availableQuota: input.availableQuota,
+        active: input.active,
+        autoProvision: input.autoProvision,
+        autoRenewDefault: input.autoRenewDefault,
+        renewalAllowed: input.renewalAllowed,
+        preRenewalReminderHours: input.preRenewalReminderHours,
+        gracePeriodHours: input.gracePeriodHours,
+        renewalDiscountPct: input.renewalDiscountPct,
+        lowCapacityThresholdPct: input.lowCapacityThresholdPct ?? null,
+      },
+    });
+
+    await log(tx, actor.id, 'PLAN.CREATE', 'PLAN', plan.id,
+      `Created ${plan.name} · ${plan.carrier} · ${plan.region} · ${plan.durationDays}d · $${plan.price} · quota=${plan.availableQuota}${plan.active ? ' · published to client portal' : ' · disabled'}`);
+
+    return { ok: true, planId: plan.id };
+  });
+}
+
+export async function updatePlan({ planId, input, actor }: { planId: string; input: Partial<PlanInput>; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const before = await tx.plan.findUnique({ where: { id: planId } });
+    if (!before) throw new Error('Plan not found');
+
+    const data: any = {};
+    const diffs: string[] = [];
+    for (const k of Object.keys(input) as (keyof PlanInput)[]) {
+      const v = (input as any)[k];
+      if (v === undefined) continue;
+      const old = (before as any)[k];
+      const oldNum = old != null && typeof old === 'object' && 'toNumber' in old ? old.toNumber() : old;
+      if (oldNum !== v) {
+        data[k] = v;
+        if (k === 'description' || k === 'protocols' || k === 'rotation' || k === 'traffic') continue; // skip long text in diff line
+        diffs.push(`${k}: ${oldNum} → ${v}`);
+      }
+    }
+    if (Object.keys(data).length === 0) return { ok: true, noop: true };
+
+    await tx.plan.update({ where: { id: planId }, data });
+    await log(tx, actor.id, 'PLAN.UPDATE', 'PLAN', planId, diffs.join(' · ') || 'updated');
+    return { ok: true };
+  });
+}
+
+export async function deletePlan({ planId, actor }: { planId: string; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const plan = await tx.plan.findUnique({ where: { id: planId }, include: { orders: { where: { status: { in: ['ACTIVE', 'PROVISIONING', 'NEW', 'PENDING_RENEWAL'] } }, take: 1 } } });
+    if (!plan) throw new Error('Plan not found');
+    if (plan.orders.length > 0) throw new Error('Cannot delete a plan with active orders — disable it instead');
+    await tx.plan.update({ where: { id: planId }, data: { deletedAt: new Date(), active: false } });
+    await log(tx, actor.id, 'PLAN.DELETE', 'PLAN', planId, `Deleted ${plan.name} — removed from client catalog`);
+    return { ok: true };
+  });
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    CLIENTS / BALANCE
    ════════════════════════════════════════════════════════════════════════ */

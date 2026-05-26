@@ -99,6 +99,27 @@ export async function togglePlanActiveAction(planId: string, active: boolean, re
   return r;
 }
 
+export async function createPlanAction(input: T.PlanInput) {
+  const actor = await getAdminActor();
+  const r = await T.createPlan({ input, actor });
+  bust();
+  return r;
+}
+
+export async function updatePlanAction(planId: string, input: Partial<T.PlanInput>) {
+  const actor = await getAdminActor();
+  const r = await T.updatePlan({ planId, input, actor });
+  bust();
+  return r;
+}
+
+export async function deletePlanAction(planId: string) {
+  const actor = await getAdminActor();
+  const r = await T.deletePlan({ planId, actor });
+  bust();
+  return r;
+}
+
 export async function adjustBalanceAction(userId: string, delta: number, reason: string, note?: string) {
   const actor = await getAdminActor();
   const r = await T.adjustBalance({ userId, actor, delta, reason, note });

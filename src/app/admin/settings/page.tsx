@@ -1,6 +1,14 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
+import { SystemFlagsForm } from '@/components/admin/settings/SystemFlagsForm';
+import { GraceRulesForm } from '@/components/admin/settings/GraceRulesForm';
+import { DisplayForm } from '@/components/admin/settings/DisplayForm';
+import { CatalogManager } from '@/components/admin/settings/CatalogManager';
+import { ProvidersForm } from '@/components/admin/settings/ProvidersForm';
+import { NotificationsForm } from '@/components/admin/settings/NotificationsForm';
+import { ProvisioningRulesForm } from '@/components/admin/settings/ProvisioningRulesForm';
+import { fmtAdminStamp } from '@/lib/date';
 
 const TABS = [
   { v: 'providers',    l: 'Payment Providers' },
@@ -16,13 +24,25 @@ const TABS = [
 ];
 
 export default async function AdminSettingsPage({ searchParams }: { searchParams: { tab?: string } }) {
-  const tab = searchParams.tab ?? 'providers';
-  const settings = await prisma.systemSetting.findMany();
+  const tab = searchParams.tab ?? 'flags';
+  const [settings, catalogItems, templates, provisioningRules, admins] = await Promise.all([
+    prisma.systemSetting.findMany(),
+    prisma.catalogItem.findMany({ orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }] }),
+    prisma.notificationTemplate.findMany({ orderBy: { updatedAt: 'desc' } }),
+    prisma.provisioningRule.findMany({ orderBy: { id: 'asc' } }),
+    prisma.user.findMany({ where: { role: { in: ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_SUPPORT'] } }, orderBy: { name: 'asc' } }),
+  ]);
   const map = Object.fromEntries(settings.map(s => [s.key, s.value]));
-
   const providers = (map.providers ?? {}) as any;
   const grace = (map.grace ?? {}) as any;
   const flags = (map.flags ?? {}) as any;
+  const display = (map.display ?? { timeFormat: 'UTC' }) as any;
+  const notifs = (map.notifications ?? {}) as any;
+
+  const catalogByKind: Record<string, { id: number; value: string }[]> = {};
+  for (const c of catalogItems) {
+    (catalogByKind[c.kind] = catalogByKind[c.kind] ?? []).push({ id: c.id, value: c.value });
+  }
 
   return (
     <>
@@ -43,80 +63,119 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
         </nav>
 
         <div className="panel" style={{ padding: 24 }}>
-          {tab === 'providers' && (
-            <>
-              <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: 15 }}>Payment Providers</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginTop: 16 }}>
-                <ProviderCard name="Stripe"        enabled={!!providers.stripe?.enabled} detail={providers.stripe?.accountId ?? '—'} />
-                <ProviderCard name="CoinPayments"  enabled={!!providers.crypto?.enabled} detail={`Confirmations: ${providers.crypto?.confirmations ?? 1} · ${(providers.crypto?.currencies ?? []).join(', ')}`} />
-                <ProviderCard name="Bank transfer" enabled={!!providers.bank?.enabled}   detail="Manual reconciliation" />
-                <ProviderCard name="PayPal"        enabled={!!providers.paypal?.enabled} detail="Not configured" />
-              </div>
-            </>
-          )}
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: 15, marginBottom: 20 }}>{TABS.find(t => t.v === tab)?.l}</h3>
+
           {tab === 'flags' && (
-            <>
-              <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: 15 }}>System Flags</h3>
-              <div style={{ marginTop: 16 }}>
-                <FlagRow label="Freeze new orders" value={!!map.freezeNewOrders} />
-                <FlagRow label="Auto-replace on faulty proxy" value={!!map.autoReplaceOnFaulty} />
-                <FlagRow label="Auto-release after grace" value={!!map.autoReleaseAfterGrace} />
-                <FlagRow label="Auto-provision on payment confirm" value={!!map.systemAutoProvisionOnPayment} />
-                <FlagRow label="Require 2FA for refund" value={!!map.require2FAForRefund} />
-                <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '16px 0' }} />
-                <NumRow label="Max concurrent orders per client" value={flags.maxConcurrentOrdersPerClient} />
-                <NumRow label="Max proxy replacements per order" value={flags.maxProxyReplacementsPerOrder} />
-                <NumRow label="Support refund cap (USD)" value={`$${flags.supportRefundCapUSD}`} />
-                <NumRow label="Discount cap without Super approval (%)" value={`${flags.discountCapWithoutSuperApprovalPercent}%`} />
-              </div>
-            </>
+            <SystemFlagsForm initial={{
+              systemAutoProvisionOnPayment: !!map.systemAutoProvisionOnPayment,
+              autoReplaceOnFaulty: !!map.autoReplaceOnFaulty,
+              autoReleaseAfterGrace: !!map.autoReleaseAfterGrace,
+              require2FAForRefund: !!map.require2FAForRefund,
+              requireNoteOnSuspend: !!map.requireNoteOnSuspend,
+              freezeNewOrders: !!map.freezeNewOrders,
+              flags: {
+                maxConcurrentOrdersPerClient: flags.maxConcurrentOrdersPerClient ?? 10,
+                maxProxyReplacementsPerOrder: flags.maxProxyReplacementsPerOrder ?? 3,
+                supportRefundCapUSD: flags.supportRefundCapUSD ?? 100,
+                discountCapWithoutSuperApprovalPercent: flags.discountCapWithoutSuperApprovalPercent ?? 15,
+              },
+            }} />
           )}
+
           {tab === 'grace' && (
-            <>
-              <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: 15 }}>Grace Rules</h3>
-              <NumRow label="Default grace period (h)" value={grace.defaultGraceHours} />
-              <NumRow label="Pre-renewal reminder (h)" value={grace.preRenewalReminderHours} />
-              <NumRow label="VIP grace (h)" value={grace.VIPGraceHours} />
-              <NumRow label="Pro grace (h)" value={grace.ProGraceHours} />
-              <NumRow label="Standard grace (h)" value={grace.StandardGraceHours} />
-              <FlagRow label="Auto-renew 24h before expiry" value={!!grace.autoRenew24hBeforeExpiry} />
-              <FlagRow label="Keep proxy during grace" value={!!grace.keepProxyDuringGrace} />
-              <FlagRow label="Auto-suspend after 3 failed renewals" value={!!grace.autoSuspendAfter3Fails} />
-            </>
+            <GraceRulesForm initial={{
+              defaultGraceHours: grace.defaultGraceHours ?? 48,
+              preRenewalReminderHours: grace.preRenewalReminderHours ?? 72,
+              secondReminderHours: grace.secondReminderHours ?? 24,
+              thirdReminderHours: grace.thirdReminderHours ?? 0,
+              VIPGraceHours: grace.VIPGraceHours ?? 96,
+              ProGraceHours: grace.ProGraceHours ?? 72,
+              StandardGraceHours: grace.StandardGraceHours ?? 48,
+              autoRenew24hBeforeExpiry: !!grace.autoRenew24hBeforeExpiry,
+              keepProxyDuringGrace: !!grace.keepProxyDuringGrace,
+              autoSuspendAfter3Fails: !!grace.autoSuspendAfter3Fails,
+            }} />
           )}
-          {tab !== 'providers' && tab !== 'flags' && tab !== 'grace' && (
+
+          {tab === 'display' && <DisplayForm initial={{ timeFormat: display.timeFormat ?? 'UTC' }} />}
+
+          {tab === 'catalog' && (
+            <CatalogManager
+              kinds={[
+                { kind: 'CARRIER',    label: 'Carriers' },
+                { kind: 'REGION',     label: 'Regions' },
+                { kind: 'POOL',       label: 'Pools' },
+                { kind: 'PROTOCOL',   label: 'Protocols' },
+                { kind: 'ROTATION',   label: 'Rotation policies' },
+                { kind: 'TRAFFIC',    label: 'Traffic policies' },
+                { kind: 'DURATION',   label: 'Durations' },
+                { kind: 'VISIBILITY', label: 'Visibility' },
+                { kind: 'CURRENCY',   label: 'Currencies' },
+              ]}
+              items={catalogByKind}
+            />
+          )}
+
+          {tab === 'providers' && (<ProvidersForm initial={providers} />)}
+
+          {tab === 'notifications' && (
+            <NotificationsForm initial={notifs} templates={templates.map(t => ({ id: t.id, name: t.name, channel: t.channel, trigger: t.trigger, updatedAt: t.updatedAt }))} />
+          )}
+
+          {tab === 'provisioning' && (
+            <ProvisioningRulesForm
+              rules={provisioningRules}
+              carriers={catalogItems.filter(c => c.kind === 'CARRIER').map(c => c.value)}
+              regions={catalogItems.filter(c => c.kind === 'REGION').map(c => c.value)}
+              pools={catalogItems.filter(c => c.kind === 'POOL').map(c => c.value)}
+            />
+          )}
+
+          {tab === 'admins' && (
+            <div>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead><tr><th>Admin</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+                  <tbody>
+                    {admins.map(a => (
+                      <tr key={a.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="avatar" style={{ width: 24, height: 24, fontSize: 10, background: a.avatarColor ?? 'var(--surface-3)', color: 'white' }}>{a.initials ?? a.name.charAt(0)}</span>
+                            {a.name}
+                          </div>
+                        </td>
+                        <td>{a.email}</td>
+                        <td><span className={`chip ${a.role === 'ADMIN_SUPER' ? 'accent' : a.role === 'ADMIN_OPS' ? 'info' : 'muted'}`}>{a.role.replace('ADMIN_', '').toLowerCase()}</span></td>
+                        <td>{fmtAdminStamp(a.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 16, padding: 14, background: 'var(--info-dim)', color: 'var(--info)', borderRadius: 8, fontSize: 12 }}>
+                Phase 1 = super-admin only per <code>ADMIN_HANDOFF.md</code>. Granular RBAC matrix (Ops / Support) + Invite admin + 2FA enrollment ship in Phase 2.
+              </div>
+            </div>
+          )}
+
+          {tab === 'api' && (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>
-              <h3 style={{ color: 'var(--text)', marginTop: 0 }}>{TABS.find(t => t.v === tab)?.l}</h3>
-              <p>Tab content for this section is rendered live from the database. UI controls coming in next iteration.</p>
+              <p>API key + outbound webhooks management ships in Phase 2 per the spec (<code>IMPLEMENTATION_BACKLOG.md</code> D9).</p>
+              <p style={{ marginTop: 6, fontSize: 11.5 }}>Schema is in place (<code>api_keys</code>, <code>webhooks</code> tables). UI follow-up.</p>
+            </div>
+          )}
+
+          {tab === 'help' && (
+            <div>
+              <h4 style={{ margin: '0 0 12px', color: 'var(--text)' }}>Workflow diagrams</h4>
+              <p style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                The proxy-handoff repo includes a single workflow doc (<code>flow.html</code>) covering the new-order flow. Additional diagrams (replacement, renewal, faulty, support, exceptions) are queued for production handoff.
+              </p>
             </div>
           )}
         </div>
       </main>
     </>
-  );
-}
-
-function ProviderCard({ name, enabled, detail }: { name: string; enabled: boolean; detail: string }) {
-  return (
-    <div className="panel" style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{name}</div>
-        <span className={`chip ${enabled ? 'success' : 'muted'}`}>{enabled ? 'Connected' : 'Disabled'}</span>
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>{detail}</div>
-    </div>
-  );
-}
-function FlagRow({ label, value }: { label: string; value: boolean }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <span style={{ fontSize: 13, color: 'var(--text)' }}>{label}</span>
-      <span className={`toggle ${value ? 'on' : ''}`} />
-    </div>
-  );
-}
-function NumRow({ label, value }: { label: string; value: any }) {
-  return (
-    <div className="kv-row"><span className="kv-label">{label}</span><span className="kv-val mono">{value ?? '—'}</span></div>
   );
 }

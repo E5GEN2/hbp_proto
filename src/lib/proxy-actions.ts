@@ -46,6 +46,22 @@ export async function removeWhitelistIpAction(proxyId: string, ip: string) {
   return { ok: true };
 }
 
+export async function updateAutoRotateAction(proxyId: string, minutes: number) {
+  const userId = await getClientUserId();
+  await ensureOwnership(proxyId, userId);
+  const allowed = [0, 5, 10, 30, 60, 240];
+  if (!allowed.includes(minutes)) throw new Error(`Interval must be one of ${allowed.join(', ')}`);
+  await prisma.proxy.update({ where: { id: proxyId }, data: { autoRotateMin: minutes } });
+  await prisma.log.create({
+    data: {
+      actorId: userId, action: 'PROXY.UPDATE', objectType: 'PROXY', objectId: proxyId,
+      detail: minutes === 0 ? 'Auto-rotation disabled (manual / URL only)' : `Auto-rotation set to every ${minutes} min`,
+    },
+  });
+  revalidatePath(`/proxies/${proxyId}`);
+  return { ok: true };
+}
+
 export async function updateProxyLabelAction(proxyId: string, label: string) {
   const userId = await getClientUserId();
   await ensureOwnership(proxyId, userId);

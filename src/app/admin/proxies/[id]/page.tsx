@@ -5,6 +5,8 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { fmtAdminStamp } from '@/lib/date';
 import { MarkFaultyButton, ReleaseProxyButton } from '@/components/admin/ActionButtons';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
+import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
+import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 export default async function AdminProxyDetail({ params }: { params: { id: string } }) {
   const proxy = await prisma.proxy.findUnique({
@@ -22,7 +24,11 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
 
   return (
     <>
-      <AdminTopbar title={`Proxies / ${proxy.id}`} />
+      <AdminTopbar crumbs={[
+        { label: 'Dashboard', href: '/admin' },
+        { label: 'Proxies', href: '/admin/proxies' },
+        { label: proxy.id },
+      ]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{proxy.id}</h2>
@@ -88,6 +94,12 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
                 ))}
             </tbody>
           </table>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+
+          <EntityNotesPanel objectType="PROXY" objectId={proxy.id} />
+
+          <EntityActivityWidget objectType="PROXY" objectId={proxy.id} />
         </div>
       </main>
     </>

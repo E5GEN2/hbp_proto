@@ -6,6 +6,8 @@ import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton, MarkPaidButton, RefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
+import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
+import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 export default async function AdminOrderDetail({ params }: { params: { id: string } }) {
   const order = await prisma.order.findUnique({
@@ -38,7 +40,11 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
 
   return (
     <>
-      <AdminTopbar title={`Orders / ${order.id}`} />
+      <AdminTopbar crumbs={[
+        { label: 'Dashboard', href: '/admin' },
+        { label: 'Orders', href: '/admin/orders' },
+        { label: order.id },
+      ]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{order.id}</h2>
@@ -140,6 +146,20 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                 ))}
             </tbody>
           </table>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+
+          <EntityNotesPanel objectType="ORDER" objectId={order.id} />
+
+          <EntityActivityWidget
+            objectType="ORDER"
+            objectId={order.id}
+            bridges={[
+              ...order.payments.map(p => ({ type: 'PAYMENT' as const, id: p.id })),
+              ...order.assignments.map(a => ({ type: 'PROXY' as const, id: a.proxyId })),
+            ]}
+          />
         </div>
       </main>
     </>

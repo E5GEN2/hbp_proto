@@ -6,6 +6,8 @@ import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { MarkPaidButton, RefundButton } from '@/components/admin/ActionButtons';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
+import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
+import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
   const p = await prisma.payment.findUnique({
@@ -15,7 +17,11 @@ export default async function PaymentDetail({ params }: { params: { id: string }
   if (!p) notFound();
   return (
     <>
-      <AdminTopbar title={`Payments / ${p.id}`} />
+      <AdminTopbar crumbs={[
+        { label: 'Dashboard', href: '/admin' },
+        { label: 'Payments', href: '/admin/payments' },
+        { label: p.id },
+      ]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <h2 className="mono" style={{ fontSize: 18, margin: 0, color: 'var(--text)' }}>{p.id}</h2>
@@ -49,6 +55,12 @@ export default async function PaymentDetail({ params }: { params: { id: string }
               <div className="kv-row"><span className="kv-label">Tier</span><span className="kv-val">{p.client.tier}</span></div>
             </div>
           </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+
+          <EntityNotesPanel objectType="PAYMENT" objectId={p.id} />
+
+          <EntityActivityWidget objectType="PAYMENT" objectId={p.id} />
         </div>
       </main>
     </>

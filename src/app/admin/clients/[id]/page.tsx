@@ -5,6 +5,8 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp, fmtRel } from '@/lib/date';
 import { ClientDetailActions } from '@/components/admin/toolbars/ClientDetailActions';
+import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
+import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 export default async function AdminClientDetail({ params }: { params: { id: string } }) {
   const c = await prisma.user.findUnique({
@@ -39,7 +41,11 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
 
   return (
     <>
-      <AdminTopbar title={`Clients / ${c.id}`} />
+      <AdminTopbar crumbs={[
+        { label: 'Dashboard', href: '/admin' },
+        { label: 'Clients', href: '/admin/clients' },
+        { label: c.id },
+      ]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <span className="avatar" style={{ width: 36, height: 36, fontSize: 13 }}>{c.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}</span>
@@ -97,6 +103,12 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
               {c.riskNote && <div className="kv-row"><span className="kv-label">Risk note</span><span className="kv-val" style={{ maxWidth: 200, textAlign: 'right' }}>{c.riskNote}</span></div>}
             </div>
           </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+
+          <EntityNotesPanel objectType="CLIENT" objectId={c.id} />
+
+          <EntityActivityWidget objectType="CLIENT" objectId={c.id} />
         </div>
       </main>
     </>

@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { PlanForm } from '@/components/admin/PlanForm';
 import type { PlanInput } from '@/lib/transitions';
+import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
+import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +53,11 @@ export default async function AdminEditPlanPage({ params }: { params: { id: stri
 
   return (
     <>
-      <AdminTopbar title={`Plans / ${plan.name}`} />
+      <AdminTopbar crumbs={[
+        { label: 'Dashboard', href: '/admin' },
+        { label: 'Plans', href: '/admin/plans' },
+        { label: plan.name },
+      ]} />
       <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1416, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <span className="mono" style={{ color: 'var(--muted)', fontSize: 12 }}>{plan.id}</span>
@@ -67,6 +73,12 @@ export default async function AdminEditPlanPage({ params }: { params: { id: stri
           capacity={{ allocated, displayAvailable, state }}
           canDelete={activeOrders === 0}
         />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+
+          <EntityNotesPanel objectType="PLAN" objectId={plan.id} />
+
+          <EntityActivityWidget objectType="PLAN" objectId={plan.id} />
+        </div>
       </main>
     </>
   );

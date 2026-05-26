@@ -30,7 +30,7 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
   return (
     <>
       <ClientTopbar title="Proxy detail" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1080, margin: '0 auto' }}>
+      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1416, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{proxy.id}</h2>
           <span className={`chip ${proxy.health.toLowerCase()}`}>{proxy.health.toLowerCase()}</span>
@@ -54,8 +54,8 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
             <div className="panel-body">
               <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val"><Link href={`/orders/${myAssignment.order.id}`} className="mono td-link">{myAssignment.order.id}</Link></span></div>
               <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{myAssignment.order.plan.name}</span></div>
-              <div className="kv-row"><span className="kv-label">Region</span><span className="kv-val">{proxy.region}</span></div>
-              <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{fmtDate(myAssignment.order.expiresAt)}{d && d > 0 ? ` (${d}d)` : ''}</span></div>
+              <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
+              <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{fmtDate(myAssignment.order.expiresAt)}{d && d > 0 ? ` (${d}d left)` : ''}</span></div>
               <div className="kv-row"><span className="kv-label">Auto rotation <Stage15Pill /></span><span className="kv-val">{proxy.autoRotateMin ? `${proxy.autoRotateMin} min` : '—'}</span></div>
               <div className="kv-row"><span className="kv-label">Last rotated</span><span className="kv-val">{proxy.lastRotated ? fmtRel(proxy.lastRotated) : '—'}</span></div>
               <div className="kv-row"><span className="kv-label">Uptime · Latency</span><span className="kv-val">{proxy.uptime.toFixed(1)}% · {proxy.latency ?? '—'}ms</span></div>

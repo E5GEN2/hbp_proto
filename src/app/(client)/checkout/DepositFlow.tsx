@@ -28,6 +28,12 @@ export function DepositFlow({
       try {
         const r = await depositAction({ amount: amountNum, method });
         setPaymentId(r.paymentId);
+        // Crypto: redirect to the NOWPayments hosted invoice; the IPN webhook
+        // credits the balance after on-chain confirmation.
+        if (r.invoiceUrl) {
+          window.location.href = r.invoiceUrl;
+          return;
+        }
         if (r.instant) {
           setStep('success');
           router.refresh();

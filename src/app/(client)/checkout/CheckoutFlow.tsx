@@ -42,6 +42,12 @@ export function CheckoutFlow({
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? 'Order failed');
       setOrderId(j.orderId);
+      // Crypto: redirect to the NOWPayments hosted invoice. The order is
+      // confirmed + provisioned out-of-band by the IPN webhook.
+      if (method === 'crypto' && j.invoiceUrl) {
+        window.location.href = j.invoiceUrl;
+        return;
+      }
       setStep(method === 'crypto' ? 'processing' : 'success');
       router.refresh();
     } catch (e: any) {

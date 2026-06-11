@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
 import * as T from './transitions';
+import { createInvoice, isNowPaymentsConfigured, appBaseUrl } from './nowpayments';
 
 async function getClientUserId() {
   const session = await getServerSession(authOptions);
@@ -115,6 +116,7 @@ export async function depositAction({ amount, method }: { amount: number; method
   if (!Number.isFinite(amount) || amount < 1 || amount > 10000) throw new Error('Deposit must be between $1 and $10,000');
   const me = await prisma.user.findUnique({ where: { id: clientId } });
   if (!me) throw new Error('Not found');
+  if (method === 'crypto' && !isNowPaymentsConfigured()) throw new Error('Crypto deposits are not available right now');
 
   const rows = await prisma.payment.findMany({ where: { id: { startsWith: 'PAY-' } }, select: { id: true } });
   let max = 0;
@@ -140,8 +142,8 @@ export async function depositAction({ amount, method }: { amount: number; method
         id: payId,
         orderId: null,
         clientId,
-        provider: method === 'card' ? 'Stripe' : 'CoinPayments',
-        method: method === 'card' ? 'Wallet top-up' : 'USDT-TRC20',
+        provider: method === 'card' ? 'Stripe' : 'NOWPayments',
+        method: method === 'card' ? 'Wallet top-up' : 'Crypto',
         gross: amount, fees: 0, net: amount,
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
@@ -166,6 +168,23 @@ export async function depositAction({ amount, method }: { amount: number; method
     });
   });
 
+  // Crypto deposit: create a NOWPayments hosted invoice; the IPN webhook
+  // credits the balance once the payment is confirmed on-chain.
+  let invoiceUrl: string | undefined;
+  if (method === 'crypto') {
+    const base = appBaseUrl();
+    const inv = await createInvoice({
+      reference: payId,
+      amount,
+      description: `Balance deposit · $${amount} · ${payId}`,
+      successUrl: `${base}/billing?deposit=success`,
+      cancelUrl: `${base}/billing?deposit=cancelled`,
+    });
+    if (!inv.ok) throw new Error(inv.error);
+    await prisma.payment.update({ where: { id: payId }, data: { externalRef: inv.id } });
+    invoiceUrl = inv.invoiceUrl;
+  }
+
   bust();
-  return { ok: true, paymentId: payId, instant: isInstant };
+  return { ok: true, paymentId: payId, instant: isInstant, invoiceUrl };
 }

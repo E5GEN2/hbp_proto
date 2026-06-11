@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
+import { createInvoice, isNowPaymentsConfigured, appBaseUrl } from '@/lib/nowpayments';
 
 const Schema = z.object({
   planId: z.string(),
@@ -43,6 +44,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
   }
 
+  if (paymentMethod === 'crypto' && !isNowPaymentsConfigured()) {
+    return NextResponse.json({ error: 'Crypto payments are not available right now' }, { status: 503 });
+  }
+
   const orderId = await nextOrderId();
   const paymentId = await nextPaymentId();
 
@@ -58,8 +63,8 @@ export async function POST(req: Request) {
         id: paymentId,
         orderId,
         clientId: userId,
-        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'CoinPayments' : 'Stripe',
-        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'USDT-TRC20' : 'Visa •• 4242',
+        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'NOWPayments' : 'Stripe',
+        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'Crypto' : 'Visa •• 4242',
         gross: total,
         fees: isInstant ? total * 0.03 : 0,
         net: isInstant ? total * 0.97 : total,
@@ -181,6 +186,26 @@ export async function POST(req: Request) {
       },
     });
   });
+
+  // Crypto: create a real NOWPayments hosted invoice and hand the URL back so
+  // the client can redirect. The order is AWAITING until the IPN webhook fires.
+  if (paymentMethod === 'crypto') {
+    const base = appBaseUrl();
+    const inv = await createInvoice({
+      reference: orderId,
+      amount: total,
+      description: `${plan.name} · qty ${qty} · ${orderId}`,
+      successUrl: `${base}/orders/${orderId}?paid=1`,
+      cancelUrl: `${base}/checkout?cancelled=1`,
+    });
+    if (!inv.ok) {
+      // Leave the AWAITING order in place (admin/cron can reconcile); surface
+      // the failure so the client doesn't fall through to a fake confirm.
+      return NextResponse.json({ error: inv.error }, { status: 502 });
+    }
+    await prisma.payment.update({ where: { id: paymentId }, data: { externalRef: inv.id } });
+    return NextResponse.json({ ok: true, orderId, invoiceUrl: inv.invoiceUrl });
+  }
 
   return NextResponse.json({ ok: true, orderId });
 }

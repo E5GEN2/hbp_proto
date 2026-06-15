@@ -66,7 +66,7 @@ async def screenshot_route(page, route: str, width: int, height: int) -> bytes:
     return await page.screenshot(full_page=False)
 
 
-def pixel_diff(live_bytes: bytes, baseline_path: Path) -> tuple[float, bytes | None]:
+def pixel_diff(live_bytes: bytes, baseline_path: Path):
     """Returns (match_ratio, diff_png_bytes). diff_png_bytes is None if pillow-only path."""
     try:
         from PIL import Image

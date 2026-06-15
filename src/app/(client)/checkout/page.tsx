@@ -115,7 +115,7 @@ export default async function CheckoutPage({ searchParams }: {
       <main style={{ padding: 24, overflowY: 'auto' }}>
         {headerHint && (
           <div style={{
-            maxWidth: 1080, margin: '0 auto 16px', padding: '10px 14px',
+            maxWidth: 1280, margin: '0 auto 16px', padding: '10px 14px',
             background: 'var(--info-dim)', color: 'var(--info)',
             borderRadius: 'var(--radius-md)', fontSize: 12.5,
           }}>{headerHint}</div>

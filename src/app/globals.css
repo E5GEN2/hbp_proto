@@ -46,6 +46,15 @@
   --sidebar-w: 220px;
   --topbar-h: 60px;
   --aside-w: 320px;
+
+  /* Geometry tokens — canon: client-panel.html §2 */
+  --page-w: calc(1080px + 16px + var(--aside-w)); /* 1416px */
+  --table-edge-cap: 32px;
+  --row-divider-inset: 20px;
+  --anchor-id: 164px;
+  --anchor-date: 164px;
+  --anchor-status: 144px;
+  --anchor-text: 168px;
 }
 
 /* ===== ADMIN (dark) theme ===== */
@@ -112,36 +121,45 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   overflow: hidden;
 }
 .panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 12px;
 }
 .panel-title {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
+  font: 650 11px/1 var(--font-sans);
+  letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--text-disabled);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .panel-title::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
+  content: "";
+  width: 5px; height: 5px;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 4px 1px rgba(181,138,74,.85), 0 0 8px rgba(181,138,74,.4);
   margin-right: 8px;
-  vertical-align: 1px;
+  flex-shrink: 0;
 }
-.panel-body { padding: 16px 20px; }
+.panel-body { padding: 20px; }
+.panel-body.tight { padding: 12px 20px; }
+.panel-body.flush { padding: 0; }
 .panel-action {
-  font-size: 12px;
-  font-weight: 500;
+  font: 500 11px/1 var(--font-sans);
   color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color .12s;
 }
-.panel-action:hover { color: var(--accent-hover); }
+.panel-action:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ===== Chips ===== */
 .chip {
@@ -218,16 +236,27 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 /* ===== KV rows ===== */
 .kv-row {
   display: flex;
-  align-items: baseline;
   justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 13px;
+  gap: 16px;
+  padding: 12px 20px;
+  background-image: linear-gradient(90deg,
+    transparent var(--row-divider-inset),
+    var(--border-subtle) var(--row-divider-inset),
+    var(--border-subtle) calc(100% - var(--row-divider-inset)),
+    transparent calc(100% - var(--row-divider-inset)));
+  background-position: bottom;
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
 }
-.kv-row:last-child { border-bottom: none; }
-.kv-label { color: var(--muted); font-weight: 500; }
-.kv-val { color: var(--text); font-weight: 500; }
+.kv-row:last-child { background-image: none; }
+.kv-row.kv-row-stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.kv-row.kv-row-stack .kv-label { text-align: left; }
+.kv-label { font: 500 12px var(--font-sans); color: var(--muted); }
+.kv-val { font: 400 13px var(--font-sans); color: var(--text-secondary); text-align: right; }
+.kv-val.mono { font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; }
 .kv-row.total .kv-val { font-weight: 650; font-size: 14px; }
+.kv-input-row { display: flex; gap: 8px; align-items: center; }
+.kv-input-row .form-input { flex: 1; min-width: 0; }
 
 /* ===== Tabs ===== */
 .tabs {
@@ -291,38 +320,81 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 .toggle.on { background: var(--cta); }
 .toggle.on::after { left: 18px; }
 
-/* ===== Tables ===== */
+/* ===== Tables — canonical .dt geometry applied to .table ===== */
 .table-wrap {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  container-type: inline-size;
 }
-.table {
+/* .table and table.dt are identical — React components use .table,
+   canon prototype uses .dt. Both share the same geometry rules. */
+.table, table.dt {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
-.table th {
-  text-align: left;
-  padding: 10px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-}
-.table td {
+.table thead th, table.dt thead th {
   padding: 12px 16px;
-  font-size: 13px;
-  color: var(--text-secondary);
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface);
+  text-align: left;
   border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.table tr:last-child td { border-bottom: none; }
-.table tr:hover td { background: var(--bg-hover); }
+.table thead th:first-child, table.dt thead th:first-child { padding-left: var(--table-edge-cap); }
+.table thead th:last-child,  table.dt thead th:last-child  { padding-right: var(--table-edge-cap); }
+/* Row divider: single uninterrupted inset hairline on the TR, not per-TD border.
+   Per-TD borders produce visible gaps at cell boundaries. */
+.table tbody tr, table.dt tbody tr {
+  background-image: linear-gradient(var(--border-subtle), var(--border-subtle));
+  background-repeat: no-repeat;
+  background-position: var(--table-edge-cap) 100%;
+  background-size: calc(100% - calc(var(--table-edge-cap) * 2)) 1px;
+  transition: background-color .1s;
+}
+.table tbody tr:last-child, table.dt tbody tr:last-child { background-image: none; }
+.table tbody tr:hover, table.dt tbody tr:hover { background-color: var(--bg-hover); }
+.table tbody td, table.dt tbody td {
+  padding: 12px 16px;
+  font: 400 13px/1.4 var(--font-sans);
+  color: var(--text-secondary);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table tbody td:first-child, table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
+.table tbody td:last-child,  table.dt tbody td:last-child  { padding-right: var(--table-edge-cap); }
 .table td a, .td-link { color: var(--accent-text); font-weight: 500; }
 .table td a:hover, .td-link:hover { color: var(--accent-hover); text-decoration: underline; }
+
+/* Column type utilities */
+.col-id     { font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.col-text   { font-size: 13px; color: var(--text-secondary); }
+.col-text.muted { color: var(--muted); }
+.col-num, .col-money, .col-date, .col-pct, .col-duration {
+  font: 400 12px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: center;
+}
+.col-money.right, .col-num.right, .col-date.right { text-align: right; }
+.col-status { text-align: left; }
+.col-action { text-align: center; }
+.col-endpoint { font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+/* Stacked-content cells — allow wrapping without ellipsis cutting second line */
+.table tbody td.cred-stack, table.dt tbody td.cred-stack,
+.table tbody td.cr-stack,   table.dt tbody td.cr-stack { white-space: normal; line-height: 1.5; }
+.cr-stack .cr-carrier { font: 500 13px var(--font-sans); color: var(--text-secondary); }
+.cr-stack .cr-region  { font: 400 12px var(--font-sans); color: var(--muted); margin-top: 1px; }
+
 .mono { font-family: var(--font-mono); }
 
 /* ===== Filter bar ===== */
@@ -451,4 +523,38 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   cursor: help;
   font-style: normal;
   vertical-align: 1px;
+}
+
+/* ===== Responsive — canon: client-panel.html §responsive ===== */
+@media (max-width: 1024px) {
+  .grid-detail { grid-template-columns: 1fr; }
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .card-2col { grid-template-columns: 1fr; }
+  .plan-cards { grid-template-columns: repeat(3, 1fr); }
+  .orders-grid { grid-template-columns: 1fr; }
+  .methods-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .topbar { padding: 0 16px; }
+  .page { padding: 16px; }
+  .kpi-strip { grid-template-columns: 1fr; }
+  .plan-cards { grid-template-columns: repeat(2, 1fr); }
+
+  /* Prevent iOS Safari zoom on form focus */
+  .form-input, .form-select, .form-textarea { font-size: 16px; }
+
+  /* Touch targets */
+  .btn { min-height: 44px; padding: 10px 14px; }
+  .btn.primary, .btn.danger { min-height: 48px; }
+  .btn.sm { min-height: 36px; padding: 6px 10px; }
+
+  /* Checkout: hide aside, show bottom action bar */
+  .checkout-grid-detail { grid-template-columns: 1fr; }
+  .checkout-grid-right { display: none; }
+}
+
+@media (max-width: 480px) {
+  .plan-cards { grid-template-columns: 1fr; }
 }

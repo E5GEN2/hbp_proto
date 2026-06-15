@@ -14,7 +14,8 @@ Outputs:
 
 Requires:
   pip install playwright pillow
-  python -m playwright install chromium
+  # Uses system Google Chrome — no separate browser download needed on macOS:
+  CHROME=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 """
 
 import asyncio, os, sys, json
@@ -27,6 +28,7 @@ OUT_DIR      = Path(__file__).parent / "out"
 DIFF_DIR     = Path(__file__).parent / "diff"
 THRESHOLD    = 0.98  # ≥98% match required
 
+CHROME   = os.environ.get("CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 EMAIL    = "demo@example.com"
 PASSWORD = "demo1234"
 
@@ -48,17 +50,19 @@ VIEWPORTS = [
 
 
 async def login(page):
-    await page.goto(f"{BASE_URL}/login")
-    await page.fill('input[name="email"]', EMAIL)
-    await page.fill('input[name="password"]', PASSWORD)
+    await page.goto(f"{BASE_URL}/login", wait_until="load", timeout=30000)
+    await page.wait_for_timeout(2000)  # wait for React hydration
+    # Login form uses React state, not name attrs — select by input type
+    await page.fill('input[type="email"]', EMAIL)
+    await page.fill('input[type="password"]', PASSWORD)
     await page.click('button[type="submit"]')
-    await page.wait_for_url(f"{BASE_URL}/dashboard", timeout=15000)
+    await page.wait_for_url(f"**dashboard**", timeout=20000)
 
 
 async def screenshot_route(page, route: str, width: int, height: int) -> bytes:
     await page.set_viewport_size({"width": width, "height": height})
-    await page.goto(f"{BASE_URL}/{route}", wait_until="networkidle", timeout=20000)
-    await page.wait_for_timeout(800)  # allow paint
+    await page.goto(f"{BASE_URL}/{route}", wait_until="load", timeout=20000)
+    await page.wait_for_timeout(1200)  # allow React hydration + paint
     return await page.screenshot(full_page=False)
 
 
@@ -114,7 +118,7 @@ async def main():
     results: list[dict] = []
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch()
+        browser = await pw.chromium.launch(executable_path=CHROME)
         context = await browser.new_context()
         page    = await context.new_page()
 

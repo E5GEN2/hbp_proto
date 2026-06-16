@@ -1,180 +1,222 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
-import { daysLeft, fmtRel } from '@/lib/date';
+import { daysLeft } from '@/lib/date';
+
+const PAID = ['PAID', 'CONFIRMED', 'FREE'];
+
+function statusLabel(s: string) {
+  return s === 'PENDING_RENEWAL' ? 'Pending renewal' : s.charAt(0) + s.slice(1).toLowerCase();
+}
+function statusClass(s: string) {
+  return s.toLowerCase().replace(/_/g, '-');
+}
+function tlStamp(d: Date) {
+  const day = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${day} · ${time}`;
+}
 
 export default async function ClientDashboard() {
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });
 
-  const [orders, allOrdersCount, activeOrders, expiringSoon, proxies] = await Promise.all([
+  const [orders, activeOrders, expiringSoon, proxies, refundedPayments, faulty] = await Promise.all([
     prisma.order.findMany({
       where: { clientId: userId },
       orderBy: { createdAt: 'desc' },
-      take: 5,
+      take: 10,
       include: { plan: true },
     }),
-    prisma.order.count({ where: { clientId: userId } }),
     prisma.order.count({ where: { clientId: userId, status: 'ACTIVE' } }),
     prisma.order.findMany({
       where: { clientId: userId, status: 'ACTIVE', expiresAt: { lte: new Date(Date.now() + 7 * 86_400_000) } },
       orderBy: { expiresAt: 'asc' },
       include: { plan: true },
     }),
-    prisma.assignment.count({
-      where: { order: { clientId: userId }, releasedAt: null },
+    prisma.assignment.count({ where: { order: { clientId: userId }, releasedAt: null } }),
+    prisma.payment.findMany({ where: { clientId: userId, status: 'REFUNDED' }, orderBy: { createdAt: 'desc' }, take: 10 }),
+    prisma.assignment.findMany({
+      where: { order: { clientId: userId }, releasedAt: null, proxy: { health: { not: 'HEALTHY' } } },
+      include: { proxy: true },
+      take: 10,
     }),
   ]);
 
-  const hasOrders = allOrdersCount > 0;
+  const hasOrders = orders.length > 0;
+  const recentOrders = orders.slice(0, 5);
+
+  // ── Activity feed (synthesized from orders / refunds / proxy health) ──
+  type Ev = { at: Date; dot: string; title: ReactNode; detail: ReactNode };
+  const events: Ev[] = [];
+  for (const o of orders) {
+    const planLbl = `Mobile ${o.plan.durationDays}d ${o.plan.carrier}`;
+    if (PAID.includes(o.paymentStatus)) {
+      if (o.activatedAt) {
+        events.push({ at: o.activatedAt, dot: 'violet',
+          title: <>Order <span className="td-link">{o.id}</span> provisioned</>,
+          detail: `${o.qty} mobile ${o.qty === 1 ? 'proxy' : 'proxies'} in ${o.region}.` });
+      }
+      events.push({ at: o.createdAt, dot: 'success',
+        title: <>Order <span className="td-link">{o.id}</span> paid</>,
+        detail: `${planLbl} · ${money(Number(o.amount))}.` });
+    } else if (o.paymentStatus === 'AWAITING' || o.paymentStatus === 'PENDING') {
+      events.push({ at: o.createdAt, dot: 'warning',
+        title: <>Order <span className="td-link">{o.id}</span> placed</>,
+        detail: `${planLbl} · ${money(Number(o.amount))} — awaiting payment.` });
+    } else if (o.paymentStatus === 'FAILED') {
+      events.push({ at: o.createdAt, dot: 'danger',
+        title: <>Payment failed on <span className="td-link">{o.id}</span></>,
+        detail: `${planLbl} · ${money(Number(o.amount))} — retry from Billing.` });
+    }
+  }
+  for (const p of refundedPayments) {
+    events.push({ at: p.refundedAt ?? p.createdAt, dot: 'muted',
+      title: <>Payment <span className="td-link">{p.id}</span> refunded</>,
+      detail: `${money(Number(p.refundedAmount ?? p.gross))} returned to ${p.method}.` });
+  }
+  for (const a of faulty) {
+    const px = a.proxy;
+    events.push({ at: a.assignedAt ?? new Date(), dot: px.health === 'OFFLINE' ? 'danger' : 'warning',
+      title: <>Health alert on <span className="td-link">{px.id}</span></>,
+      detail: <>Status flipped to <span className={`chip ${px.health.toLowerCase()}`}>{px.health.toLowerCase()}</span>{px.health === 'OFFLINE' ? ' — replacement available.' : '.'}</> });
+  }
+  events.sort((a, b) => b.at.getTime() - a.at.getTime());
 
   return (
     <>
       <ClientTopbar title="Dashboard" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
-        {!hasOrders ? (
-          <EmptyState />
-        ) : (
-          <>
-            {/* KPI strip */}
-            <div className="kpi-strip" style={{ marginBottom: 24 }}>
-              <KpiCard label="Active orders"   value={activeOrders}        tone="accent" />
-              <KpiCard label="Total proxies"   value={proxies}             tone="cta"    />
-              <KpiCard label="Expiring soon"   value={expiringSoon.length} tone="warning"/>
-            </div>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div className="dash-body" style={{ maxWidth: 'var(--page-w)', margin: '0 auto', width: '100%' }}>
+          {/* KPI strip */}
+          <div className="kpi-strip">
+            <Link className="kpi-card" href="/orders">
+              <div className="kpi-label">Active orders</div>
+              <div className="kpi-value">{activeOrders}</div>
+              <div className="kpi-accent-bar green" />
+            </Link>
+            <Link className="kpi-card" href="/proxies">
+              <div className="kpi-label">Total proxies</div>
+              <div className="kpi-value">{proxies}</div>
+              <div className="kpi-accent-bar blue" />
+            </Link>
+            <Link className="kpi-card" href="/orders">
+              <div className="kpi-label">Expiring soon</div>
+              <div className="kpi-value">{expiringSoon.length}</div>
+              <div className={`kpi-accent-bar ${expiringSoon.length > 0 ? 'red' : 'green'}`} />
+            </Link>
+          </div>
 
-            {/* Two-column grid */}
-            <div className="card-2col" style={{ marginBottom: 16 }}>
-              <div className="panel">
-                <div className="panel-header">
-                  <span className="panel-title">Recent orders</span>
-                  <Link className="panel-action" href="/orders">View all →</Link>
+          {!hasOrders ? (
+            <div className="panel">
+              <div className="panel-header"><span className="panel-title">Choose your plan</span></div>
+              <div className="panel-body">
+                <EmptyPlans />
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Recent orders + Expiring soon */}
+              <div className="card-2col">
+                <div className="panel">
+                  <div className="panel-header">
+                    <span className="panel-title">Recent orders</span>
+                    <Link className="panel-action" href="/orders">View all</Link>
+                  </div>
+                  <div className="widget-list">
+                    {recentOrders.length === 0 ? (
+                      <div className="empty" style={{ padding: '32px 20px' }}><div className="empty-desc">No orders yet.</div></div>
+                    ) : recentOrders.map(o => (
+                      <Link key={o.id} className="widget-row" href={`/orders/${o.id}`}>
+                        <span className="widget-label"><span className="td-link">{o.id}</span> · {o.plan.durationDays}d Mobile · {o.region}</span>
+                        <span className="widget-meta"><span className={`chip ${statusClass(o.status)}`}>{statusLabel(o.status)}</span></span>
+                      </Link>
+                    ))}
+                  </div>
                 </div>
-                <div className="panel-body" style={{ padding: 0 }}>
-                  {orders.length === 0 ? (
-                    <div className="empty" style={{ padding: 24 }}>
-                      <div className="empty-desc">No orders yet.</div>
-                    </div>
-                  ) : (
-                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                      {orders.map(o => (
-                        <li key={o.id} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-                          <Link href={`/orders/${o.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span className="mono" style={{ color: 'var(--accent-text)', fontSize: 12.5, fontWeight: 600 }}>{o.id}</span>
-                            <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                              {o.plan.durationDays}-day Mobile · {o.region}
-                            </span>
-                            <StatusChip status={o.status} />
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                <div className="panel">
+                  <div className="panel-header"><span className="panel-title">Expiring soon</span></div>
+                  <div className="widget-list scroll">
+                    {expiringSoon.length === 0 ? (
+                      <div className="empty" style={{ padding: '32px 20px' }}><div className="empty-desc">No orders expiring in the next 7 days.</div></div>
+                    ) : expiringSoon.map(o => {
+                      const d = daysLeft(o.expiresAt) ?? 0;
+                      const tone = d <= 2 ? 'danger' : d <= 5 ? 'warning' : 'success';
+                      return (
+                        <Link key={o.id} className="widget-row" href={`/orders/${o.id}`}>
+                          <span className={`widget-dot ${tone}`} />
+                          <span className="widget-label">{o.plan.durationDays}d Mobile · {o.region}</span>
+                          <span className="widget-meta">{d}d left</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              <div className="panel">
-                <div className="panel-header">
-                  <span className="panel-title">Expiring soon</span>
+              {/* Recent activity + Buy CTA */}
+              <div className="dash-2col-2-1">
+                <div className="panel">
+                  <div className="panel-header"><span className="panel-title">Recent activity</span></div>
+                  <div className="timeline activity-scroll">
+                    {events.length === 0 ? (
+                      <div className="empty" style={{ padding: '48px 20px' }}><div className="empty-desc">No recent activity yet.</div></div>
+                    ) : events.slice(0, 25).map((e, i) => (
+                      <div className="tl-item" key={i}>
+                        <span className={`tl-dot ${e.dot}`} />
+                        <div className="tl-body">
+                          <span className="tl-stamp">{tlStamp(e.at)}</span>
+                          <span className="tl-title">{e.title}</span>
+                          <span className="tl-detail">{e.detail}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="panel-body" style={{ padding: 0 }}>
-                  {expiringSoon.length === 0 ? (
-                    <div className="empty" style={{ padding: 24 }}>
-                      <div className="empty-desc">Nothing expiring in the next 7 days.</div>
-                    </div>
-                  ) : (
-                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                      {expiringSoon.map(o => {
-                        const d = daysLeft(o.expiresAt);
-                        const tone = (d ?? 0) <= 2 ? 'danger' : (d ?? 0) <= 5 ? 'warning' : 'success';
-                        return (
-                          <li key={o.id} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-                            <Link href={`/orders/${o.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: `var(--${tone})` }} />
-                              <span style={{ flex: 1, fontSize: 12.5 }}>{o.plan.durationDays}-day Mobile · {o.region}</span>
-                              <span style={{ fontSize: 11, color: `var(--${tone})`, fontWeight: 600 }}>{d}d left</span>
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
+                <div className="buy-cta-panel">
+                  <div className="buy-cta-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                  </div>
+                  <div className="buy-cta-title">Need more proxies?</div>
+                  <div className="buy-cta-text">Browse plans and pick the right tier for your next project.</div>
+                  <Link href="/catalog" className="btn primary">Browse plans</Link>
                 </div>
               </div>
-            </div>
-
-            {/* Buy CTA */}
-            <div className="panel" style={{ padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Need more proxies?</div>
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>Browse plans and add capacity in minutes.</div>
-              </div>
-              <Link href="/catalog" className="btn primary">Browse plans</Link>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </main>
     </>
   );
 }
 
-function KpiCard({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="panel" style={{ padding: '16px 20px', borderLeft: `3px solid var(--${tone})` }}>
-      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginTop: 6 }}>{value}</div>
-    </div>
-  );
-}
-
-function StatusChip({ status }: { status: string }) {
-  const cls = status.toLowerCase().replace('_', '-');
-  const label = status === 'PENDING_RENEWAL' ? 'Pending renewal' : status.charAt(0) + status.slice(1).toLowerCase();
-  return <span className={`chip ${cls}`}>{label}</span>;
-}
-
-async function EmptyState() {
+async function EmptyPlans() {
   const plans = await prisma.plan.findMany({
-    where: { active: true, visibility: 'PUBLIC' },
+    where: { active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { durationDays: 'asc' },
   });
-  // Group by duration, pick a representative
   const byDur = new Map<number, typeof plans[number]>();
-  for (const p of plans) {
-    if (!byDur.has(p.durationDays)) byDur.set(p.durationDays, p);
-  }
+  for (const p of plans) if (!byDur.has(p.durationDays)) byDur.set(p.durationDays, p);
   const tiers = [...byDur.values()].slice(0, 3);
+  if (tiers.length === 0) {
+    return <div className="empty"><div className="empty-title">No plans available</div><div className="empty-desc">All plans are currently sold out. Please check back soon.</div></div>;
+  }
   return (
-    <>
-      <div className="kpi-strip" style={{ marginBottom: 24 }}>
-        <KpiCard label="Active orders"   value={0} tone="accent" />
-        <KpiCard label="Total proxies"   value={0} tone="cta" />
-        <KpiCard label="Expiring soon"   value={0} tone="warning" />
-      </div>
-      <div className="panel">
-        <div className="panel-header"><span className="panel-title">Choose your plan</span></div>
-        <div className="plan-cards" style={{ padding: 20 }}>
-          {tiers.map((p, idx) => (
-            <div key={p.id} style={{
-              background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-              padding: 20, position: 'relative', overflow: 'visible',
-            }}>
-              {idx === 1 && (
-                <div style={{ position: 'absolute', top: -11, right: 16, background: 'var(--accent)', color: 'white', padding: '3px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>Most popular</div>
-              )}
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Mobile · 3 locations</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>{p.durationDays} days</div>
-              <div style={{ fontSize: 14, color: 'var(--accent-text)', fontWeight: 600, marginTop: 4 }}>{money(Number(p.price))} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/ per proxy</span></div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 12, lineHeight: 1.5 }}>{p.description}</div>
-              <Link href={`/checkout?duration=${p.durationDays}`} className="btn primary" style={{ marginTop: 16, width: '100%' }}>Select plan</Link>
-            </div>
-          ))}
+    <div className="plan-cards">
+      {tiers.map(p => (
+        <div key={p.id} className="panel" style={{ padding: 20 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Mobile · 3 locations</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>{p.durationDays} days</div>
+          <div style={{ fontSize: 14, color: 'var(--accent-text)', fontWeight: 600, marginTop: 4 }}>{money(Number(p.price))} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/ per proxy</span></div>
+          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 12, lineHeight: 1.5 }}>{p.description}</p>
+          <Link href={`/checkout?duration=${p.durationDays}`} className="btn primary" style={{ marginTop: 16, width: '100%' }}>Select plan</Link>
         </div>
-      </div>
-    </>
+      ))}
+    </div>
   );
 }

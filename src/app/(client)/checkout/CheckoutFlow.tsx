@@ -69,7 +69,7 @@ export function CheckoutFlow({
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Stepper step={step} />
       {step === 'details' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div className="grid-detail" style={{ marginTop: 16 }}>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">{duration}-day Mobile</span></div>
             <div className="panel-body">
@@ -99,7 +99,7 @@ export function CheckoutFlow({
         </div>
       )}
       {step === 'payment' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>
+        <div className="grid-detail" style={{ marginTop: 16 }}>
           <div className="panel">
             <div className="panel-header"><span className="panel-title">Payment method</span></div>
             <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

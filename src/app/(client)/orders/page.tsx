@@ -34,7 +34,7 @@ export default async function ClientOrdersPage({ searchParams }: { searchParams:
         {orders.length === 0 ? (
           <div className="panel"><div className="empty"><div className="empty-title">No orders here</div><div className="empty-desc">Browse plans to place your first order.</div><Link href="/catalog" className="btn primary" style={{ marginTop: 12 }}>Browse plans</Link></div></div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+          <div className="orders-grid">
             {orders.map(o => {
               const d = daysLeft(o.expiresAt);
               return (

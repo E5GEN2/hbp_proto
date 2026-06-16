@@ -41,14 +41,14 @@ export default async function ClientDashboard() {
         ) : (
           <>
             {/* KPI strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+            <div className="kpi-strip" style={{ marginBottom: 24 }}>
               <KpiCard label="Active orders"   value={activeOrders}        tone="accent" />
               <KpiCard label="Total proxies"   value={proxies}             tone="cta"    />
               <KpiCard label="Expiring soon"   value={expiringSoon.length} tone="warning"/>
             </div>
 
             {/* Two-column grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div className="card-2col" style={{ marginBottom: 16 }}>
               <div className="panel">
                 <div className="panel-header">
                   <span className="panel-title">Recent orders</span>
@@ -150,14 +150,14 @@ async function EmptyState() {
   const tiers = [...byDur.values()].slice(0, 3);
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div className="kpi-strip" style={{ marginBottom: 24 }}>
         <KpiCard label="Active orders"   value={0} tone="accent" />
         <KpiCard label="Total proxies"   value={0} tone="cta" />
         <KpiCard label="Expiring soon"   value={0} tone="warning" />
       </div>
       <div className="panel">
         <div className="panel-header"><span className="panel-title">Choose your plan</span></div>
-        <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        <div className="plan-cards" style={{ padding: 20 }}>
           {tiers.map((p, idx) => (
             <div key={p.id} style={{
               background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',

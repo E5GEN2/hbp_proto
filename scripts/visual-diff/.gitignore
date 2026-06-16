@@ -1,3 +1,6 @@
 out/
 diff/
+before/
+after-fix/
+*.png
 report.txt

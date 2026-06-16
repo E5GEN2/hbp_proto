@@ -20,7 +20,7 @@ export default async function CatalogPage() {
     <>
       <ClientTopbar title="Choose your plan" balance={Number(me?.balance ?? 0)} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, maxWidth: 1080, margin: '0 auto' }}>
+        <div className="plan-cards" style={{ maxWidth: 1080, margin: '0 auto' }}>
           {tiers.map((p) => (
             <div key={p.id} className="panel" style={{ padding: 24 }}>
               <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Mobile · 3 locations</div>

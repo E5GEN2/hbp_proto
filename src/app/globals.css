@@ -528,22 +528,58 @@ table.dt { table-layout: fixed; }
   vertical-align: 1px;
 }
 
+/* ===== Layout primitives — canon grids, class-based so @media can bind =====
+   The React pages previously set these grids via inline style={{}}, which
+   outranks stylesheet rules and made the responsive layer inert. Encoding
+   them as classes (desktop defaults below) lets the breakpoints collapse
+   them on tablet/phone. */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  height: var(--topbar-h);
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 12px;
+}
+.kpi-strip    { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.card-2col    { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.plan-cards   { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-detail  { display: grid; grid-template-columns: 1fr var(--aside-w); gap: 16px; align-items: start; }
+.orders-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.methods-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.billing-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.form-grid-3  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.form-grid-2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+
 /* ===== Responsive — canon: client-panel.html §responsive ===== */
 @media (max-width: 1024px) {
-  .grid-detail { grid-template-columns: 1fr; }
-  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
-  .card-2col { grid-template-columns: 1fr; }
-  .plan-cards { grid-template-columns: repeat(3, 1fr); }
-  .orders-grid { grid-template-columns: 1fr; }
-  .methods-grid { grid-template-columns: 1fr; }
+  .grid-detail,
+  .billing-grid,
+  .card-2col   { grid-template-columns: 1fr; }
+  .kpi-strip,
+  .plan-cards  { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .topbar { padding: 0 16px; }
   .page { padding: 16px; }
-  .kpi-strip { grid-template-columns: 1fr; }
-  .plan-cards { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip,
+  .plan-cards,
+  .orders-grid,
+  .methods-grid,
+  .form-grid-3,
+  .form-grid-2 { grid-template-columns: 1fr; }
 
   /* Prevent iOS Safari zoom on form focus */
   .form-input, .form-select, .form-textarea { font-size: 16px; }
@@ -552,12 +588,4 @@ table.dt { table-layout: fixed; }
   .btn { min-height: 44px; padding: 10px 14px; }
   .btn.primary, .btn.danger { min-height: 48px; }
   .btn.sm { min-height: 36px; padding: 6px 10px; }
-
-  /* Checkout: hide aside, show bottom action bar */
-  .checkout-grid-detail { grid-template-columns: 1fr; }
-  .checkout-grid-right { display: none; }
-}
-
-@media (max-width: 480px) {
-  .plan-cards { grid-template-columns: 1fr; }
 }

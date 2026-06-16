@@ -26,7 +26,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
   return (
     <>
       <ClientTopbar title="Billing" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+      <main className="billing-grid" style={{ padding: 24, overflowY: 'auto' }}>
         <div>
           <div className="panel" style={{ padding: 24, marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Account balance <Stage15Pill /></div>

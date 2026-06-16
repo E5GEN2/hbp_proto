@@ -539,6 +539,52 @@ table.dt { table-layout: fixed; }
   color: var(--text); white-space: pre; overflow-x: auto; max-height: 280px; overflow-y: auto;
 }
 
+/* ===== Order cards (Orders list) — canon proxy-handoff client-panel.html =====
+   New client-only classes. Whole card is clickable; the action footer is
+   separated by a top border. */
+.order-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  transition: border-color .15s;
+  overflow: hidden;
+  cursor: pointer;
+}
+.order-card:hover { border-color: var(--border-strong); }
+.order-card-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 14px; }
+.order-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.order-card-id {
+  font: 650 14px var(--font-mono);
+  color: var(--accent-text);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.order-card-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.order-card-plan { font: 600 15px var(--font-sans); color: var(--text); letter-spacing: -0.005em; }
+.order-card-meta { font: 400 12.5px/1.5 var(--font-sans); color: var(--muted); }
+.order-card-meta strong { color: var(--text-secondary); font-weight: 500; }
+.order-card-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 20px; border-top: 1px solid var(--border-subtle); background: var(--surface);
+}
+.order-card-amount {
+  font: 650 18px var(--font-sans); color: var(--text);
+  letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
+}
+.order-card-amount-suffix { font: 400 12px var(--font-sans); color: var(--muted); margin-left: 6px; }
+.order-card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.order-card-actions .btn { padding: 6px 12px; font-size: 12px; }
+.order-card-days {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 500 12px var(--font-sans); color: var(--text-secondary);
+}
+.order-card-days .widget-dot { width: 6px; height: 6px; }
+.order-card-days.danger { color: var(--danger); }
+.order-card-days.warning { color: var(--warning); }
+
 /* ===== Empty state ===== */
 .empty {
   padding: 48px 32px;
@@ -818,7 +864,7 @@ table.dt { table-layout: fixed; }
 .card-2col    { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .plan-cards   { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .grid-detail  { display: grid; grid-template-columns: 1fr var(--aside-w); gap: 16px; align-items: start; }
-.orders-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.orders-grid  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 20px; }
 .methods-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .billing-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
 .form-grid-3  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }

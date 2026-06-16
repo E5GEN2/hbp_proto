@@ -328,13 +328,16 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   overflow: hidden;
   container-type: inline-size;
 }
-/* .table and table.dt are identical — React components use .table,
-   canon prototype uses .dt. Both share the same geometry rules. */
+/* .table and table.dt share geometry rules — React components use .table,
+   canon prototype uses .dt. */
 .table, table.dt {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
 }
+/* Fixed layout requires <colgroup> anchor widths to size columns. The canon
+   .dt tables ship colgroups; the React .table instances don't, so they stay
+   on auto layout (content-sized) to avoid truncating IDs/dates. */
+table.dt { table-layout: fixed; }
 .table thead th, table.dt thead th {
   padding: 12px 16px;
   font: 500 11px/1 var(--font-sans);

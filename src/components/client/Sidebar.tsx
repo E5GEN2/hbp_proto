@@ -3,59 +3,61 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 
-// Per the original prototype + ROADMAP.md, the client sidebar has 5 items:
-// Dashboard · Proxies · Orders · Billing · My Settings. Support tickets are
-// v2-deferred (ROADMAP.md / IMPLEMENTATION_BACKLOG.md) — for now, support
-// happens via the Telegram link on the checkout pages.
+// Canon nav icons (client-panel.html ICONS) — stroke style inherited via .nav-item svg
+const ICONS: Record<string, JSX.Element> = {
+  dashboard: <><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>,
+  proxies: <><rect x="3" y="4" width="18" height="6" rx="2" /><rect x="3" y="14" width="18" height="6" rx="2" /><path d="M7 7h.01M7 17h.01" /></>,
+  orders: <><path d="M21 12a9 9 0 11-3-6.7" /><path d="M21 4v5h-5" /></>,
+  billing: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></>,
+};
+
+function NavIcon({ name }: { name: string }) {
+  return <svg viewBox="0 0 24 24">{ICONS[name]}</svg>;
+}
+
+// Per the original prototype: Dashboard · Proxies · Orders · Billing, then a
+// dashed divider, then My Settings (account-scoped). Support is v2-deferred.
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/proxies',   label: 'Proxies'   },
-  { href: '/orders',    label: 'Orders'    },
-  { href: '/billing',   label: 'Billing'   },
+  { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/proxies', label: 'Proxies', icon: 'proxies' },
+  { href: '/orders', label: 'Orders', icon: 'orders' },
+  { href: '/billing', label: 'Billing', icon: 'billing' },
 ];
 
 export function ClientSidebar({ user }: { user: { name: string; email: string; tier?: string } }) {
   const pathname = usePathname();
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
+  const initials = user.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+
   return (
     <aside className="sidebar">
-      <div style={{ height: 'var(--topbar-h)', display: 'flex', alignItems: 'center', padding: '0 18px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14, letterSpacing: '-0.01em' }}>
-          <span style={{ color: 'var(--accent)' }}>●</span> HBP Proxies
-        </div>
+      <div className="sidebar-logo">
+        <span className="sidebar-logo-dot" />
+        <span>Proxy</span>
       </div>
-      <nav style={{ padding: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.map(n => {
-          const active = pathname === n.href || pathname.startsWith(n.href + '/');
-          return (
-            <Link key={n.href} href={n.href}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 13,
-                fontWeight: 500,
-                background: active ? 'var(--surface-3)' : 'transparent',
-                color: active ? 'var(--text)' : 'var(--text-secondary)',
-              }}>
-              {n.label}
-            </Link>
-          );
-        })}
-        <div style={{ flex: 1 }} />
-        <div style={{ borderTop: '1px dashed var(--border)', margin: '8px 0' }} />
-        <Link href="/settings"
-          style={{
-            padding: '8px 12px', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500,
-            background: pathname.startsWith('/settings') ? 'var(--surface-3)' : 'transparent',
-            color: pathname.startsWith('/settings') ? 'var(--text)' : 'var(--text-secondary)',
-          }}>
-          My Settings
+      <nav className="nav">
+        {NAV.map(n => (
+          <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`}>
+            <NavIcon name={n.icon} />
+            <span>{n.label}</span>
+          </Link>
+        ))}
+        <div className="nav-divider dashed" />
+        <Link href="/settings" className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
+          <NavIcon name="settings" />
+          <span>My Settings</span>
         </Link>
       </nav>
-      <div style={{ padding: 14, borderTop: '1px solid var(--border-subtle)' }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{user.name}</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{user.email}</div>
-        <button onClick={() => signOut({ callbackUrl: '/login' })}
-          style={{ marginTop: 10, fontSize: 11.5, color: 'var(--muted)' }}>Sign out</button>
+      <div className="sidebar-footer">
+        <div className="avatar">{initials}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="user-name">{user.name}</div>
+          <div className="user-email">{user.email}</div>
+        </div>
+        <button className="icon-btn sidebar-signout" title="Sign out" onClick={() => signOut({ callbackUrl: '/login' })}>
+          <svg viewBox="0 0 24 24"><path d="M15 17l5-5-5-5M20 12H9M12 3H5a2 2 0 00-2 2v14a2 2 0 002 2h7" /></svg>
+        </button>
       </div>
     </aside>
   );

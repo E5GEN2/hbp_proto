@@ -44,42 +44,26 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
 
   return (
     <>
-      {/* Topbar balance chip */}
-      <Link href="/billing"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '6px 12px', background: 'var(--surface-2)',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-          fontSize: 12.5, color: 'var(--text)',
-        }}>
-        <span style={{ color: 'var(--muted)' }}>Balance</span>
-        <span style={{ fontWeight: 650 }}>${balance.toLocaleString()}</span>
-        <span style={{ color: 'var(--accent-text)', borderLeft: '1px solid var(--border)', paddingLeft: 8 }}>Add funds</span>
-      </Link>
+      {/* Topbar balance chip — canon: wallet icon + value + Add funds CTA */}
+      <div className="topbar-balance">
+        <span className="topbar-balance-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>
+        </span>
+        <span className="topbar-balance-value">${balance.toLocaleString()}</span>
+        <Link className="btn ghost topbar-balance-cta" href="/checkout?kind=deposit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
+        </Link>
+      </div>
 
       {/* Bell */}
       <div ref={ref} style={{ position: 'relative' }}>
         <button
+          className="icon-btn"
           onClick={() => { setOpen(v => !v); if (!open) markRead(); }}
-          style={{
-            position: 'relative', padding: 8,
-            border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-            background: 'var(--surface-2)', color: 'var(--text)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 34, height: 34,
-          }}
           title="Notifications"
         >
-          🔔
-          {unread > 0 && (
-            <span style={{
-              position: 'absolute', top: -4, right: -4,
-              minWidth: 16, height: 16, padding: '0 4px',
-              background: 'var(--danger)', color: 'white',
-              borderRadius: 999, fontSize: 9.5, fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>{unread}</span>
-          )}
+          <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10 21a2 2 0 004 0" /></svg>
+          {unread > 0 && <span className="notif-dot" />}
         </button>
         {open && (
           <div style={{

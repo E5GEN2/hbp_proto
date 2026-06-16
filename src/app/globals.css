@@ -412,6 +412,121 @@ table.dt { table-layout: fixed; }
 .filter-bar .search { flex: 1; max-width: 280px; }
 .filter-bar .spacer { flex: 1; }
 
+/* ===== Canon list-page primitives (Proxies; reused by Orders/Catalog/Billing) =====
+   Ported 1:1 from proxy-handoff/prototypes/client-panel.html. These classes are
+   client-only (admin uses .theme-admin + its own FilterBar), so the global defs
+   stay isolated. The one shared primitive — .filter-bar — gets its in-panel
+   padding + bottom divider scoped under .theme-client .panel so admin's
+   FilterBar is untouched. */
+
+/* Filter-bar living inside a client panel: canon padding + bottom divider. */
+.theme-client .panel > .filter-bar {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.theme-client .panel > .filter-bar .form-select { min-width: 180px; }
+
+/* Button icons (canon: .btn svg 14px). Scoped to client so admin buttons keep
+   their own icon sizing. */
+.theme-client .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+
+/* Search box — magnifier icon left, input fills. */
+.search-box { position: relative; flex: 0 0 280px; max-width: 100%; }
+.search-box input {
+  width: 100%; height: 32px; padding: 0 12px 0 34px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); color: var(--text);
+  font: 400 12.5px var(--font-sans); outline: none;
+  transition: border-color .15s, background-color .15s;
+}
+.search-box input:hover { border-color: var(--border-strong); }
+.search-box input:focus { border-color: var(--accent); background: var(--surface); }
+.search-box svg {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); pointer-events: none;
+}
+
+.filter-spacer { flex: 1; }
+.filter-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+
+/* Bulk-select bar — appears between filter-bar and table when rows are selected. */
+.bulk-bar {
+  display: none; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 20px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border-subtle);
+}
+.bulk-bar.visible { display: flex; }
+.bulk-summary { display: flex; align-items: center; gap: 8px; font: 500 12.5px var(--font-sans); color: var(--text); }
+.bulk-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Checkbox — inline-block + absolute ::after (canon; prevents row jitter). */
+.chk {
+  width: 16px; height: 16px;
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  background: var(--surface); display: inline-block; position: relative;
+  vertical-align: middle; cursor: pointer; flex-shrink: 0;
+  transition: background-color .12s, border-color .12s;
+}
+.chk:hover { border-color: var(--accent); }
+.chk.checked { background: var(--accent); border-color: var(--accent); }
+.chk.checked::after {
+  content: ""; position: absolute; left: 3px; top: 4px;
+  width: 8px; height: 4px;
+  border-left: 1.5px solid var(--surface); border-bottom: 1.5px solid var(--surface);
+  transform: rotate(-45deg);
+}
+.col-chk { width: 32px; padding-left: 20px; }
+
+/* Pagination — info left, page-btn nav right; sits at the bottom of the panel. */
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-top: 1px solid var(--border-subtle);
+}
+.pagination-info { font: 400 12px var(--font-sans); color: var(--muted); }
+.pagination-nav { display: flex; gap: 4px; }
+.page-btn {
+  min-width: 26px; height: 26px; padding: 0 8px;
+  border-radius: var(--radius-sm); background: transparent; color: var(--muted);
+  font: 500 12px var(--font-mono); cursor: pointer; border: none;
+  transition: background-color .12s, color .12s;
+}
+.page-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.page-btn.active { background: var(--accent-dim); color: var(--accent); }
+.page-btn.disabled { opacity: .35; pointer-events: none; }
+
+/* Export modal — protocol toggle + format tabs + monospace preview. */
+.export-row { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.export-row:last-of-type { margin-bottom: 0; }
+.export-label {
+  font: 500 11px/1 var(--font-sans); letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); flex: 0 0 80px;
+}
+.export-proto-group {
+  display: inline-flex; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 2px; gap: 2px;
+}
+.export-proto {
+  padding: 6px 14px; font: 600 11px/1 var(--font-sans); letter-spacing: .04em;
+  color: var(--muted); background: transparent; border: none;
+  border-radius: calc(var(--radius-md) - 3px); cursor: pointer;
+  transition: background-color .12s, color .12s;
+}
+.export-proto:hover { color: var(--text-secondary); }
+.export-proto.active { background: var(--cta); color: #fff; }
+.export-tabs { display: flex; border-bottom: 1px solid var(--border-subtle); gap: 0; flex: 1; }
+.export-tab {
+  padding: 10px 14px; font: 500 12px var(--font-mono); color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .12s, border-color .12s;
+}
+.export-tab:hover { color: var(--text-secondary); }
+.export-tab.active { color: var(--text); border-bottom-color: var(--cta); font-weight: 600; }
+.export-preview {
+  margin-top: 12px; background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: 12px 14px; font: 400 12px/1.55 var(--font-mono);
+  color: var(--text); white-space: pre; overflow-x: auto; max-height: 280px; overflow-y: auto;
+}
+
 /* ===== Empty state ===== */
 .empty {
   padding: 48px 32px;

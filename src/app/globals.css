@@ -426,6 +426,18 @@ table.dt { table-layout: fixed; }
 }
 .theme-client .panel > .filter-bar .form-select { min-width: 180px; }
 
+/* Table-wrap inside a client panel is a bare container — canon has no card
+   chrome here; the panel itself supplies the border/radius. Allow horizontal
+   scroll so the fixed-layout .dt table keeps readable columns on narrow
+   viewports instead of squishing its flexible columns to nothing. */
+.theme-client .panel > .table-wrap {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 /* Button icons (canon: .btn svg 14px). Scoped to client so admin buttons keep
    their own icon sizing. */
 .theme-client .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; }
@@ -960,4 +972,8 @@ table.dt { table-layout: fixed; }
   .btn { min-height: 44px; padding: 10px 14px; }
   .btn.primary, .btn.danger { min-height: 48px; }
   .btn.sm { min-height: 36px; padding: 6px 10px; }
+
+  /* Fixed-layout .dt tables keep a readable min-width and scroll horizontally
+     inside the panel rather than collapsing their columns. */
+  .theme-client .panel > .table-wrap > table.dt { min-width: 560px; }
 }

@@ -64,7 +64,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
+        <div className="grid-detail">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Order snapshot</span></div>
@@ -77,11 +77,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
             </div>
             {/* Split row per the original prototype: Activity + Assigned Proxies (1fr 1fr).
                 When no proxies, Activity expands to full width. */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: order.assignments.length > 0 ? '1fr 1fr' : '1fr',
-              gap: 16,
-            }}>
+            <div className={order.assignments.length > 0 ? 'card-2col' : ''}>
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">Activity</span></div>
                 <div className="panel-body" style={{ padding: 0 }}>

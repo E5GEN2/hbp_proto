@@ -27,7 +27,7 @@ export function ProfileForm({ initial }: {
 
   return (
     <>
-      <form style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+      <form className="form-grid-3">
         <div><label className="form-label">Display name</label><input className="form-input" value={name} onChange={e => setName(e.target.value)} /></div>
         <div><label className="form-label">Telegram</label><input className="form-input" placeholder="@handle" value={telegram} onChange={e => setTelegram(e.target.value)} /></div>
         <div><label className="form-label">Country</label>
@@ -63,7 +63,7 @@ export function ChangePasswordForm() {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+      <div className="form-grid-2">
         <div><label className="form-label">New password</label><input className="form-input" type="password" value={a} onChange={e => setA(e.target.value)} /></div>
         <div><label className="form-label">Confirm</label><input className="form-input" type="password" value={b} onChange={e => setB(e.target.value)} /></div>
       </div>

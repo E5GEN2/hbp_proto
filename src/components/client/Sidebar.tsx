@@ -17,11 +17,7 @@ const NAV = [
 export function ClientSidebar({ user }: { user: { name: string; email: string; tier?: string } }) {
   const pathname = usePathname();
   return (
-    <aside style={{
-      width: 'var(--sidebar-w)', flexShrink: 0,
-      background: 'var(--surface)', borderRight: '1px solid var(--border)',
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <aside className="sidebar">
       <div style={{ height: 'var(--topbar-h)', display: 'flex', alignItems: 'center', padding: '0 18px', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14, letterSpacing: '-0.01em' }}>
           <span style={{ color: 'var(--accent)' }}>●</span> HBP Proxies

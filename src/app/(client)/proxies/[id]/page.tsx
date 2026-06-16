@@ -39,7 +39,7 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
           <div style={{ flex: 1 }} />
           <ClientProxyRequestReplacement proxyId={proxy.id} health={proxy.health} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
+        <div className="grid-detail">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <CredentialsBlock proxies={[{
               id: proxy.id,

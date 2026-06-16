@@ -66,7 +66,7 @@ export function CheckoutFlow({
   }
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Stepper step={step} />
       {step === 'details' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16 }}>

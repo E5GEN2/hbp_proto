@@ -15,7 +15,8 @@
     "db:clean": "tsx prisma/clean.ts",
     "db:seed-clients": "tsx prisma/seed-clients.ts",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force --skip-seed && pnpm db:seed"
+    "db:reset": "prisma migrate reset --force --skip-seed && pnpm db:seed",
+    "visual-diff": "BASE_URL=${BASE_URL:-https://hbpproto-production.up.railway.app} BASELINE_DIR=${BASELINE_DIR:-../proxy-handoff/screenshots/client} python3 scripts/visual-diff/run.py"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

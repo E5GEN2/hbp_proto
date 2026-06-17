@@ -801,6 +801,11 @@ table.dt { table-layout: fixed; }
 .detail-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+/* Split row inside .grid-left — Activity + Assigned Proxies side-by-side. */
+.order-detail-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+.order-detail-split > .panel { min-width: 0; }
+@media (max-width: 768px) { .order-detail-split { grid-template-columns: 1fr; } }
+
 .whitelist-list { display: flex; flex-direction: column; }
 .whitelist-row {
   display: flex; align-items: center; gap: 12px; padding: 10px 20px;

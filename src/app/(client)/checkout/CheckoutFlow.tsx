@@ -1,10 +1,22 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { money } from '@/lib/money';
+import { useToast } from '@/components/ui/Toast';
+import { durationLabel, tierFeatures } from '@/lib/catalog';
 
 type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; description: string; available: number };
+
+const WALLET = 'TRX9aB7eFmZxXk4mPzRq8nGdLcVtJwS6Hb';
+const WALLET_SHORT = WALLET.slice(0, 8) + '…' + WALLET.slice(-6);
+
+const IconCheck = () => <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>;
+const IconBitcoin = () => <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9 7v10M9 12h5a2 2 0 100-4H9M9 12h5.5a2 2 0 110 4H9" /></svg>;
+const IconWallet = () => <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>;
+const IconCard = () => <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></svg>;
+const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3M14 20h3M20 14v7M17 17v4" /></svg>;
+const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
   duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans,
@@ -18,6 +30,7 @@ export function CheckoutFlow({
   plans: PlanSummary[];
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [step, setStep] = useState(stepInit);
   const [qty, setQty] = useState(Math.max(1, qtyInit));
   const [autoExtend, setAutoExtend] = useState(autoExtendInit);
@@ -30,6 +43,8 @@ export function CheckoutFlow({
   const plan = useMemo(() => plans.find(p => p.region === location) ?? plans[0], [plans, location]);
   const total = plan.price * qty;
   const balanceOk = balance >= total;
+  const label = durationLabel(duration);
+  const depositLink = `/checkout?kind=deposit&returnTo=${encodeURIComponent(`/checkout?duration=${duration}&step=payment`)}`;
 
   async function placeOrder(method: 'balance' | 'crypto' | 'card') {
     setBusy(true); setErr(null);
@@ -65,145 +80,212 @@ export function CheckoutFlow({
     finally { setBusy(false); }
   }
 
+  async function copyWallet() {
+    try { await navigator.clipboard.writeText(WALLET); toast('Copied', 'Wallet address', 'success'); }
+    catch { toast('Copy failed', 'Clipboard unavailable', 'danger'); }
+  }
+
+  const summaryRows = (
+    <div className="panel-body flush">
+      <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{label} · Mobile</span></div>
+      <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
+      <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
+      <div className="kv-row"><span className="kv-label">Price per proxy</span><span className="kv-val">{money(plan.price)}</span></div>
+      <div className="kv-row total"><span className="kv-label">Total Price</span><span className="kv-val">{money(total)}</span></div>
+    </div>
+  );
+
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-      <Stepper step={step} />
+      {(step === 'details' || step === 'payment' || step === 'processing') && (
+        <Stepper active={step === 'details' ? 1 : 2} />
+      )}
+
       {step === 'details' && (
-        <div className="grid-detail" style={{ marginTop: 16 }}>
-          <div className="panel">
-            <div className="panel-header"><span className="panel-title">{duration}-day Mobile</span></div>
-            <div className="panel-body">
-              <p style={{ color: 'var(--text-secondary)' }}>{plan.description}</p>
-              <div style={{ marginTop: 14 }}>
-                <label className="form-label">Location</label>
-                <select className="form-select" value={location} onChange={e => setLocation(e.target.value)}>
-                  {plans.map(p => <option key={p.id} value={p.region}>{p.region}{p.available <= 3 ? ' (limited)' : ''}{p.available === 0 ? ' (sold out)' : ''}</option>)}
-                </select>
-              </div>
-              <div style={{ marginTop: 14 }}>
-                <label className="form-label">Quantity</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button className="btn sm" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
-                  <input className="form-input mono" value={qty} readOnly style={{ width: 60, textAlign: 'center' }} />
-                  <button className="btn sm" onClick={() => setQty(q => Math.min(plan.available, q + 1))}>+</button>
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 8 }}>up to {plan.available}</span>
+        <div className="grid-detail checkout-details">
+          <div className="grid-left">
+            <div className="checkout-details-row">
+              <div className="panel">
+                <div className="panel-header"><span className="panel-title">{label} · Mobile proxies</span></div>
+                <div className="panel-body">
+                  <div className="duration-meta">
+                    <div>
+                      <div className="duration-price">{money(plan.price)}</div>
+                      <div className="duration-price-suffix">per proxy</div>
+                    </div>
+                  </div>
+                  <ul className="plan-card-features">
+                    {tierFeatures(duration).map(f => <li key={f}>{f}</li>)}
+                  </ul>
+                </div>
+                <div className="panel-footer">
+                  <span className="toggle-row-title" style={{ flex: 1 }}>Auto-extend this order when it expires</span>
+                  <span className={`toggle ${autoExtend ? 'on' : ''}`} onClick={() => setAutoExtend(v => !v)} style={{ cursor: 'pointer' }} role="switch" aria-checked={autoExtend} />
                 </div>
               </div>
-              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, color: 'var(--text)' }}>Auto-extend this order when it expires</span>
-                <span onClick={() => setAutoExtend(v => !v)} className={`toggle ${autoExtend ? 'on' : ''}`} style={{ cursor: 'pointer' }} />
+
+              <div className="checkout-side-stack">
+                <div className="panel">
+                  <div className="panel-header"><span className="panel-title">Location</span></div>
+                  <div className="panel-body">
+                    <select className="form-select" value={location} onChange={e => setLocation(e.target.value)}>
+                      {plans.map(p => (
+                        <option key={p.id} value={p.region} disabled={p.available === 0}>
+                          {p.region}{p.available > 0 && p.available <= 3 ? ' · limited' : ''}{p.available === 0 ? ' (sold out)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="help-text">Choose where your proxies are based.</div>
+                  </div>
+                </div>
+                <div className="panel">
+                  <div className="panel-header"><span className="panel-title">Quantity</span></div>
+                  <div className="panel-body">
+                    <div className="qty-stepper">
+                      <button className="qty-btn" aria-label="Decrease" disabled={qty <= 1} onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
+                      <input className="qty-input" type="text" value={qty} readOnly />
+                      <button className="qty-btn" aria-label="Increase" disabled={qty >= plan.available} onClick={() => setQty(q => Math.min(plan.available, q + 1))}>+</button>
+                    </div>
+                    <div className="help-text">Up to {plan.available} {plan.available === 1 ? 'proxy' : 'proxies'} available at this location.</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          <OrderSummary plan={plan} qty={qty} total={total} cta="Continue to Checkout" onClick={() => setStep('payment')} />
+
+          <div className="grid-right">
+            <div className="panel order-summary">
+              <div className="panel-header"><span className="panel-title">Order Summary</span></div>
+              {summaryRows}
+              <div className="panel-footer">
+                <button className="btn primary block" disabled={plan.available === 0} onClick={() => setStep('payment')}>Continue to Checkout →</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
+
       {step === 'payment' && (
-        <div className="grid-detail" style={{ marginTop: 16 }}>
-          <div className="panel">
-            <div className="panel-header"><span className="panel-title">Payment method</span></div>
-            <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PaymentRow id="balance" selected={paymentMethod === 'balance'} disabled={!balanceOk} onClick={() => setPaymentMethod('balance')} title={`Account balance · ${money(balance)}`} caption={balanceOk ? 'Instant activation. No fees.' : `Insufficient — add ${money(total - balance)} via deposit.`} />
-              <PaymentRow id="crypto"  selected={paymentMethod === 'crypto'}  onClick={() => setPaymentMethod('crypto')}  title="Cryptocurrency (USDT, USDC, BTC)" caption="Order activates after on-chain confirmation." />
-              <PaymentRow id="card"    selected={paymentMethod === 'card'}    onClick={() => setPaymentMethod('card')}    title="Card · Visa •• 4242"                caption="Mock card — instant activation in this prototype." />
-              {err && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>{err}</div>}
-              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div className="grid-detail">
+          <div className="grid-left">
+            <div className="panel">
+              <div className="panel-header"><span className="panel-title">Payment method</span></div>
+              <div className="panel-body">
+                <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
+                  title="Crypto (USDT-TRC20, BTC, ETH)" caption={<>Order activates after on-chain confirmation.</>} />
+                <PayRow icon={<IconWallet />} selected={paymentMethod === 'balance'} disabled={!balanceOk} onClick={() => setPaymentMethod('balance')}
+                  title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
+                <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
+                  title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />
+                {err && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 10 }}>{err}</div>}
+              </div>
+              <div className="panel-footer payment-actions">
                 <button className="btn" onClick={() => setStep('details')}>← Edit order</button>
                 <button className="btn primary" disabled={busy || (paymentMethod === 'balance' && !balanceOk)} onClick={() => placeOrder(paymentMethod)}>
-                  {busy ? 'Processing…' : `Pay ${money(total)}`}
+                  {busy ? 'Processing…' : 'Buy now'}
                 </button>
               </div>
             </div>
           </div>
-          <OrderSummary plan={plan} qty={qty} total={total} />
-        </div>
-      )}
-      {step === 'processing' && (
-        <div className="panel" style={{ marginTop: 16, padding: 32, textAlign: 'center', maxWidth: 560, marginInline: 'auto' }}>
-          <h2 style={{ marginTop: 0, color: 'var(--text)' }}>Awaiting payment</h2>
-          <div style={{ fontSize: 22, color: 'var(--text)', fontWeight: 700, margin: '12px 0' }}>{money(total)} ≈ {total} USDT</div>
-          <div className="mono" style={{ fontSize: 12, color: 'var(--muted)', padding: 12, background: 'var(--surface-2)', borderRadius: 8, marginTop: 12 }}>TRX…6Hb (mock wallet address)</div>
-          <div style={{ marginTop: 18 }}>
-            <button className="btn primary" disabled={busy} onClick={confirmCrypto}>{busy ? 'Confirming…' : "I've sent the payment"}</button>
-            <button className="btn" style={{ marginLeft: 8 }} onClick={() => setStep('payment')}>Back to payment method</button>
+          <div className="grid-right">
+            <div className="panel order-summary">
+              <div className="panel-header"><span className="panel-title">Order Summary</span></div>
+              {summaryRows}
+            </div>
           </div>
-          <div style={{ marginTop: 14, fontSize: 11.5, color: 'var(--muted)' }}>(Production uses webhook confirmations.)</div>
         </div>
       )}
+
+      {step === 'processing' && (
+        <div className="checkout-processing">
+          <div className="panel checkout-processing-card">
+            <div className="processing-title">Awaiting payment</div>
+            <div className="processing-amount">{money(total)} <span className="muted">≈ {total} USDT</span></div>
+            <div className="processing-qr"><IconQr /></div>
+            <div className="processing-wallet">
+              <span className="wallet-label">Send USDT-TRC20 to</span>
+              <div className="creds-row">
+                <pre className="export-preview" title={WALLET}>{WALLET_SHORT}</pre>
+                <div className="creds-actions"><button className="btn" onClick={copyWallet}>Copy</button></div>
+              </div>
+            </div>
+            <div className="processing-actions">
+              <button className="btn primary" disabled={busy} onClick={confirmCrypto}>{busy ? 'Confirming…' : "I've sent the payment"}</button>
+              <button className="btn ghost" onClick={() => setStep('payment')}>← Back to payment method</button>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Production uses webhook confirmations.</div>
+          </div>
+        </div>
+      )}
+
       {step === 'success' && (
-        <div className="panel" style={{ marginTop: 16, padding: 32, textAlign: 'center', maxWidth: 560, marginInline: 'auto' }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--success-dim)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', fontSize: 28 }}>✓</div>
-          <h2 style={{ marginTop: 16, color: 'var(--text)' }}>{plan.autoProvision ? 'Order confirmed' : 'Order received'}</h2>
-          {orderId && <div className="mono" style={{ color: 'var(--accent-text)', fontWeight: 600 }}>{orderId}</div>}
-          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--muted)' }}>{plan.name} · qty {qty} · {money(total)}</div>
-          {!plan.autoProvision && <div className="chip warning" style={{ marginTop: 14 }}>Typical delivery within 24h</div>}
-          <div style={{ marginTop: 18, display: 'flex', justifyContent: 'center', gap: 8 }}>
+        <div className="checkout-success">
+          <div className="success-icon"><IconCheck /></div>
+          <div className="success-title">{plan.autoProvision ? 'Order confirmed' : 'Order received'}</div>
+          {!plan.autoProvision && (
+            <div className="success-helper">Our team is preparing your proxies. Typical delivery within 24 hours — we&rsquo;ll notify you the moment they&rsquo;re live.</div>
+          )}
+          <div className="success-summary">
+            {orderId && <div className="kv-row"><span className="kv-label">Order ID</span><span className="kv-val"><Link className="td-link" href={`/orders/${orderId}`}>{orderId}</Link></span></div>}
+            <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{label} · {plan.region}</span></div>
+            <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
+            <div className="kv-row total"><span className="kv-label">Total Price</span><span className="kv-val">{money(total)}</span></div>
+          </div>
+          <div className="success-actions">
             {orderId && <Link href={`/orders/${orderId}`} className="btn primary">{plan.autoProvision ? 'Order details' : 'Track this order'}</Link>}
             <Link href="/proxies" className="btn">View my proxies</Link>
           </div>
         </div>
       )}
+
       {step === 'failed' && (
-        <div className="panel" style={{ marginTop: 16, padding: 32, textAlign: 'center', maxWidth: 560, marginInline: 'auto' }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--danger-dim)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', fontSize: 28 }}>!</div>
-          <h2 style={{ marginTop: 16, color: 'var(--text)' }}>Payment failed</h2>
-          <div style={{ fontSize: 13, color: 'var(--muted)' }}>{err ?? 'Something went wrong.'}</div>
-          <button className="btn primary" style={{ marginTop: 18 }} onClick={() => setStep('payment')}>Retry payment</button>
+        <div className="checkout-failed">
+          <div className="failed-icon"><IconWarning /></div>
+          <div className="failed-title">Payment failed</div>
+          <div className="failed-message">{err ?? 'We were unable to complete your payment. Please try again or contact support.'}</div>
+          <div className="failed-actions">
+            <button className="btn primary" onClick={() => setStep('payment')}>Retry payment</button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function Stepper({ step }: { step: string }) {
-  const steps = ['details', 'payment', step === 'success' ? 'success' : step === 'processing' ? 'processing' : 'done'];
-  const idx = step === 'details' ? 0 : step === 'payment' ? 1 : 2;
+function Stepper({ active }: { active: 1 | 2 }) {
+  const steps = [
+    { num: 1, label: 'Details' },
+    { num: 2, label: 'Payment' },
+    { num: 3, label: 'Done' },
+  ];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
-      {['Details', 'Payment', 'Done'].map((label, i) => (
-        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 24, height: 24, borderRadius: '50%',
-            background: i <= idx ? 'var(--cta)' : 'var(--surface-2)',
-            color: i <= idx ? 'white' : 'var(--muted)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 700,
-          }}>{i + 1}</div>
-          <span style={{ fontSize: 12.5, color: i <= idx ? 'var(--text)' : 'var(--muted)', fontWeight: 500 }}>{label}</span>
-          {i < 2 && <div style={{ width: 24, height: 2, background: 'var(--surface-3)' }} />}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function OrderSummary({ plan, qty, total, cta, onClick }: { plan: PlanSummary; qty: number; total: number; cta?: string; onClick?: () => void }) {
-  return (
-    <div className="panel" style={{ alignSelf: 'start' }}>
-      <div className="panel-header"><span className="panel-title">Order summary</span></div>
-      <div className="panel-body">
-        <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{plan.name}</span></div>
-        <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
-        <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
-        <div className="kv-row"><span className="kv-label">Price / proxy</span><span className="kv-val">{money(plan.price)}</span></div>
-        <div className="kv-row total"><span className="kv-label">Total</span><span className="kv-val">{money(total)}</span></div>
+    <div className="checkout-stepper">
+      <div className="wizard-stepper">
+        {steps.map((s, i) => (
+          <Fragment key={s.num}>
+            {i > 0 && <div className="wizard-sep" />}
+            <div className={`wizard-step ${s.num < active ? 'done' : s.num === active ? 'active' : ''}`}>
+              <div className="wizard-step-num">{s.num < active ? <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg> : s.num}</div>
+              <div className="wizard-step-label">{s.label}</div>
+            </div>
+          </Fragment>
+        ))}
       </div>
-      {cta && <div style={{ padding: '0 16px 16px' }}><button onClick={onClick} className="btn primary" style={{ width: '100%' }}>{cta} →</button></div>}
     </div>
   );
 }
 
-function PaymentRow({ id, selected, disabled, onClick, title, caption }: { id: string; selected: boolean; disabled?: boolean; onClick: () => void; title: string; caption: string }) {
+function PayRow({ icon, selected, disabled, onClick, title, caption }: {
+  icon: ReactNode; selected: boolean; disabled?: boolean; onClick: () => void; title: string; caption: ReactNode;
+}) {
   return (
-    <div onClick={disabled ? undefined : onClick}
-      style={{
-        padding: 14, borderRadius: 'var(--radius-md)',
-        border: `1px solid ${selected ? 'var(--cta)' : 'var(--border)'}`,
-        background: selected ? 'var(--cta-dim)' : 'var(--surface-2)',
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
-      }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{title}</div>
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{caption}</div>
-    </div>
+    <label className={`pay-method-row ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`} onClick={disabled ? undefined : onClick}>
+      <input type="radio" name="payMethod" checked={selected} disabled={disabled} readOnly />
+      <div className="pay-method-icon">{icon}</div>
+      <div className="pay-method-text">
+        <div className="pay-method-title">{title}</div>
+        <div className="pay-method-caption">{caption}</div>
+      </div>
+    </label>
   );
 }

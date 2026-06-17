@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
-import { ClientProxyRequestReplacement } from '@/components/client/ProxyDetailActions';
+import { ClientProxyHeaderActions } from '@/components/client/ProxyDetailActions';
 import { CredentialsBlock } from '@/components/client/CredentialsBlock';
 import { WhitelistPanel } from '@/components/client/WhitelistPanel';
 import { RotationUrlPanel } from '@/components/client/RotationUrlPanel';
@@ -12,6 +12,8 @@ import { ProxyLabelEdit } from '@/components/client/ProxyLabelEdit';
 import { AutoRotationPicker } from '@/components/client/AutoRotationPicker';
 import { Stage15Pill } from '@/components/ui/Stage15Badge';
 import { fmtDate, daysLeft, fmtRel } from '@/lib/date';
+
+const cap = (s: string) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '');
 
 export default async function ClientProxyDetail({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -30,42 +32,58 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
 
   return (
     <>
-      <ClientTopbar title="Proxy detail" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1416, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{proxy.id}</h2>
-          <span className={`chip ${proxy.health.toLowerCase()}`}>{proxy.health.toLowerCase()}</span>
-          {proxy.label && <span className="chip muted">{proxy.label}</span>}
-          <div style={{ flex: 1 }} />
-          <ClientProxyRequestReplacement proxyId={proxy.id} health={proxy.health} />
-        </div>
-        <div className="grid-detail">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <CredentialsBlock proxies={[{
-              id: proxy.id,
-              ip: proxy.ip, port: proxy.port,
-              username: proxy.username, password: proxy.password,
-              rotateToken: proxy.rotateToken,
-            }]} />
-            <RotationUrlPanel rotateToken={proxy.rotateToken} proxyId={proxy.id} />
-            <WhitelistPanel proxyId={proxy.id} entries={proxy.whitelist.map(w => ({ id: w.id, ip: w.ip }))} />
-          </div>
-          <div className="panel">
-            <div className="panel-header"><span className="panel-title">Info</span></div>
-            <div className="panel-body">
-              <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val"><Link href={`/orders/${myAssignment.order.id}`} className="mono td-link">{myAssignment.order.id}</Link></span></div>
-              <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{myAssignment.order.plan.name}</span></div>
-              <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
-              <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{fmtDate(myAssignment.order.expiresAt)}{d && d > 0 ? ` (${d}d left)` : ''}</span></div>
-              <div className="kv-row" style={{ alignItems: 'center' }}>
-                <span className="kv-label">Auto rotation <Stage15Pill /></span>
-                <span className="kv-val"><AutoRotationPicker proxyId={proxy.id} current={proxy.autoRotateMin} /></span>
+      <ClientTopbar breadcrumb={[{ label: 'Proxies', href: '/proxies' }, { label: `Proxy ${proxy.id}` }]} balance={Number(me?.balance ?? 0)} />
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div style={{ maxWidth: 'var(--page-w)', margin: '0 auto', width: '100%' }}>
+          <div className="detail-header">
+            <div className="detail-header-left">
+              <div className="detail-id">{proxy.id}</div>
+              <div className="detail-chips">
+                <span className={`chip ${proxy.health.toLowerCase()}`}>{cap(proxy.health)}</span>
+                {proxy.label && <span className="chip accent">{proxy.label}</span>}
               </div>
-              <div className="kv-row"><span className="kv-label">Last rotated</span><span className="kv-val">{proxy.lastRotated ? fmtRel(proxy.lastRotated) : '—'}</span></div>
-              <div className="kv-row"><span className="kv-label">Uptime · Latency</span><span className="kv-val">{proxy.uptime.toFixed(1)}% · {proxy.latency ?? '—'}ms</span></div>
-              <div style={{ marginTop: 12 }}>
-                <label className="form-label">Label</label>
-                <ProxyLabelEdit proxyId={proxy.id} current={proxy.label} />
+            </div>
+            <div className="detail-actions">
+              <ClientProxyHeaderActions
+                proxyId={proxy.id}
+                health={proxy.health}
+                creds={{ ip: proxy.ip, port: proxy.port, username: proxy.username, password: proxy.password }}
+              />
+            </div>
+          </div>
+
+          <div className="grid-detail">
+            <div className="grid-left">
+              <CredentialsBlock proxies={[{
+                id: proxy.id,
+                ip: proxy.ip, port: proxy.port,
+                username: proxy.username, password: proxy.password,
+                carrier: proxy.carrier, region: proxy.region,
+                rotateToken: proxy.rotateToken,
+              }]} />
+              <RotationUrlPanel rotateToken={proxy.rotateToken} />
+              <WhitelistPanel proxyId={proxy.id} entries={proxy.whitelist.map(w => ({ id: w.id, ip: w.ip }))} />
+            </div>
+
+            <div className="grid-right">
+              <div className="panel">
+                <div className="panel-header"><span className="panel-title">Info</span></div>
+                <div className="panel-body">
+                  <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val"><Link href={`/orders/${myAssignment.order.id}`} className="mono td-link">{myAssignment.order.id}</Link></span></div>
+                  <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{myAssignment.order.plan.name}</span></div>
+                  <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
+                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val mono">{fmtDate(myAssignment.order.expiresAt)}{d != null && d > 0 ? ` · ${d}d left` : ''}</span></div>
+                  <div className="kv-row" style={{ alignItems: 'center' }}>
+                    <span className="kv-label">Auto rotation <Stage15Pill /></span>
+                    <span className="kv-val"><AutoRotationPicker proxyId={proxy.id} current={proxy.autoRotateMin} /></span>
+                  </div>
+                  <div className="kv-row"><span className="kv-label">Last rotated</span><span className="kv-val mono">{proxy.lastRotated ? fmtRel(proxy.lastRotated) : 'Never'}</span></div>
+                  <div className="kv-row"><span className="kv-label">Uptime · Latency</span><span className="kv-val mono">{proxy.uptime.toFixed(1)}%{proxy.latency != null ? ` · ${proxy.latency} ms` : ''}</span></div>
+                  <div className="kv-row kv-row-stack">
+                    <span className="kv-label">Label</span>
+                    <ProxyLabelEdit proxyId={proxy.id} current={proxy.label} />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

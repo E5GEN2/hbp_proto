@@ -781,6 +781,44 @@ table.dt { table-layout: fixed; }
   .checkout-side-stack > .panel { flex: 0 1 auto; }
 }
 
+/* ===== Detail pages (Order + Proxy) — canon proxy-handoff client-panel.html =====
+   New client-only classes. detail-header is a bordered header card; whitelist
+   rows reuse the inset-divider pattern. */
+.detail-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.detail-header-left { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.detail-id { font: 650 18px var(--font-mono); letter-spacing: -0.01em; color: var(--text); font-variant-numeric: tabular-nums; }
+.detail-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Split row inside .grid-left — Activity + Assigned Proxies side-by-side. */
+.order-detail-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+.order-detail-split > .panel { min-width: 0; }
+@media (max-width: 768px) { .order-detail-split { grid-template-columns: 1fr; } }
+
+.whitelist-list { display: flex; flex-direction: column; }
+.whitelist-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+  background-image: linear-gradient(90deg, transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset), var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
+  background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
+}
+.whitelist-row:last-child { background-image: none; }
+.whitelist-ip { flex: 1; font: 400 12.5px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.row-icon-btn { width: 24px; height: 24px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; transition: background-color .12s, color .12s; border: none; background: transparent; }
+.row-icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+.row-icon-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+.row-icon-btn.danger:hover { color: var(--danger); }
+
 /* ===== Empty state ===== */
 .empty {
   padding: 48px 32px;

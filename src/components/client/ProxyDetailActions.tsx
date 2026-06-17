@@ -14,9 +14,13 @@ const REASONS = [
   'Other (please describe)',
 ];
 
-export function ClientProxyRequestReplacement({
-  proxyId, health,
-}: { proxyId: string; health: string }) {
+type Creds = { ip: string; port: number; username: string; password: string };
+
+// Canon proxy-detail header: Copy credentials + Rotate IP, plus Request
+// replacement when the proxy is unhealthy.
+export function ClientProxyHeaderActions({
+  proxyId, health, creds,
+}: { proxyId: string; health: string; creds: Creds }) {
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -24,7 +28,22 @@ export function ClientProxyRequestReplacement({
   const [detail, setDetail] = useState('');
   const [pending, start] = useTransition();
 
-  if (health === 'HEALTHY') return null;
+  const healthy = health.toUpperCase() === 'HEALTHY';
+
+  async function copyCreds() {
+    const line = `http://${creds.ip}:${creds.port}:${creds.username}:${creds.password}`;
+    try {
+      await navigator.clipboard.writeText(line);
+      toast('Credentials copied', proxyId, 'success');
+    } catch {
+      toast('Copy failed', 'Use the Credentials panel', 'danger');
+    }
+  }
+
+  // No IP-rotation backend yet — client affordance only (prototype).
+  function rotateIp() {
+    toast('Rotation requested', `${proxyId} will receive a fresh IP shortly.`, 'info');
+  }
 
   function submit() {
     const full = `${reason}${detail ? ' — ' + detail : ''}`;
@@ -41,7 +60,16 @@ export function ClientProxyRequestReplacement({
 
   return (
     <>
-      <button className="btn danger" onClick={() => setOpen(true)}>Request replacement</button>
+      <button className="btn" onClick={copyCreds}>
+        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+        Copy credentials
+      </button>
+      <button className="btn" onClick={rotateIp}>
+        <svg viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>
+        Rotate IP
+      </button>
+      {!healthy && <button className="btn danger" onClick={() => setOpen(true)}>Request replacement</button>}
+
       <Modal
         open={open} onClose={() => setOpen(false)}
         title={`Request replacement for ${proxyId}`}

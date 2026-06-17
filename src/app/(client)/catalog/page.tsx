@@ -4,25 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
-
-// Client-side feature template, keyed by duration — canon: not derived from the
-// admin description (which renders below the bullets as marketing copy).
-const FEATURES_BY_DURATION: Record<number, string[]> = {
-  7: ['4G LTE mobile IPs', 'Unlimited bandwidth', '24h sticky sessions', 'Manual rotation'],
-  30: ['4G LTE mobile IPs', 'Unlimited bandwidth', 'Sticky 24h sessions', 'Auto-rotation available'],
-  90: ['4G LTE mobile IPs', 'Unlimited bandwidth', 'Sticky 24h sessions', 'Auto-rotation + URL rotation', 'Priority routing'],
-};
-const tierFeatures = (d: number) => FEATURES_BY_DURATION[d] || FEATURES_BY_DURATION[30];
-
-function durationLabel(days: number): string {
-  if (days === 1) return '1 day';
-  if (days < 30) return `${days} days`;
-  if (days === 30) return '30 days';
-  if (days === 60) return '60 days';
-  if (days === 90) return '90 days';
-  if (days % 30 === 0) return `${days / 30} months`;
-  return `${days} days`;
-}
+import { tierFeatures, durationLabel } from '@/lib/catalog';
 
 type Tier = { duration: number; price: number; regions: Set<string>; description: string; anyLow: boolean };
 

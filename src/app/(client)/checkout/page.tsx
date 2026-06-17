@@ -27,8 +27,8 @@ export default async function CheckoutPage({ searchParams }: {
     const presetAmount = searchParams.amount ? parseFloat(searchParams.amount) : undefined;
     return (
       <>
-        <ClientTopbar title="Deposit" balance={Number(me.balance)} />
-        <main style={{ padding: 24, overflowY: 'auto' }}>
+        <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
+        <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
           <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} />
         </main>
       </>
@@ -109,10 +109,14 @@ export default async function CheckoutPage({ searchParams }: {
     ? `Renewing ${searchParams.renewOf} — your balance was insufficient. Top up or use a different method below.`
     : null;
 
+  const crumbs = resumeOrder
+    ? [{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: 'Checkout' }]
+    : [{ label: 'Catalog', href: '/catalog' }, { label: 'Checkout' }];
+
   return (
     <>
-      <ClientTopbar title={resumeOrder ? `Resume ${resumeOrder.id}` : searchParams.renewOf ? 'Renew' : 'Checkout'} balance={Number(me.balance)} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
+      <ClientTopbar breadcrumb={crumbs} balance={Number(me.balance)} />
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         {headerHint && (
           <div style={{
             maxWidth: 1280, margin: '0 auto 16px', padding: '10px 14px',

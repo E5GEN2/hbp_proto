@@ -41,28 +41,28 @@ export function WhitelistPanel({
   return (
     <div className="panel">
       <div className="panel-header">
-        <span className="panel-title">Whitelist <Stage15Pill /></span>
-        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{entries.length}/5</span>
+        <span className="panel-title">
+          Whitelist <span className="mono" style={{ marginLeft: 6, color: 'var(--muted)' }}>{entries.length}/5</span> <Stage15Pill />
+        </span>
+        {!full && <button className="panel-action" onClick={() => setOpen(true)}>+ Add IP</button>}
       </div>
-      <div className="panel-body" style={{ padding: 0 }}>
-        {entries.length === 0 ? (
-          <div style={{ padding: 20, fontSize: 12.5, color: 'var(--muted)', textAlign: 'center' }}>
-            No whitelisted IPs. Up to 5 allowed.
-          </div>
-        ) : (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {entries.map(e => (
-              <li key={e.id} style={{ padding: '10px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span className="mono" style={{ fontSize: 12.5 }}>{e.ip}</span>
-                <button className="btn sm" disabled={pending} onClick={() => remove(e.ip)}>Remove</button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div style={{ padding: 14 }}>
-          <button className="btn" disabled={full} onClick={() => setOpen(true)}>{full ? 'Whitelist full' : '+ Add IP'}</button>
+      {entries.length === 0 ? (
+        <div className="empty" style={{ padding: '24px 20px' }}>
+          <div className="empty-desc">No whitelisted IPs. Up to 5 allowed.</div>
         </div>
-      </div>
+      ) : (
+        <div className="whitelist-list">
+          {entries.map(e => (
+            <div key={e.id} className="whitelist-row">
+              <span className="widget-dot success" />
+              <span className="whitelist-ip">{e.ip}</span>
+              <button className="row-icon-btn danger" disabled={pending} title="Remove" onClick={() => remove(e.ip)}>
+                <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="Add whitelist IP"
         footer={<>

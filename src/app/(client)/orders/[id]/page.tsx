@@ -4,9 +4,15 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
-import { ClientOrderDetailActions, ClientAutoRenewToggle } from '@/components/client/OrderDetailActions';
+import { ClientOrderDetailActions } from '@/components/client/OrderDetailActions';
 import { money } from '@/lib/money';
-import { fmtDate, fmtTimelineStamp, daysLeft } from '@/lib/date';
+import { fmtDate, daysLeft } from '@/lib/date';
+
+function tlStamp(d: Date) {
+  const day = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${day} · ${time}`;
+}
 
 export default async function ClientOrderDetail({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -22,109 +28,115 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   if (order.clientId !== session!.user.id) redirect('/orders');
 
   const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
-  const d = daysLeft(order.expiresAt);
-  const paidPayment = order.payments.find(p => p.status === 'CONFIRMED' || p.status === 'PAID');
-  const lastPaymentId = paidPayment?.id ?? order.payments[0]?.id ?? null;
+  const dl = daysLeft(order.expiresAt);
+  const expiringActive = order.status === 'ACTIVE' && dl != null && dl > 0 && dl <= 7;
+  const isPaid = ['PAID', 'CONFIRMED', 'FREE'].includes(order.paymentStatus);
+  const lastPay = order.payments[0] ?? null;
 
-  // Build the client-side activity timeline (synthesized from order + payments)
-  type Event = { at: Date; tone: 'success' | 'warning' | 'danger' | 'info' | 'muted'; title: string; detail?: string };
+  // Activity timeline (synthesized from order + payments)
+  type Event = { at: Date; tone: string; title: string; detail?: string };
   const events: Event[] = [];
-  events.push({ at: order.createdAt, tone: 'info', title: 'Order placed', detail: `${order.plan.name} · qty ${order.qty}` });
+  events.push({ at: order.createdAt, tone: 'info', title: 'Order placed', detail: `${order.plan.durationDays}-day Mobile · ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} · ${money(Number(order.amount))}` });
   for (const p of [...order.payments].reverse()) {
-    if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, tone: 'success', title: `Payment confirmed`, detail: `${p.method} · ${money(Number(p.gross))}` });
-    else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, tone: 'warning', title: `Awaiting payment`, detail: `${p.provider} · ${p.method}` });
-    else if (p.status === 'FAILED') events.push({ at: p.createdAt, tone: 'danger', title: `Payment failed`, detail: `${p.method}` });
-    else if (p.status === 'REFUNDED') events.push({ at: p.refundedAt ?? p.createdAt, tone: 'muted', title: `Refunded ${money(Number(p.refundedAmount ?? p.gross))}`, detail: '' });
-    else if (p.status === 'REFUND_REQUESTED' as any) events.push({ at: p.createdAt, tone: 'warning', title: 'Refund requested — pending review' });
+    if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, tone: 'success', title: 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
+    else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
+    else if (p.status === 'FAILED') events.push({ at: p.createdAt, tone: 'danger', title: 'Payment failed', detail: 'Retry from this order or contact support.' });
+    else if (p.status === 'REFUNDED') events.push({ at: p.refundedAt ?? p.createdAt, tone: 'muted', title: `Refunded ${money(Number(p.refundedAmount ?? p.gross))}` });
   }
-  if (order.activatedAt) events.push({ at: order.activatedAt, tone: 'success', title: 'Provisioned', detail: `${order.assignments.length} ${order.assignments.length === 1 ? 'proxy' : 'proxies'} assigned` });
-  else if (order.status === 'PROVISIONING') events.push({ at: order.updatedAt, tone: 'warning', title: 'Awaiting fulfillment', detail: 'Our team is preparing your proxies' });
-  if (order.cancelledAt) events.push({ at: order.cancelledAt, tone: 'danger', title: 'Cancelled', detail: order.cancelledReason ?? '' });
-  if (order.expiresAt && order.expiresAt < new Date()) events.push({ at: order.expiresAt, tone: 'muted', title: 'Expired' });
-  else if (order.expiresAt) events.push({ at: order.expiresAt, tone: 'info', title: 'Expires', detail: fmtDate(order.expiresAt) });
-  events.sort((a, b) => b.at.getTime() - a.at.getTime());
+  if (order.activatedAt) events.push({ at: order.activatedAt, tone: 'violet', title: 'Provisioned', detail: `${order.assignments.length} mobile ${order.assignments.length === 1 ? 'proxy is' : 'proxies are'} live.` });
+  else if (order.status === 'PROVISIONING') events.push({ at: order.updatedAt, tone: 'warning', title: 'Awaiting fulfillment', detail: 'Our team is preparing your proxies. Typical delivery within 24 hours.' });
+  if (order.cancelledAt) events.push({ at: order.cancelledAt, tone: 'danger', title: 'Cancelled', detail: order.cancelledReason ?? 'No charge was made.' });
+  events.sort((a, b) => a.at.getTime() - b.at.getTime());
+  const tlDot = (tone: string) => (tone && tone !== 'muted' ? tone : '');
 
   return (
     <>
-      <ClientTopbar title="Order detail" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1416, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <h2 className="mono" style={{ fontSize: 18, color: 'var(--text)', margin: 0 }}>{order.id}</h2>
-          <span className={`chip ${order.status.toLowerCase().replace('_','-')}`}>{order.status.toLowerCase()}</span>
-          {order.paymentStatus !== 'PAID' && order.paymentStatus !== 'CONFIRMED' && <span className={`chip ${order.paymentStatus.toLowerCase()}`}>{order.paymentStatus.toLowerCase()} payment</span>}
-          {order.autoRenew && <span className="chip muted">Auto-renew on</span>}
-          {order.exception && <span className="chip warning">{order.exception.toLowerCase().replace(/_/g, ' ')}</span>}
-          <div style={{ flex: 1 }} />
-          <ClientOrderDetailActions
-            orderId={order.id}
-            status={order.status}
-            paymentStatus={order.paymentStatus}
-            hasPaidPayment={!!paidPayment}
-            lastPaymentId={lastPaymentId}
-          />
-        </div>
-
-        <div className="grid-detail">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="panel">
-              <div className="panel-header"><span className="panel-title">Order snapshot</span></div>
-              <div className="panel-body">
-                <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{order.plan.name}</span></div>
-                <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{order.plan.carrier} · {order.region}</span></div>
-                <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{order.qty}</span></div>
-                <div className="kv-row total"><span className="kv-label">Amount</span><span className="kv-val">{money(Number(order.amount))}</span></div>
+      <ClientTopbar breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: `Order ${order.id}` }]} balance={Number(me?.balance ?? 0)} />
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div style={{ maxWidth: 'var(--page-w)', margin: '0 auto', width: '100%' }}>
+          <div className="detail-header">
+            <div className="detail-header-left">
+              <div className="detail-id">{order.id}</div>
+              <div className="detail-chips">
+                <span className={`chip ${order.status.toLowerCase().replace('_', '-')}`}>{order.status.charAt(0) + order.status.slice(1).toLowerCase().replace('_', ' ')}</span>
+                {!isPaid && order.status !== 'CANCELLED' && <span className={`chip ${order.paymentStatus.toLowerCase()}`}>{order.paymentStatus.charAt(0) + order.paymentStatus.slice(1).toLowerCase()} payment</span>}
+                {order.status === 'ACTIVE' && order.autoRenew && <span className="chip muted">Auto-renew on</span>}
               </div>
             </div>
-            {/* Split row per the original prototype: Activity + Assigned Proxies (1fr 1fr).
-                When no proxies, Activity expands to full width. */}
-            <div className={order.assignments.length > 0 ? 'card-2col' : ''}>
-              <div className="panel">
-                <div className="panel-header"><span className="panel-title">Activity</span></div>
-                <div className="panel-body" style={{ padding: 0 }}>
-                  <ul style={{ margin: 0, padding: '12px 0', listStyle: 'none' }}>
-                    {events.map((e, i) => (
-                      <li key={i} style={{ padding: '8px 20px', display: 'flex', gap: 12 }}>
-                        <span style={{ marginTop: 5, flexShrink: 0, width: 8, height: 8, borderRadius: '50%', background: `var(--${e.tone === 'muted' ? 'muted' : e.tone})` }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{fmtTimelineStamp(e.at)}</div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text)', fontWeight: 500, marginTop: 2 }}>{e.title}</div>
-                          {e.detail && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{e.detail}</div>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              {order.assignments.length > 0 && (
-                <div className="panel">
-                  <div className="panel-header">
-                    <span className="panel-title">Assigned proxies ({order.assignments.length})</span>
-                    <Link href={`/proxies?order=${order.id}`} className="panel-action">My Proxies →</Link>
-                  </div>
-                  <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                    {order.assignments.map(a => (
-                      <li key={a.id} style={{ padding: '10px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Link href={`/proxies/${a.proxy.id}`} className="mono td-link">{a.proxy.id}</Link>
-                        <span className={`chip ${a.proxy.health.toLowerCase()}`}>{a.proxy.health.toLowerCase()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            <div className="detail-actions">
+              <ClientOrderDetailActions
+                orderId={order.id}
+                status={order.status}
+                paymentStatus={order.paymentStatus}
+                autoRenew={order.autoRenew}
+                expiringActive={expiringActive}
+              />
             </div>
           </div>
-          <div className="panel">
-            <div className="panel-header"><span className="panel-title">Lifecycle</span></div>
-            <div className="panel-body">
-              <div className="kv-row"><span className="kv-label">Created</span><span className="kv-val">{fmtDate(order.createdAt)}</span></div>
-              <div className="kv-row"><span className="kv-label">Activated</span><span className="kv-val">{fmtDate(order.activatedAt)}</span></div>
-              <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{fmtDate(order.expiresAt)}{d !== null && d > 0 ? ` (${d}d left)` : ''}</span></div>
-              <div className="kv-row">
-                <span className="kv-label">Auto-renew</span>
-                <span className="kv-val" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>{order.autoRenew ? 'On' : 'Off'}</span>
-                  <ClientAutoRenewToggle orderId={order.id} on={order.autoRenew} disabled={order.status === 'CANCELLED' || order.status === 'EXPIRED'} />
-                </span>
+
+          <div className="grid-detail">
+            <div className="grid-left">
+              <div className="panel">
+                <div className="panel-header"><span className="panel-title">Order snapshot</span></div>
+                <div className="panel-body">
+                  <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{order.plan.durationDays}-day Mobile</span></div>
+                  <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{order.plan.carrier} · {order.region}</span></div>
+                  <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{order.qty} {order.qty === 1 ? 'proxy' : 'proxies'}</span></div>
+                  <div className="kv-row"><span className="kv-label">Amount</span><span className="kv-val mono">{money(Number(order.amount))}</span></div>
+                  <div className="kv-row">
+                    <span className="kv-label">Payment</span>
+                    <span className="kv-val">
+                      {lastPay ? <><span className="muted">{lastPay.method} · {fmtDate(lastPay.createdAt)}</span> <span style={{ marginLeft: 8 }}><span className={`chip ${isPaid ? 'paid' : order.paymentStatus.toLowerCase()}`}>{isPaid ? 'Paid' : order.paymentStatus.charAt(0) + order.paymentStatus.slice(1).toLowerCase()}</span></span></> : <span className="chip muted">—</span>}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="order-detail-split">
+                <div className="panel">
+                  <div className="panel-header"><span className="panel-title">Activity</span></div>
+                  <div className="timeline activity-scroll">
+                    {events.map((e, i) => (
+                      <div className="tl-item" key={i}>
+                        <span className={`tl-dot ${tlDot(e.tone)}`} />
+                        <div className="tl-body">
+                          <span className="tl-stamp">{tlStamp(e.at)}</span>
+                          <span className="tl-title">{e.title}</span>
+                          {e.detail && <span className="tl-detail">{e.detail}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {order.assignments.length > 0 && (
+                  <div className="panel">
+                    <div className="panel-header">
+                      <span className="panel-title">Assigned Proxies</span>
+                      <Link href={`/proxies?order=${order.id}`} className="panel-action">My Proxies →</Link>
+                    </div>
+                    <div className="widget-list activity-scroll">
+                      {order.assignments.map(a => (
+                        <Link key={a.id} className="widget-row" href={`/proxies/${a.proxy.id}`}>
+                          <span className="widget-label"><span className="td-link">{a.proxy.id}</span></span>
+                          <span className="widget-meta"><span className={`chip ${a.proxy.health.toLowerCase()}`}>{a.proxy.health.charAt(0) + a.proxy.health.slice(1).toLowerCase()}</span></span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid-right">
+              <div className="panel">
+                <div className="panel-header"><span className="panel-title">Lifecycle</span></div>
+                <div className="panel-body">
+                  <div className="kv-row"><span className="kv-label">Created</span><span className="kv-val">{fmtDate(order.createdAt)}</span></div>
+                  <div className="kv-row"><span className="kv-label">Activated</span><span className="kv-val">{order.activatedAt ? fmtDate(order.activatedAt) : '—'}</span></div>
+                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{order.expiresAt ? fmtDate(order.expiresAt) : '—'}</span></div>
+                  <div className="kv-row"><span className="kv-label">Auto-renew</span><span className="kv-val"><span className={`chip ${order.autoRenew ? 'active' : 'muted'}`}>{order.autoRenew ? 'On' : 'Off'}</span></span></div>
+                  {order.cancelledAt && <div className="kv-row"><span className="kv-label">Cancelled</span><span className="kv-val">{fmtDate(order.cancelledAt)}</span></div>}
+                </div>
               </div>
             </div>
           </div>

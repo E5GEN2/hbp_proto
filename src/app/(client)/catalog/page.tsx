@@ -5,6 +5,27 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 
+// Client-side feature template, keyed by duration — canon: not derived from the
+// admin description (which renders below the bullets as marketing copy).
+const FEATURES_BY_DURATION: Record<number, string[]> = {
+  7: ['4G LTE mobile IPs', 'Unlimited bandwidth', '24h sticky sessions', 'Manual rotation'],
+  30: ['4G LTE mobile IPs', 'Unlimited bandwidth', 'Sticky 24h sessions', 'Auto-rotation available'],
+  90: ['4G LTE mobile IPs', 'Unlimited bandwidth', 'Sticky 24h sessions', 'Auto-rotation + URL rotation', 'Priority routing'],
+};
+const tierFeatures = (d: number) => FEATURES_BY_DURATION[d] || FEATURES_BY_DURATION[30];
+
+function durationLabel(days: number): string {
+  if (days === 1) return '1 day';
+  if (days < 30) return `${days} days`;
+  if (days === 30) return '30 days';
+  if (days === 60) return '60 days';
+  if (days === 90) return '90 days';
+  if (days % 30 === 0) return `${days / 30} months`;
+  return `${days} days`;
+}
+
+type Tier = { duration: number; price: number; regions: Set<string>; description: string; anyLow: boolean };
+
 export default async function CatalogPage() {
   const session = await getServerSession(authOptions);
   const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
@@ -12,25 +33,73 @@ export default async function CatalogPage() {
     where: { active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { durationDays: 'asc' },
   });
-  const byDur = new Map<number, typeof plans[number]>();
-  for (const p of plans) if (!byDur.has(p.durationDays)) byDur.set(p.durationDays, p);
-  const tiers = [...byDur.values()];
+
+  // Group sellable plans by duration → one card per tier (canon catalogTiers).
+  const sellable = plans.filter(p => p.capacityState !== 'SOLD_OUT');
+  const map = new Map<number, Tier>();
+  for (const p of sellable) {
+    let t = map.get(p.durationDays);
+    if (!t) {
+      t = { duration: p.durationDays, price: Number(p.price), regions: new Set(), description: p.description ?? '', anyLow: false };
+      map.set(p.durationDays, t);
+    }
+    t.regions.add(p.region);
+    const price = Number(p.price);
+    if (price > t.price) t.price = price; // defensive max on price divergence within a tier
+    if (p.capacityState === 'LOW') t.anyLow = true;
+    if ((p.description ?? '').length > t.description.length) t.description = p.description ?? '';
+  }
+  const tiers = [...map.values()].sort((a, b) => a.duration - b.duration);
 
   return (
     <>
-      <ClientTopbar title="Choose your plan" balance={Number(me?.balance ?? 0)} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
-        <div className="plan-cards" style={{ maxWidth: 1080, margin: '0 auto' }}>
-          {tiers.map((p) => (
-            <div key={p.id} className="panel" style={{ padding: 24 }}>
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Mobile · 3 locations</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text)', marginTop: 6 }}>{p.durationDays} days</div>
-              <div style={{ fontSize: 14, marginTop: 6, color: 'var(--accent-text)', fontWeight: 600 }}>{money(Number(p.price))} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/ per proxy</span></div>
-              {p.capacityState === 'LOW' && <div className="chip warning" style={{ marginTop: 10 }}>Limited availability</div>}
-              <p style={{ marginTop: 12, fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{p.description}</p>
-              <Link href={`/checkout?duration=${p.durationDays}`} className="btn primary" style={{ marginTop: 16, width: '100%' }}>Select plan</Link>
+      <ClientTopbar
+        breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: 'Catalog' }]}
+        balance={Number(me?.balance ?? 0)}
+      />
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div style={{ maxWidth: 'var(--page-w)', margin: '0 auto', width: '100%' }}>
+          <div className="panel">
+            <div className="panel-header">
+              <span className="panel-title">Choose Your Plan</span>
             </div>
-          ))}
+            <div className="panel-body">
+              {tiers.length === 0 ? (
+                <div className="empty">
+                  <div className="empty-title">No plans available</div>
+                  <div className="empty-desc">All plans are currently sold out. Please check back soon or contact support.</div>
+                </div>
+              ) : (
+                <div className="plan-cards">
+                  {tiers.map(t => {
+                    const locCount = t.regions.size;
+                    return (
+                      <div key={t.duration} className="plan-card">
+                        <div className="plan-card-eyebrow">
+                          Mobile · {locCount} {locCount === 1 ? 'location' : 'locations'}
+                        </div>
+                        <div className="plan-card-title">{durationLabel(t.duration)}</div>
+                        <div className="plan-card-price">
+                          <span className="price-value">{money(t.price)}</span>
+                          <span className="price-suffix">per proxy</span>
+                        </div>
+                        {t.anyLow && <span className="plan-card-pill">Limited availability</span>}
+                        <ul className="plan-card-features">
+                          {tierFeatures(t.duration).map(f => (
+                            <li key={f}>{f}</li>
+                          ))}
+                        </ul>
+                        {t.description && <p className="plan-card-desc">{t.description}</p>}
+                        <Link className="btn primary" href={`/checkout?duration=${t.duration}`}>
+                          Select plan
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </main>
     </>

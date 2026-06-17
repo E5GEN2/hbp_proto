@@ -585,6 +585,76 @@ table.dt { table-layout: fixed; }
 .order-card-days.danger { color: var(--danger); }
 .order-card-days.warning { color: var(--warning); }
 
+/* ===== Plan cards (Catalog) — canon proxy-handoff client-panel.html =====
+   New client-only classes. Card is a flex column; the Select-plan button is
+   pinned to the bottom (margin-top:auto) so cards with uneven feature lists
+   keep their CTAs aligned. */
+.plan-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: border-color .15s, background-color .15s;
+}
+.plan-card:hover { border-color: var(--border-strong); }
+.plan-card.selected { border: 1.5px solid var(--accent); background: var(--surface-2); padding: 19.5px; }
+.plan-card-eyebrow {
+  font: 650 11px/1 var(--font-sans);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-disabled);
+}
+.plan-card-title { font: 650 22px var(--font-sans); color: var(--text); letter-spacing: -0.01em; }
+.plan-card-price { display: flex; align-items: baseline; gap: 8px; }
+.plan-card-price .price-value { font: 650 28px var(--font-sans); color: var(--text); letter-spacing: -0.01em; }
+.plan-card-price .price-suffix { font: 400 13px var(--font-sans); color: var(--muted); }
+.plan-card-meta { font: 400 12.5px var(--font-sans); color: var(--muted); }
+.plan-card-features { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.plan-card-features li {
+  font: 400 13px var(--font-sans);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.plan-card-features li::before {
+  content: '';
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+.plan-card-desc { font: 400 12.5px/1.45 var(--font-sans); color: var(--muted); font-style: italic; margin: 0; }
+.plan-card .btn.primary { margin-top: auto; }
+.plan-card.popular { border: 1.5px solid var(--accent); padding: 19.5px; position: relative; }
+.plan-card.popular::before {
+  content: 'Most popular';
+  position: absolute;
+  top: -10px; left: 24px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+.plan-card .plan-card-pill {
+  align-self: flex-start;
+  font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+.plan-card.sold-out { opacity: .55; pointer-events: none; }
+
 /* ===== Empty state ===== */
 .empty {
   padding: 48px 32px;
@@ -836,7 +906,8 @@ table.dt { table-layout: fixed; }
   align-items: center;
   gap: 8px;
 }
-.page-title .seg-muted { color: var(--muted); font-weight: 500; }
+.page-title .seg-muted { color: var(--muted); font-weight: 500; cursor: pointer; }
+.page-title .seg-muted:hover { color: var(--text-secondary); }
 .page-title .seg-sep { color: var(--text-disabled); }
 .topbar-actions { display: flex; align-items: center; gap: 12px; }
 .topbar-balance {

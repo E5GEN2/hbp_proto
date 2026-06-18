@@ -5,7 +5,7 @@ import { useToast } from '@/components/ui/Toast';
 
 export type FilterDef =
   | { kind: 'search'; name: string; placeholder?: string; width?: number }
-  | { kind: 'select'; name: string; label: string; options: { value: string; label: string }[]; value?: string; size?: 'sm' | 'md' };
+  | { kind: 'select'; name: string; label: string; options: { value: string; label: string }[]; value?: string; size?: 'sm' | 'md' | 'lg' };
 
 export function FilterBar({
   filters, action, rightSlot, exportLabel,

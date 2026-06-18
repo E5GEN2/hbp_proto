@@ -536,6 +536,13 @@ table.dt { table-layout: fixed; }
 }
 .theme-admin .tab.emphasis.active::after { background: var(--warning); }
 
+/* Renewals split tab-bar (canon .tabs-split) — grouped windows separated by
+   thin dividers. The element carries .tabs too, so the .theme-admin .tabs/.tab
+   geometry (20px inset · 57px · stretch · ::after underline) still applies. */
+.tabs-split { display: flex; align-items: stretch; gap: 0; }
+.tabs-split .tab-group { display: flex; gap: 2px; align-items: stretch; }
+.tabs-split .tab-group-divider { width: 1px; background: var(--border); margin: 14px; align-self: stretch; }
+
 /* Checkbox — inline-block + absolute ::after (canon; prevents row jitter). */
 .chk {
   width: 16px; height: 16px;

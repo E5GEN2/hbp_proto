@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { extendOrderAction } from '@/lib/admin-actions';
+import { fmtDate } from '@/lib/date';
 
 type Mode = 'same' | 'changeQty' | 'swap';
 
@@ -50,7 +51,7 @@ export function ExtendOrderModal({
     start(async () => {
       try {
         const r = await extendOrderAction(orderId, periodDays);
-        toast('Order extended', `New expiry: ${r.newExpiry?.toLocaleDateString() ?? '—'}`, 'success');
+        toast('Order extended', `New expiry: ${fmtDate(r.newExpiry)}`, 'success');
         onClose();
         router.refresh();
       } catch (e: any) { setErr(e?.message ?? 'Failed'); }
@@ -115,7 +116,7 @@ export function ExtendOrderModal({
         </div>
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
           <span style={{ color: 'var(--muted)' }}>New expiry</span>
-          <span style={{ color: 'var(--text)', fontWeight: 600 }}>{newExpiry.toLocaleDateString()}</span>
+          <span style={{ color: 'var(--text)', fontWeight: 600 }}>{fmtDate(newExpiry)}</span>
         </div>
       </div>
       {mode === 'swap' && (

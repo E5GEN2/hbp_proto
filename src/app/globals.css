@@ -391,6 +391,15 @@ table.dt { table-layout: fixed; }
 .col-money.right, .col-num.right, .col-date.right { text-align: right; }
 .col-status { text-align: left; }
 .col-action { text-align: center; }
+/* Canon centers the HEADER of numeric/money/date/pct/duration/action columns
+   too — but `table.dt thead th` (text-align:left) outranks the bare `.col-*`
+   class, so headers were rendering left over their centered data. Restore the
+   canon centering with a th-scoped, higher-specificity rule. Scoped to
+   .theme-admin so the client portal's tables are untouched by this audit. */
+.theme-admin table.dt thead th.col-num, .theme-admin table.dt thead th.col-money,
+.theme-admin table.dt thead th.col-date, .theme-admin table.dt thead th.col-pct,
+.theme-admin table.dt thead th.col-duration, .theme-admin table.dt thead th.col-volume,
+.theme-admin table.dt thead th.col-action { text-align: center; }
 .col-endpoint { font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 /* Stacked-content cells — allow wrapping without ellipsis cutting second line */
 .table tbody td.cred-stack, table.dt tbody td.cred-stack,

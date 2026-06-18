@@ -89,7 +89,7 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
                     ? <Link href={`/admin/payments/${o.paymentId}`} className="td-link"><span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''}`}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span></Link>
                     : <span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''}`}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span>}
                 </td>
-                <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'}`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
+                <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'} sm`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
                 <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
               </tr>
             ))}

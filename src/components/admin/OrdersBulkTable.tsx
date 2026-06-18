@@ -25,6 +25,7 @@ type Row = {
 // Canon .dt anchor scheme: L = 64px chk + 164px Order ID + 164px Expires R-anchor
 // = 392px fixed; seven middle cols share the slack by --w weights (col-total 25).
 const FLEX = (w: number) => `calc((100% - 392px) * ${w} / 25)`;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 export function OrdersBulkTable({ orders }: { orders: Row[] }) {
   const router = useRouter();
@@ -117,11 +118,11 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
                 <td className="col-text">{o.planName}</td>
                 <td className="col-text">{o.planCarrier} · {o.region}</td>
                 <td className="col-money">{money(o.amount)}</td>
-                <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
+                <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
                 <td className="col-status">
                   {o.exception
-                    ? <span className="chip danger">{o.exception.toLowerCase().replace(/_/g, ' ')}</span>
-                    : <span className={`chip ${o.status.toLowerCase().replace('_', '-')}`}>{o.status.toLowerCase()}</span>}
+                    ? <span className="chip danger">{cap(o.exception.replace(/_/g, ' '))}</span>
+                    : <span className={`chip ${o.status.toLowerCase().replace('_', '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span>}
                 </td>
                 <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
                 <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>

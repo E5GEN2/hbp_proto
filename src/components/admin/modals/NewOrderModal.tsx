@@ -107,7 +107,7 @@ export function NewOrderModal({
           </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 22 }}>
-          <span className={`toggle ${autoRenew ? 'on' : ''}`} onClick={() => setAutoRenew(v => !v)} style={{ cursor: 'pointer' }} />
+          <span className={`toggle-v2 ${autoRenew ? 'on' : ''}`} onClick={() => setAutoRenew(v => !v)} style={{ cursor: 'pointer' }} />
           <span style={{ fontSize: 12.5, color: 'var(--text)' }}>Auto-renew enabled</span>
         </div>
         <div style={{ gridColumn: '1 / -1', background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 12.5 }}>

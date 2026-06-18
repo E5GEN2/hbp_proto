@@ -1793,3 +1793,12 @@ table.dt { table-layout: fixed; }
 /* --- Deferred dashboard conformance (folded from U2/U3 re-audit) ------ */
 .theme-admin .kpi-card { min-height: 90px; }
 .theme-admin .sidebar-footer { gap: 12px; }
+
+/* --- Plan-Edit / Payment-Detail layout shell (U5) -------------------- */
+/* Canon `.plan-edit-page` wrapper: caps detail width at the 1416 content
+   cap and centers it; `.plan-edit-shell` is the 1fr+aside grid; `.form-aside`
+   is the sticky right column. Reused by Payment Detail and (later) Plan Edit. */
+.plan-edit-page { width: 100%; max-width: calc(1080px + var(--aside-w) + 16px); margin: 0 auto; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.plan-edit-page > .detail-header { margin-bottom: 0; }
+.plan-edit-shell { display: grid; grid-template-columns: minmax(0, 1fr) var(--aside-w); gap: 16px; align-items: start; }
+.form-aside { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 12px; }

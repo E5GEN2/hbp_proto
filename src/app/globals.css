@@ -505,6 +505,37 @@ table.dt { table-layout: fixed; }
 .exc-pill-count { background: var(--surface-2); color: var(--muted); padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 650; }
 .exc-pill.active .exc-pill-count { background: rgba(26,17,7,.2); color: #1a1107; }
 
+/* ════════ ADMIN CANON CORRECTIONS ════════
+   The shared .filter-bar/.search-box/.tabs/.tab primitives in globals were
+   tuned for the CLIENT (transparent in-panel filter-bar, 280px search, flush
+   short tabs). The ADMIN canon (prototype.html) differs, so restore the canon-
+   admin geometry scoped under .theme-admin. (.panel/.panel-header/.panel-title/
+   .dt/.col-* already match canon and are reused as-is.) */
+
+/* Filter-bar is a standalone bordered CARD above the list panel (canon) */
+.theme-admin .filter-bar {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 20px; gap: 10px;
+  min-height: 60px; margin-bottom: 16px;
+}
+.theme-admin .search-box { flex: 0 0 360px; }
+
+/* Tabs: canon 20px inset · 57px tall · stretch · ::after underline */
+.theme-admin .tabs {
+  padding: 0 20px; gap: 2px; min-height: 57px;
+  align-items: stretch; border-bottom-color: var(--border-subtle);
+}
+.theme-admin .tab {
+  padding: 0 14px; font-size: 12px; position: relative;
+  border-bottom: none; align-items: center;
+}
+.theme-admin .tab.active { border-bottom: none; }
+.theme-admin .tab.active::after {
+  content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px;
+  height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
+}
+.theme-admin .tab.emphasis.active::after { background: var(--warning); }
+
 /* Checkbox — inline-block + absolute ::after (canon; prevents row jitter). */
 .chk {
   width: 16px; height: 16px;

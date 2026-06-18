@@ -46,7 +46,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
 
   return (
     <>
-      <AdminTopbar title="Settings" />
+      <AdminTopbar crumbs={[{ label: 'Settings' }]} />
       <main style={{ padding: 24, overflowY: 'auto', display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24 }}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {TABS.map(t => (

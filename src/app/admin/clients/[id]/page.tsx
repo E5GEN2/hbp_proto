@@ -43,7 +43,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
     <>
       <AdminTopbar crumbs={[
         { label: 'Clients', href: '/admin/clients' },
-        { label: c.id },
+        { label: `${c.id} · ${c.name}` },
       ]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>

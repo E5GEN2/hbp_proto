@@ -42,7 +42,7 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
 
   return (
     <>
-      <AdminTopbar title="Admin Logs" />
+      <AdminTopbar crumbs={[{ label: 'Admin Logs' }]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 8 }}>
           {['all', 'order', 'payment', 'proxy', 'client', 'plan', 'system', 'auth'].map(v => {

@@ -42,7 +42,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     <>
       <AdminTopbar crumbs={[
         { label: 'Orders', href: '/admin/orders' },
-        { label: order.id },
+        { label: `Order ${order.id}` },
       ]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>

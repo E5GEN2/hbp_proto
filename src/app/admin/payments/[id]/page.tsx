@@ -18,7 +18,6 @@ export default async function PaymentDetail({ params }: { params: { id: string }
   return (
     <>
       <AdminTopbar crumbs={[
-        { label: 'Dashboard', href: '/admin' },
         { label: 'Payments', href: '/admin/payments' },
         { label: p.id },
       ]} />

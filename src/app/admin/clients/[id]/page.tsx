@@ -42,7 +42,6 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
   return (
     <>
       <AdminTopbar crumbs={[
-        { label: 'Dashboard', href: '/admin' },
         { label: 'Clients', href: '/admin/clients' },
         { label: c.id },
       ]} />

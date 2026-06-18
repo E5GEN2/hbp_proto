@@ -25,7 +25,6 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
   return (
     <>
       <AdminTopbar crumbs={[
-        { label: 'Dashboard', href: '/admin' },
         { label: 'Proxies', href: '/admin/proxies' },
         { label: proxy.id },
       ]} />

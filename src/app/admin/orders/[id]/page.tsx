@@ -41,7 +41,6 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   return (
     <>
       <AdminTopbar crumbs={[
-        { label: 'Dashboard', href: '/admin' },
         { label: 'Orders', href: '/admin/orders' },
         { label: order.id },
       ]} />

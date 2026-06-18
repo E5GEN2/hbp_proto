@@ -1074,6 +1074,89 @@ table.dt { table-layout: fixed; }
 .page-title .seg-muted:hover { color: var(--text-secondary); }
 .page-title .seg-sep { color: var(--text-disabled); }
 
+/* ════════════ ADMIN SHELL CHROME (canon prototype.html) ════════════
+   Admin renders under .theme-admin. The base .sidebar/.nav/.nav-item/.topbar/
+   .page-title/.sidebar-logo primitives are SHARED with the client and were
+   tuned to the client (text logo, 14px title, 16px nav inset). These rules
+   restore the CANON ADMIN geometry — live clock header, 18px route title,
+   section labels with rule lines, nav badges, name/role footer — all scoped
+   under .theme-admin so the client shell is never touched. */
+
+/* Sidebar header = live server clock (UTC chip · pulse · HH:MM:SS) */
+.theme-admin .sidebar-logo { gap: 10px; letter-spacing: normal; text-transform: none; }
+.theme-admin .sidebar-clock-time {
+  font: 650 15px/1 var(--font-sans); color: var(--text);
+  letter-spacing: .02em; font-variant-numeric: tabular-nums;
+}
+.theme-admin .topbar-clock-zone {
+  padding: 3px 7px; border: 1px solid rgba(91,140,255,.28); border-radius: 5px;
+  font: 700 10px/1 var(--font-sans); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.theme-admin .topbar-clock-pulse {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: var(--success); box-shadow: 0 0 6px rgba(60,207,142,.55);
+  animation: adminClockPulse 1.6s ease-in-out infinite;
+}
+@keyframes adminClockPulse { 0%,100% { opacity: .55; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .theme-admin .topbar-clock-pulse { animation: none; } }
+
+/* Nav: canon inset/gap + section labels (centered text with rule lines). The
+   React markup wraps each group in .nav-group; display:contents flattens it so
+   the canon 2px gap applies between every label/item like the flat prototype. */
+.theme-admin .nav { padding: 12px 12px; display: flex; flex-direction: column; gap: 2px; }
+.theme-admin .nav-group { display: contents; }
+.theme-admin .nav-item { padding: 8px 12px; border-radius: var(--radius-sm); margin: 0; gap: 12px; }
+.theme-admin .sidebar-section-label {
+  font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  color: var(--accent); text-transform: uppercase;
+  padding: 12px 20px 8px; display: flex; align-items: center; gap: 12px;
+}
+.theme-admin .sidebar-section-label::before,
+.theme-admin .sidebar-section-label::after { content: ''; flex: 1; height: 1px; background: rgba(91,140,255,.28); }
+
+/* NEW-orders count badge on the Orders nav item */
+.theme-admin .nav-badge {
+  margin-left: auto; font: 650 10px/16px var(--font-sans);
+  padding: 1px 8px; border-radius: 10px;
+  background: var(--danger-dim); color: var(--danger);
+}
+.theme-admin .nav-badge.info { background: var(--accent-dim); color: var(--accent); }
+.theme-admin .nav-badge.warn { background: var(--warning-dim); color: var(--warning); }
+
+/* Footer: avatar · name · role · sign-out (admin-info grows so sign-out pins right) */
+.theme-admin .admin-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; overflow: hidden; }
+.theme-admin .admin-name { font: 600 12px var(--font-sans); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.theme-admin .admin-role { font: 400 10px var(--font-sans); color: var(--muted); }
+
+/* Topbar: single-line route title (18/650) on the left, [bell][New Order] right */
+.theme-admin .topbar-left { display: flex; align-items: center; min-width: 0; flex: 1; }
+.theme-admin .topbar-right { display: flex; align-items: center; gap: 10px; }
+.theme-admin .page-title {
+  font: 650 18px/1.2 var(--font-sans); color: var(--text);
+  display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden;
+  letter-spacing: -.01em;
+}
+.theme-admin .route-seg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.theme-admin .route-seg.parent { color: var(--muted); font-weight: 500; cursor: pointer; transition: color .12s; flex-shrink: 2; }
+.theme-admin .route-seg.parent:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.theme-admin .route-seg.current { color: var(--text); font-weight: 650; cursor: default; flex-shrink: 1; }
+.theme-admin .route-sep { color: var(--muted); opacity: .45; font-weight: 400; flex-shrink: 0; }
+
+/* Notification bell (canon .notif-btn = bordered 32px button + corner dot) */
+.theme-admin .notif-btn {
+  width: 32px; height: 32px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; position: relative; color: var(--muted);
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.theme-admin .notif-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.theme-admin .notif-btn .notif-dot {
+  position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--danger); border: 1.5px solid var(--surface);
+}
+
 /* Contextual back affordance — sits between topbar and content (canon
    #backlinkSlot). Full-width, 32px edge to match topbar/content padding. */
 .backlink-slot { padding: 6px 32px 0; background: var(--bg); }

@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
-import { OrdersToolbar } from '@/components/admin/toolbars/OrdersToolbar';
 import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { OrdersBulkTable } from '@/components/admin/OrdersBulkTable';
@@ -42,19 +41,13 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
 
   const where = { ...baseWhere, ...viewWhere };
 
-  const [orders, totalForView, allClients, allPlans, catalogItems] = await Promise.all([
+  const [orders, totalForView, catalogItems] = await Promise.all([
     prisma.order.findMany({
       where, orderBy: { createdAt: 'desc' },
       include: { client: true, plan: true },
       skip: (page - 1) * PER_PAGE, take: PER_PAGE,
     }),
     prisma.order.count({ where }),
-    prisma.user.findMany({
-      where: { role: 'CLIENT', status: { not: 'BLOCKED' } },
-      select: { id: true, name: true, email: true, balance: true },
-      orderBy: { name: 'asc' }, take: 200,
-    }),
-    prisma.plan.findMany({ where: { active: true, deletedAt: null }, orderBy: { name: 'asc' } }),
     prisma.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION'] } } }),
   ]);
 
@@ -77,20 +70,6 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     { v: 'cancelled',    l: 'Cancelled',        n: ct('CANCELLED') },
   ];
 
-  const allocByPlan = new Map(
-    (await prisma.order.groupBy({
-      by: ['planId'],
-      where: { status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
-      _sum: { qty: true },
-    })).map(a => [a.planId, a._sum.qty ?? 0])
-  );
-  const clientOpts = allClients.map(c => ({ id: c.id, name: c.name, email: c.email, balance: Number(c.balance) }));
-  const planOpts = allPlans.map(p => ({
-    id: p.id, name: p.name, price: Number(p.price), durationDays: p.durationDays,
-    carrier: p.carrier, region: p.region,
-    available: Math.max(0, p.availableQuota - (allocByPlan.get(p.id) ?? 0)),
-  }));
-
   const carriers = catalogItems.filter(c => c.kind === 'CARRIER').map(c => ({ value: c.value, label: c.value }));
   const regions = catalogItems.filter(c => c.kind === 'REGION').map(c => ({ value: c.value, label: c.value }));
 
@@ -99,7 +78,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <AdminTopbar title="Orders" action={<OrdersToolbar clients={clientOpts} plans={planOpts} />} />
+      <AdminTopbar title="Orders" />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 8 }}>
           {tabs.map(t => {

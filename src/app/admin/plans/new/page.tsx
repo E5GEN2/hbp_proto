@@ -8,7 +8,10 @@ export default async function AdminCreatePlanPage() {
   const catalog = await loadCatalog();
   return (
     <>
-      <AdminTopbar title="Plans / New plan" />
+      <AdminTopbar crumbs={[
+        { label: 'Plans', href: '/admin/plans' },
+        { label: 'New plan' },
+      ]} />
       <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1080, margin: '0 auto' }}>
         <div style={{ marginBottom: 8 }}>
           <span className="chip muted">Draft · not yet published</span>

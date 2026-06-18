@@ -138,7 +138,7 @@ function Toggle({ label, value, onChange, disabled, hint }: { label: string; val
         <div style={{ fontSize: 12.5, color: 'var(--text)' }}>{label}</div>
         {hint && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{hint}</div>}
       </div>
-      <span className={`toggle ${value ? 'on' : ''}`} onClick={() => !disabled && onChange(!value)} style={{ cursor: disabled ? 'not-allowed' : 'pointer' }} />
+      <span className={`toggle-v2 ${value ? 'on' : ''}`} onClick={() => !disabled && onChange(!value)} style={{ cursor: disabled ? 'not-allowed' : 'pointer' }} />
     </div>
   );
 }

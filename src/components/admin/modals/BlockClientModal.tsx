@@ -66,7 +66,7 @@ export function BlockClientModal({
             <div style={{ fontSize: 13, color: 'var(--text)' }}>Suspend all active orders</div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>Each active order → status SUSPENDED. Proxies stay reserved.</div>
           </div>
-          <span className={`toggle ${suspendOrders ? 'on' : ''}`} onClick={() => setSuspendOrders(v => !v)} style={{ cursor: 'pointer' }} />
+          <span className={`toggle-v2 ${suspendOrders ? 'on' : ''}`} onClick={() => setSuspendOrders(v => !v)} style={{ cursor: 'pointer' }} />
         </div>
       </div>
       {err && <div style={{ marginTop: 10, padding: 10, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12 }}>{err}</div>}

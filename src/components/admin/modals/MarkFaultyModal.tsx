@@ -99,7 +99,7 @@ function ToggleRow({ label, hint, value, onChange }: { label: string; hint: stri
         <div style={{ fontSize: 13, color: 'var(--text)' }}>{label}</div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{hint}</div>
       </div>
-      <span className={`toggle ${value ? 'on' : ''}`} onClick={() => onChange(!value)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+      <span className={`toggle-v2 ${value ? 'on' : ''}`} onClick={() => onChange(!value)} style={{ cursor: 'pointer', flexShrink: 0 }} />
     </div>
   );
 }

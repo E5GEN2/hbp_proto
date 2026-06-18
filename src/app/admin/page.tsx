@@ -10,6 +10,7 @@ import { fmtAdminStamp } from '@/lib/date';
 // col-total 3.
 const FLEX_RO = (w: number) => `calc((100% - 328px) * ${w} / 19)`;
 const FLEX_CAP = (w: number) => `calc((100% - 336px) * ${w} / 3)`;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 const CAP_LABEL: Record<string, string> = {
   available: 'Available',
@@ -160,8 +161,8 @@ export default async function AdminDashboardPage() {
                         <td className="col-id"><Link href={`/admin/clients/${o.client.id}`} className="td-link">{o.client.id}</Link></td>
                         <td className="col-text">{o.plan.name}</td>
                         <td className="col-money">{money(Number(o.amount))}</td>
-                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
-                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace('_', '-')}`}>{o.status.toLowerCase()}</span></td>
+                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
+                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
                         <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
                       </tr>
                     ))}

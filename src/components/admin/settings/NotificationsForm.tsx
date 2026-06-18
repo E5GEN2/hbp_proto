@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { toggleNotificationRuleAction } from '@/lib/settings-actions';
+import { fmtDate } from '@/lib/date';
 
 const CLIENT_RULES = [
   { key: 'order-created',         label: 'Order created → Email receipt' },
@@ -90,7 +91,7 @@ export function NotificationsForm({ initial, templates }: {
                     <span className="tpl-row-meta">{t.id} · {t.trigger.toLowerCase().replace(/_/g, '-')}</span>
                   </div>
                   <span className={`tpl-row-channel ${ch === 'telegram' ? 'telegram' : 'email'}`}>{ch}</span>
-                  <span className="tpl-row-meta">{new Date(t.updatedAt).toLocaleDateString()}</span>
+                  <span className="tpl-row-meta">{fmtDate(t.updatedAt)}</span>
                 </div>
               );
             })}

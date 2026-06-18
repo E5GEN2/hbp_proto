@@ -67,7 +67,7 @@ export function MarkPaidModal({
               When ON, the order advances and proxies auto-assign if the plan allows
             </div>
           </div>
-          <span className={`toggle ${activate ? 'on' : ''}`} onClick={() => setActivate(v => !v)} style={{ cursor: 'pointer' }} />
+          <span className={`toggle-v2 ${activate ? 'on' : ''}`} onClick={() => setActivate(v => !v)} style={{ cursor: 'pointer' }} />
         </div>
       </div>
       {err && <div style={{ marginTop: 10, padding: 10, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12 }}>{err}</div>}

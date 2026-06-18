@@ -1,21 +1,24 @@
 'use client';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useToast } from '@/components/ui/Toast';
 
 export type FilterDef =
   | { kind: 'search'; name: string; placeholder?: string; width?: number }
-  | { kind: 'select'; name: string; label: string; options: { value: string; label: string }[]; value?: string };
+  | { kind: 'select'; name: string; label: string; options: { value: string; label: string }[]; value?: string; size?: 'sm' | 'md' };
 
 export function FilterBar({
-  filters, action, rightSlot,
+  filters, action, rightSlot, exportLabel,
 }: {
   filters: FilterDef[];
   action?: React.ReactNode;
   rightSlot?: React.ReactNode;
+  exportLabel?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const toast = useToast();
   const [, start] = useTransition();
   const [search, setSearch] = useState(params.get('q') ?? '');
 
@@ -52,21 +55,24 @@ export function FilterBar({
       {filters.map(f => {
         if (f.kind === 'search') {
           return (
-            <input
-              key={f.name}
-              className="form-input search"
-              placeholder={f.placeholder ?? 'Search…'}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={f.width ? { maxWidth: f.width } : undefined}
-            />
+            <div className="search-box" key={f.name} style={f.width ? { flex: `0 0 ${f.width}px` } : undefined}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="m10 10 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                placeholder={f.placeholder ?? 'Search…'}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
           );
         }
         const current = params.get(f.name) ?? '';
         return (
           <select
             key={f.name}
-            className="form-select"
+            className={`form-select ${f.size ? `filter-select-${f.size}` : ''}`}
             value={current}
             onChange={e => setParam(f.name, e.target.value)}
           >
@@ -75,9 +81,15 @@ export function FilterBar({
           </select>
         );
       })}
-      <button className="btn sm" onClick={resetAll}>Reset</button>
-      <div className="spacer" />
+      <div className="filter-divider" />
+      <button className="btn" onClick={resetAll}>Reset filters</button>
+      <div className="spacer" style={{ flex: 1 }} />
       {rightSlot}
+      {exportLabel && (
+        <button className="btn" onClick={() => toast('Export started', 'CSV will be emailed to you when ready', 'success')}>
+          {exportLabel}
+        </button>
+      )}
       {action}
     </div>
   );

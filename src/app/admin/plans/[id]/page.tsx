@@ -57,27 +57,18 @@ export default async function AdminEditPlanPage({ params }: { params: { id: stri
         { label: 'Plans', href: '/admin/plans' },
         { label: plan.name },
       ]} />
-      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1416, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <span className="mono" style={{ color: 'var(--muted)', fontSize: 12 }}>{plan.id}</span>
-          <span className="mono" style={{ color: 'var(--muted)', fontSize: 12 }}>· SKU {plan.internalSku ?? '—'}</span>
-          <span className={`chip ${plan.active ? 'success' : 'muted'}`}>{plan.active ? 'Active' : 'Disabled'}</span>
-          <span className={`chip ${plan.visibility === 'PUBLIC' ? 'muted' : 'info'}`}>{plan.visibility.toLowerCase()}</span>
-        </div>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <PlanForm
           mode="edit"
           planId={plan.id}
+          sku={plan.internalSku ?? plan.id}
           initial={initial}
           catalog={catalog}
           capacity={{ allocated, displayAvailable, state }}
           canDelete={activeOrders === 0}
+          notesSlot={<EntityNotesPanel objectType="PLAN" objectId={plan.id} />}
+          activitySlot={<EntityActivityWidget objectType="PLAN" objectId={plan.id} />}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginTop: 16, alignItems: 'start' }}>
-
-          <EntityNotesPanel objectType="PLAN" objectId={plan.id} />
-
-          <EntityActivityWidget objectType="PLAN" objectId={plan.id} />
-        </div>
       </main>
     </>
   );

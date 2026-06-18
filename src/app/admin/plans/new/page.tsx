@@ -12,10 +12,7 @@ export default async function AdminCreatePlanPage() {
         { label: 'Plans', href: '/admin/plans' },
         { label: 'New plan' },
       ]} />
-      <main style={{ padding: 24, overflowY: 'auto', maxWidth: 1080, margin: '0 auto' }}>
-        <div style={{ marginBottom: 8 }}>
-          <span className="chip muted">Draft · not yet published</span>
-        </div>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <PlanForm mode="create" initial={{}} catalog={catalog} />
       </main>
     </>

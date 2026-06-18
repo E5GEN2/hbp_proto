@@ -4,10 +4,25 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 
+// Flexible .dt column widths (canon applyDtAnchors reproduced in pure CSS): each
+// flex col = (100% − fixed anchors) × w / col-total. Recent Orders: anchor-id +
+// anchor-date = 328px fixed, col-total 19. Capacity: anchor-text + 168px = 336px,
+// col-total 3.
+const FLEX_RO = (w: number) => `calc((100% - 328px) * ${w} / 19)`;
+const FLEX_CAP = (w: number) => `calc((100% - 336px) * ${w} / 3)`;
+
+const CAP_LABEL: Record<string, string> = {
+  available: 'Available',
+  'sold-out': 'Sold out',
+  'blocked-grace': 'Blocked by grace',
+  'waiting-release': 'Waiting release',
+  low: 'Low availability',
+};
+
 export default async function AdminDashboardPage() {
   const [
     paidToday, revenue30dAgg, activeOrders, activeClients, expiringToday, inGrace,
-    recentOrders, capacityRows, exceptions, healthBuckets,
+    recentOrders, capacityRows, healthBuckets,
   ] = await Promise.all([
     prisma.payment.aggregate({
       _sum: { net: true },
@@ -33,15 +48,19 @@ export default async function AdminDashboardPage() {
       orderBy: { durationDays: 'asc' },
       take: 6,
     }),
-    prisma.order.findMany({
-      where: { exception: { not: null } },
-      take: 10,
-    }),
     Promise.all([
       prisma.proxy.count({ where: { OR: [{ status: 'FAULTY' }, { health: 'OFFLINE' }] } }),
       prisma.proxy.count({ where: { status: 'MAINTENANCE' } }),
     ]),
   ]);
+
+  // Read-only: Expiring Soon (24h/3d/7d) + Exceptions by type for the canon widgets
+  const [expBuckets, excBuckets] = await Promise.all([
+    prisma.order.groupBy({ by: ['renewalBucket'], where: { renewalBucket: { in: ['H24', 'D3', 'D7'] } }, _count: { _all: true } }),
+    prisma.order.groupBy({ by: ['exception'], where: { exception: { not: null } }, _count: { _all: true } }),
+  ]);
+  const expN = (b: 'H24' | 'D3' | 'D7') => expBuckets.find(x => x.renewalBucket === b)?._count._all ?? 0;
+  const excN = (e: string) => excBuckets.find(x => x.exception === e)?._count._all ?? 0;
 
   const [faulty, maintenance] = healthBuckets;
 
@@ -67,124 +86,199 @@ export default async function AdminDashboardPage() {
   return (
     <>
       <AdminTopbar title="Dashboard" />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
-        {/* KPI strip — 6 tiles */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 20 }}>
-          <Kpi label="Paid today"       value={money(Number(paidToday._sum.net ?? 0))}      tone="success" />
-          <Kpi label="Revenue 30D"      value={money(Number(revenue30dAgg._sum.net ?? 0))} tone="success" />
-          <Kpi label="Active orders"    value={String(activeOrders)}                       tone="violet" />
-          <Kpi label="Active clients"   value={String(activeClients)}                      tone="violet" />
-          <Kpi label="Expiring today"   value={String(expiringToday)}                      tone="warning" />
-          <Kpi label="In grace period"  value={String(inGrace)}                            tone="danger" />
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        {/* KPI row — Paid Today · Revenue 30D · Active Orders · Active Clients · Expiring Today · In Grace Period */}
+        <div className="kpi-row" style={{ marginBottom: 16 }}>
+          <Link className="kpi-card" href="/admin/payments?view=confirmed" title="Open Payments · Confirmed">
+            <div className="kpi-label">Paid Today</div>
+            <div className="kpi-value tone-success">{money(Number(paidToday._sum.net ?? 0))}</div>
+            <div className="kpi-accent-bar full green" />
+          </Link>
+          <Link className="kpi-card" href="/admin/payments" title="Open Payments">
+            <div className="kpi-label">Revenue 30D</div>
+            <div className="kpi-value tone-success">{money(Number(revenue30dAgg._sum.net ?? 0))}</div>
+            <div className="kpi-accent-bar full green" />
+          </Link>
+          <Link className="kpi-card" href="/admin/orders?view=active" title="Open Orders · Active">
+            <div className="kpi-label">Active Orders</div>
+            <div className="kpi-value tone-violet">{activeOrders}</div>
+            <div className="kpi-accent-bar full violet" />
+          </Link>
+          <Link className="kpi-card" href="/admin/clients?status=active" title="Open Clients · Active">
+            <div className="kpi-label">Active Clients</div>
+            <div className="kpi-value tone-violet">{activeClients}</div>
+            <div className="kpi-accent-bar full violet" />
+          </Link>
+          <Link className="kpi-card" href="/admin/renewals?view=24h" title="Open Renewals · Next 24h">
+            <div className="kpi-label">Expiring Today</div>
+            <div className="kpi-value tone-warning">{expiringToday}</div>
+            <div className="kpi-accent-bar full orange" />
+          </Link>
+          <Link className="kpi-card" href="/admin/renewals?view=grace" title="Open Renewals · In grace">
+            <div className="kpi-label">In Grace Period</div>
+            <div className="kpi-value tone-danger">{inGrace}</div>
+            <div className="kpi-accent-bar full red" />
+          </Link>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Recent orders */}
+        <div className="grid-2col">
+          <div className="grid-left">
+            {/* Recent Orders */}
             <div className="panel">
               <div className="panel-header">
-                <span className="panel-title">Recent orders</span>
+                <span className="panel-title">Recent Orders</span>
                 <Link className="panel-action" href="/admin/orders">View all →</Link>
               </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Order ID</th>
-                    <th>Client</th>
-                    <th>Plan</th>
-                    <th>Amount</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map(o => (
-                    <tr key={o.id}>
-                      <td><Link href={`/admin/orders/${o.id}`} className="mono td-link">{o.id}</Link></td>
-                      <td><Link href={`/admin/clients/${o.client.id}`} className="mono td-link">{o.client.id}</Link></td>
-                      <td>{o.plan.name}</td>
-                      <td>{money(Number(o.amount))}</td>
-                      <td><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
-                      <td><span className={`chip ${o.status.toLowerCase().replace('_','-')}`}>{o.status.toLowerCase()}</span></td>
-                      <td>{fmtAdminStamp(o.createdAt)}</td>
+              <div className="table-wrap">
+                <table className="dt">
+                  <colgroup>
+                    <col style={{ width: 'var(--anchor-id)' }} />
+                    <col style={{ width: FLEX_RO(4) }} />
+                    <col style={{ width: FLEX_RO(5) }} />
+                    <col style={{ width: FLEX_RO(3) }} />
+                    <col style={{ width: FLEX_RO(3) }} />
+                    <col style={{ width: FLEX_RO(4) }} />
+                    <col style={{ width: 'var(--anchor-date)' }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className="col-id">Order ID</th>
+                      <th className="col-id">Client ID</th>
+                      <th className="col-text">Plan</th>
+                      <th className="col-money">Amount</th>
+                      <th className="col-status">Payment</th>
+                      <th className="col-status">Status</th>
+                      <th className="col-date">Created</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {recentOrders.length === 0 ? (
+                      <tr><td colSpan={7}><div className="empty"><div className="empty-desc">No orders yet.</div></div></td></tr>
+                    ) : recentOrders.map(o => (
+                      <tr key={o.id}>
+                        <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
+                        <td className="col-id"><Link href={`/admin/clients/${o.client.id}`} className="td-link">{o.client.id}</Link></td>
+                        <td className="col-text">{o.plan.name}</td>
+                        <td className="col-money">{money(Number(o.amount))}</td>
+                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
+                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace('_', '-')}`}>{o.status.toLowerCase()}</span></td>
+                        <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Capacity */}
+            {/* Selling Capacity by Plan */}
             <div className="panel">
               <div className="panel-header">
-                <span className="panel-title">Selling capacity by plan</span>
+                <span className="panel-title">Selling Capacity by Plan<span className="help-tip" title="One Capacity State label per plan: Available (default) · Low availability · Blocked by grace · Waiting release · Sold out.">i</span></span>
                 <Link className="panel-action" href="/admin/plans">Manage plans →</Link>
               </div>
-              <table className="table">
-                <thead>
-                  <tr><th>Plan</th><th>Quota</th><th>Allocated</th><th>Available</th><th>Capacity</th></tr>
-                </thead>
-                <tbody>
-                  {capacity.map(c => (
-                    <tr key={c.plan.id}>
-                      <td><Link href={`/admin/plans/${c.plan.id}`} className="td-link">{c.plan.name}</Link></td>
-                      <td className="mono">{c.plan.availableQuota}</td>
-                      <td className="mono">{c.allocated}</td>
-                      <td className="mono">{c.displayAvail}</td>
-                      <td><span className={`chip ${c.state === 'sold-out' || c.state === 'low' ? c.state.replace('-','') : 'muted'}`}>{c.state}</span></td>
+              <div className="table-wrap">
+                <table className="dt capacity-table">
+                  <colgroup>
+                    <col style={{ width: 'var(--anchor-text)' }} />
+                    <col style={{ width: FLEX_CAP(1) }} />
+                    <col style={{ width: FLEX_CAP(1) }} />
+                    <col style={{ width: FLEX_CAP(1) }} />
+                    <col style={{ width: 168 }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className="col-text">Plan</th>
+                      <th className="col-num">Quota<span className="help-tip" title="Total capacity this plan is configured to sell.">i</span></th>
+                      <th className="col-num">Allocated<span className="help-tip" title="Capacity occupied by live orders, including grace and unreleased assignments.">i</span></th>
+                      <th className="col-num">Available<span className="help-tip" title="Quota − Allocated. What the client portal shows as sellable. If 0, hidden from checkout.">i</span></th>
+                      <th className="col-status">Capacity State</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {capacity.length === 0 ? (
+                      <tr><td colSpan={5}><div className="empty"><div className="empty-desc">No plans configured.</div></div></td></tr>
+                    ) : capacity.map(c => (
+                      <tr key={c.plan.id}>
+                        <td className="col-text"><Link href={`/admin/plans/${c.plan.id}`} className="plan-link">{c.plan.name}</Link></td>
+                        <td className="col-num">{c.plan.availableQuota}</td>
+                        <td className="col-num">{c.allocated}</td>
+                        <td className="col-num">{c.displayAvail}</td>
+                        <td className="col-status"><span className={`cap-label ${c.state}`}>{CAP_LABEL[c.state] ?? c.state}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          {/* Right column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="grid-right">
+            {/* Expiring Soon */}
             <div className="panel">
-              <div className="panel-header"><span className="panel-title">Exceptions</span></div>
-              <div className="panel-body" style={{ padding: 0 }}>
-                {exceptions.length === 0 ? (
-                  <div className="empty"><div className="empty-desc">No exceptions in queue.</div></div>
-                ) : (
-                  <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                    {exceptions.slice(0, 5).map(o => (
-                      <li key={o.id} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-                        <Link href={`/admin/orders/${o.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span className="mono td-link" style={{ fontSize: 12 }}>{o.id}</span>
-                          <span style={{ flex: 1, fontSize: 11.5, color: 'var(--muted)' }}>{o.exception?.toLowerCase().replace(/_/g, ' ')}</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div className="panel-header">
+                <span className="panel-title">Expiring Soon</span>
+                <Link className="panel-action" href="/admin/renewals">Open →</Link>
               </div>
+              <Link className="expiring-segment" href="/admin/renewals?view=24h">
+                <span className="issue-dot" style={{ background: 'var(--danger)' }} />
+                <span className="exp-label">Next 24 hours</span>
+                <span className="exp-count">{expN('H24')}</span>
+              </Link>
+              <Link className="expiring-segment" href="/admin/renewals?view=3d">
+                <span className="issue-dot" style={{ background: 'var(--warning)' }} />
+                <span className="exp-label">In 3 days</span>
+                <span className="exp-count">{expN('D3')}</span>
+              </Link>
+              <Link className="expiring-segment" href="/admin/renewals?view=7d">
+                <span className="issue-dot" style={{ background: 'var(--violet)' }} />
+                <span className="exp-label">In 7 days</span>
+                <span className="exp-count">{expN('D7')}</span>
+              </Link>
             </div>
+
+            {/* Exceptions */}
             <div className="panel">
-              <div className="panel-header"><span className="panel-title">Proxy health</span></div>
-              <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                <li style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
-                  <Link href="/admin/proxies?health=faulty" className="td-link">Faulty / offline</Link>
-                  <span className="mono" style={{ color: 'var(--danger)', fontWeight: 600 }}>{faulty}</span>
-                </li>
-                <li style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between' }}>
-                  <Link href="/admin/proxies?health=maintenance" className="td-link">Maintenance</Link>
-                  <span className="mono" style={{ color: 'var(--warning)', fontWeight: 600 }}>{maintenance}</span>
-                </li>
-              </ul>
+              <div className="panel-header">
+                <span className="panel-title">Exceptions<span className="help-tip" title="Orders stuck between lifecycle steps and needing admin attention. Click a row to open Orders filtered to that exception.">i</span></span>
+                <Link className="panel-action" href="/admin/orders?view=exceptions">Resolve →</Link>
+              </div>
+              <Link className="issue-row" href="/admin/orders?view=exceptions">
+                <span className="issue-dot" style={{ background: 'var(--danger)' }} />
+                <span className="issue-label">Paid but not provisioned</span>
+                <span className="issue-count">{excN('PAID_NOT_PROVISIONED')}</span>
+              </Link>
+              <Link className="issue-row" href="/admin/orders?view=exceptions">
+                <span className="issue-dot" style={{ background: 'var(--warning)' }} />
+                <span className="issue-label">Renewal paid but not extended</span>
+                <span className="issue-count">{excN('RENEWAL_NOT_EXTENDED')}</span>
+              </Link>
+              <Link className="issue-row" href="/admin/orders?view=exceptions">
+                <span className="issue-dot" style={{ background: 'var(--violet)' }} />
+                <span className="issue-label">Replacement requested, not done</span>
+                <span className="issue-count">{excN('REPLACEMENT_PENDING')}</span>
+              </Link>
+            </div>
+
+            {/* Proxy Health */}
+            <div className="panel">
+              <div className="panel-header">
+                <span className="panel-title">Proxy Health<span className="help-tip" title="Proxies needing attention. Click a row to open Proxies filtered to that issue.">i</span></span>
+                <Link className="panel-action" href="/admin/proxies">Review →</Link>
+              </div>
+              <Link className="issue-row" href="/admin/proxies?health=faulty">
+                <span className="issue-dot" style={{ background: 'var(--danger)' }} />
+                <span className="issue-label">Faulty / offline</span>
+                <span className="issue-count">{faulty}</span>
+              </Link>
+              <Link className="issue-row" href="/admin/proxies?health=maintenance">
+                <span className="issue-dot" style={{ background: 'var(--warning)' }} />
+                <span className="issue-label">Maintenance</span>
+                <span className="issue-count">{maintenance}</span>
+              </Link>
             </div>
           </div>
         </div>
       </main>
     </>
-  );
-}
-
-function Kpi({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="panel" style={{ padding: '14px 18px', borderLeft: `3px solid var(--${tone})` }}>
-      <div style={{ fontSize: 10.5, color: 'var(--text-disabled)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>{value}</div>
-    </div>
   );
 }

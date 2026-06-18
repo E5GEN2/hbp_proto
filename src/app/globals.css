@@ -1261,6 +1261,70 @@ table.dt { table-layout: fixed; }
 .kpi-accent-bar.red    { background: linear-gradient(90deg, rgba(184,69,63,0) 0%, rgba(184,69,63,.36) 18%, rgba(184,69,63,.36) 82%, rgba(184,69,63,0) 100%); box-shadow: 0 0 6px rgba(184,69,63,.14); }
 .kpi-accent-bar.blue   { background: linear-gradient(90deg, rgba(94,120,166,0) 0%, rgba(94,120,166,.36) 18%, rgba(94,120,166,.36) 82%, rgba(94,120,166,0) 100%); box-shadow: 0 0 6px rgba(94,120,166,.14); }
 
+/* ════════════ ADMIN DASHBOARD (canon prototype.html) ════════════
+   Scoped under .theme-admin. .kpi-card/.kpi-label/.kpi-value reuse the shared
+   (client-tuned ≈ canon) primitives; these rules add the admin KPI row grid, the
+   canon accent-bar full-glow variants, tone utilities, the 2-col dashboard grid,
+   the issue/expiring widget rows, and the capacity table state pills. */
+.theme-admin .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+
+/* Tone utilities (canon) — colour KPI values + other admin text */
+.theme-admin .tone-success { color: var(--success); }
+.theme-admin .tone-accent  { color: var(--accent);  }
+.theme-admin .tone-warning { color: var(--warning); }
+.theme-admin .tone-danger  { color: var(--danger);  }
+.theme-admin .tone-violet  { color: var(--violet);  }
+.theme-admin .tone-muted   { color: var(--muted);   }
+
+/* KPI accent bar — canon track + full-glow semantic variants (override the
+   client's brown base + colour set; side margins forced to 0 for canon width) */
+.theme-admin .kpi-accent-bar { height: 3px; border-radius: 2px; background: var(--surface-2); margin: auto 0 0; position: relative; overflow: hidden; }
+.theme-admin .kpi-accent-bar.full { height: 2px; margin: 0 0 2px; border-radius: 2px; overflow: visible; }
+.theme-admin .kpi-accent-bar.full.green  { background: linear-gradient(90deg, rgba(60,207,142,0) 0%, rgba(60,207,142,.36) 18%, rgba(60,207,142,.36) 82%, rgba(60,207,142,0) 100%); box-shadow: 0 0 5px rgba(60,207,142,.14); }
+.theme-admin .kpi-accent-bar.full.violet { background: linear-gradient(90deg, rgba(167,139,250,0) 0%, rgba(167,139,250,.36) 18%, rgba(167,139,250,.36) 82%, rgba(167,139,250,0) 100%); box-shadow: 0 0 5px rgba(167,139,250,.14); }
+.theme-admin .kpi-accent-bar.full.orange { background: linear-gradient(90deg, rgba(255,184,77,0) 0%, rgba(255,184,77,.36) 18%, rgba(255,184,77,.36) 82%, rgba(255,184,77,0) 100%); box-shadow: 0 0 5px rgba(255,184,77,.14); }
+.theme-admin .kpi-accent-bar.full.red    { background: linear-gradient(90deg, rgba(239,68,68,0) 0%, rgba(239,68,68,.36) 18%, rgba(239,68,68,.36) 82%, rgba(239,68,68,0) 100%); box-shadow: 0 0 5px rgba(239,68,68,.14); }
+
+/* Dashboard 2-col grid (content + aside) */
+.theme-admin .grid-2col { display: grid; grid-template-columns: 1fr var(--aside-w); gap: 16px; align-items: start; }
+.theme-admin .grid-right { display: flex; flex-direction: column; gap: 16px; }
+
+/* Side-widget rows: Expiring Soon + Exceptions + Proxy Health (inset divider) */
+.theme-admin .expiring-segment,
+.theme-admin .issue-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+  background-image: linear-gradient(var(--border-subtle), var(--border-subtle));
+  background-repeat: no-repeat;
+  background-position: var(--row-divider-inset) 100%;
+  background-size: calc(100% - calc(var(--row-divider-inset) * 2)) 1px;
+  cursor: pointer; transition: background .1s; position: relative; text-decoration: none;
+}
+.theme-admin .expiring-segment:last-child,
+.theme-admin .issue-row:last-child { background-image: none; }
+.theme-admin .expiring-segment:hover,
+.theme-admin .issue-row:hover { background: var(--bg-hover); }
+.theme-admin .issue-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; box-shadow: none; }
+.theme-admin .exp-label,
+.theme-admin .issue-label { font-size: 13px; font-weight: 500; color: var(--text-secondary); flex: 1; }
+.theme-admin .exp-count,
+.theme-admin .issue-count { font-size: 13px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Selling Capacity table + state pills */
+.theme-admin .capacity-table thead th { text-align: left; }
+.theme-admin .capacity-table tbody td { text-align: left; }
+.theme-admin .capacity-table tbody tr:hover { background: var(--bg-hover); }
+.theme-admin .capacity-table .plan-link { color: var(--accent); font-weight: 500; cursor: pointer; }
+.theme-admin .capacity-table .plan-link:hover { text-decoration: underline; }
+.theme-admin .cap-label {
+  display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600; line-height: 1.45; letter-spacing: .02em; white-space: nowrap;
+}
+.theme-admin .cap-label.available      { background: rgba(60,207,142,.10); color: var(--success); }
+.theme-admin .cap-label.sold-out       { background: rgba(239,68,68,.10);  color: var(--danger);  }
+.theme-admin .cap-label.blocked-grace  { background: rgba(255,184,77,.09); color: var(--warning); }
+.theme-admin .cap-label.waiting-release{ background: var(--surface-2);     color: var(--muted);   }
+.theme-admin .cap-label.low            { background: rgba(255,184,77,.05); color: var(--warning); }
+
 .widget-list { display: flex; flex-direction: column; }
 .widget-list.scroll { max-height: 240px; overflow-y: auto; }
 .widget-row {

@@ -30,7 +30,18 @@ export function AdminTopbar({
       ? (crumbs[0].label === 'Dashboard' ? crumbs : [DASHBOARD_ROOT, ...crumbs])
       : [{ label: title ?? '' }];
 
+  // Universal backlink (canon #backlinkSlot): "← Back to {previous}". Canon
+  // drives it off a runtime history stack — entity links (rows/KPI tiles) push,
+  // sidebar/breadcrumb nav clears. We approximate that statically with the
+  // nearest LINKABLE ancestor below the current screen (the page's structural
+  // parent list), matching the client portal. Top-level list pages have only
+  // the Dashboard root as a linkable ancestor (not in `crumbs`), so they show
+  // no backlink — exactly as the sidebar-reached canon pages clear the stack.
+  const backlinkParent =
+    crumbs && crumbs.length > 1 ? [...crumbs.slice(0, -1)].reverse().find(c => c.href) : undefined;
+
   return (
+    <>
     <header className="topbar">
       <div className="topbar-left">
         <div className="page-title">
@@ -61,5 +72,14 @@ export function AdminTopbar({
         <GlobalNewOrder />
       </div>
     </header>
+    {backlinkParent && (
+      <div className="backlink-slot">
+        <Link className="backlink" href={backlinkParent.href!}>
+          <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+          Back to {backlinkParent.label}
+        </Link>
+      </div>
+    )}
+    </>
   );
 }

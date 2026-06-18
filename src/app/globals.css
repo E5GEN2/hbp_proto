@@ -1076,7 +1076,12 @@ table.dt { table-layout: fixed; }
 
 /* Contextual back affordance — sits between topbar and content (canon
    #backlinkSlot). Full-width, 32px edge to match topbar/content padding. */
-.backlink-slot { padding: 10px 32px 0; background: var(--bg); }
+.backlink-slot { padding: 6px 32px 0; background: var(--bg); }
+/* Canon trims content top-padding to 10px when the backlink is shown so the
+   vertical rhythm matches slot-less pages (canon: .main.has-backlink .content).
+   Pages set main's padding inline, so !important is needed to override it; the
+   rule only matches when a backlink slot actually precedes <main>. */
+.backlink-slot + main { padding-top: 10px !important; }
 .backlink {
   display: inline-flex; align-items: center; gap: 6px; width: fit-content;
   font: 500 12px var(--font-sans); color: var(--muted);
@@ -1394,7 +1399,7 @@ table.dt { table-layout: fixed; }
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .topbar { padding: 0 16px; }
-  .backlink-slot { padding: 10px 16px 0; }
+  .backlink-slot { padding: 6px 16px 0; }
   .page { padding: 16px; }
 
   /* Telegram CTA squeezes to an icon disc bottom-right (no bottom bar here). */

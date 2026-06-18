@@ -72,7 +72,7 @@ export function SuspendButton({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className="btn" onClick={() => setOpen(true)}>Suspend</button>
+      <button className="btn danger" onClick={() => setOpen(true)}>Suspend</button>
       <SuspendOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} />
     </>
   );
@@ -84,7 +84,7 @@ export function ResumeButton({ orderId }: { orderId: string }) {
   const { call, pending, err } = useAction(A.resumeOrderAction);
   return (
     <>
-      <button className="btn primary" onClick={async () => { try { await call(orderId); toast('Order resumed', orderId, 'success'); } catch {} }} disabled={pending}>
+      <button className="btn" onClick={async () => { try { await call(orderId); toast('Order resumed', orderId, 'success'); } catch {} }} disabled={pending}>
         {pending ? '…' : 'Resume'}
       </button>
       {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
@@ -115,7 +115,7 @@ export function SendCredentialsButton({ orderId }: { orderId: string }) {
   const { call, pending, err } = useAction(A.sendCredentialsAction);
   return (
     <>
-      <button className="btn" onClick={async () => { try { await call(orderId, 'EMAIL'); toast('Credentials sent', orderId + ' · email', 'success'); } catch {} }} disabled={pending}>
+      <button className="btn primary" onClick={async () => { try { await call(orderId, 'EMAIL'); toast('Credentials sent', orderId + ' · email', 'success'); } catch {} }} disabled={pending}>
         {pending ? '…' : 'Send credentials'}
       </button>
       {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}

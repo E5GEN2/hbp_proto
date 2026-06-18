@@ -1638,3 +1638,158 @@ table.dt { table-layout: fixed; }
      inside the panel rather than collapsing their columns. */
   .theme-client .panel > .table-wrap > table.dt { min-width: 560px; }
 }
+
+/* ===================================================================
+   ADMIN ORDER / DETAIL CANON (U4)
+   Order Detail establishes the canon detail pattern reused by
+   payment / client / proxy detail. New canon classes are added
+   globally (unused by the client); client-tuned shared primitives
+   get `.theme-admin`-scoped overrides restoring the canon-admin value.
+   Source of truth: Admin Pannel Prototype/prototype.html.
+   =================================================================== */
+
+/* --- Chip taxonomy reconciliation -------------------------------------
+   The client port tuned the shared `.chip.*` color groups for client
+   needs; the admin canon taxonomy differs (e.g. expired/cancelled are
+   MUTED grey, not red; new/provisioning/assigned are ACCENT). Restore
+   the canon taxonomy under `.theme-admin` only. */
+.theme-admin .chip.active, .theme-admin .chip.paid, .theme-admin .chip.confirmed, .theme-admin .chip.available, .theme-admin .chip.healthy { color: var(--success); background: var(--success-dim); }
+.theme-admin .chip.pending, .theme-admin .chip.awaiting, .theme-admin .chip.grace, .theme-admin .chip.review { color: var(--warning); background: var(--warning-dim); }
+.theme-admin .chip.new, .theme-admin .chip.provisioning, .theme-admin .chip.assigned { color: var(--accent); background: var(--accent-dim); }
+.theme-admin .chip.suspended, .theme-admin .chip.faulty, .theme-admin .chip.failed, .theme-admin .chip.blocked, .theme-admin .chip.replacement, .theme-admin .chip.flag { color: var(--danger); background: var(--danger-dim); }
+.theme-admin .chip.expired, .theme-admin .chip.cancelled, .theme-admin .chip.released, .theme-admin .chip.maintenance, .theme-admin .chip.churned { color: var(--muted); background: var(--surface-2); }
+.theme-admin .chip.violet, .theme-admin .chip.renewal-not-extended, .theme-admin .chip.pending-renewal, .theme-admin .chip.renewal-faulty-proxy { color: var(--violet); background: var(--violet-dim); }
+
+/* --- detail-header / kv canon-admin overrides ------------------------- */
+.detail-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.theme-admin .detail-header { gap: 20px; }
+.theme-admin .detail-id { letter-spacing: -.005em; line-height: 1.2; }
+.theme-admin .detail-chips { margin-top: 4px; }
+.kv { display: flex; flex-direction: column; }
+.kv-key { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.theme-admin .kv-row { padding: 10px 20px; align-items: center; }
+.theme-admin .kv-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+
+/* --- exception chip + banner ------------------------------------------ */
+.exc-chip {
+  display: inline-flex; align-items: center;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600; line-height: 1.45;
+  letter-spacing: .02em; white-space: nowrap;
+  background: var(--warning-dim); color: var(--warning);
+}
+.exc-chip.danger { background: var(--danger-dim); color: var(--danger); }
+.exc-chip.accent { background: var(--accent-dim); color: var(--accent); }
+.exc-chip.violet { background: var(--violet-dim); color: var(--violet); }
+.exc-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px;
+  background: var(--warning-dim); border: 1px solid rgba(255,184,77,.3);
+  border-radius: var(--radius-md);
+}
+.exc-banner.danger { background: var(--danger-dim); border-color: rgba(239,68,68,.3); }
+.exc-banner.violet { background: var(--violet-dim); border-color: rgba(167,139,250,.3); }
+.exc-banner-icon { flex-shrink: 0; color: var(--warning); }
+.exc-banner.danger .exc-banner-icon { color: var(--danger); }
+.exc-banner.violet .exc-banner-icon { color: var(--violet); }
+.exc-banner-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exc-banner-title { font-size: 13px; font-weight: 650; color: var(--text); }
+.exc-banner-desc { font-size: 12px; color: var(--text-secondary); }
+.exc-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* --- badge-soft / client-link ----------------------------------------- */
+.badge-soft {
+  display: inline-flex; align-items: center;
+  padding: 1px 7px; border-radius: 5px;
+  font-size: 10.5px; font-weight: 600; line-height: 1.45;
+  letter-spacing: .02em; white-space: nowrap;
+  background: var(--surface-2); color: var(--text-secondary);
+}
+.client-link { color: var(--accent-text); font-weight: 500; cursor: pointer; }
+.client-link:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
+
+/* --- Provisioning stepper --------------------------------------------- */
+.prov-stepper { padding: 6px 0; display: flex; flex-direction: column; }
+.prov-step-row {
+  display: grid;
+  grid-template-columns: 26px 110px auto auto 1fr;
+  align-items: center; gap: 10px;
+  padding: 12px 20px;
+  background-image: linear-gradient(var(--border-subtle), var(--border-subtle));
+  background-repeat: no-repeat;
+  background-position: var(--row-divider-inset) 100%;
+  background-size: calc(100% - calc(var(--row-divider-inset) * 2)) 1px;
+}
+.prov-step-row:last-child { background-image: none; }
+.prov-step-row.pending { opacity: .55; }
+.prov-step-num {
+  width: 22px; height: 22px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 10.5px; font-weight: 700;
+  background: var(--surface-2); color: var(--muted);
+  border: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.prov-step-row.done    .prov-step-num { background: var(--success-dim); color: var(--success); border-color: rgba(60,207,142,.35); }
+.prov-step-row.current .prov-step-num { background: var(--accent-dim);  color: var(--accent);  border-color: rgba(91,140,255,.35); }
+.prov-step-row.failed  .prov-step-num { background: var(--danger-dim);  color: var(--danger);  border-color: rgba(239,68,68,.35); }
+.prov-step-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); min-width: 0; flex-shrink: 0; }
+.prov-step-meta {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--muted); text-align: right; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.prov-mode {
+  display: inline-flex; align-items: center;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; padding: 1px 6px; border-radius: 4px;
+}
+.prov-mode.auto   { background: var(--accent-dim);  color: var(--accent);  }
+.prov-mode.manual { background: var(--warning-dim); color: var(--warning); }
+.prov-next-action {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px; border-top: 1px solid var(--border-subtle);
+  font-size: 12px; background: var(--surface-2);
+}
+.prov-next-key { font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); flex-shrink: 0; }
+.prov-next-val { color: var(--text-secondary); margin-left: auto; text-align: right; font-weight: 500; }
+.prov-next-action.attention .prov-next-val { color: var(--warning); }
+.prov-next-action.failed    .prov-next-val { color: var(--danger);  }
+.prov-next-action.completed .prov-next-val { color: var(--muted);   }
+
+/* --- Notes panel (activity-list) -------------------------------------- */
+.activity-list { display: flex; flex-direction: column; }
+.activity-row {
+  display: flex; gap: 12px; padding: 12px 20px;
+  background-image: linear-gradient(var(--border-subtle), var(--border-subtle));
+  background-repeat: no-repeat;
+  background-position: var(--row-divider-inset) 100%;
+  background-size: calc(100% - calc(var(--row-divider-inset) * 2)) 1px;
+  font-size: 13px; line-height: 1.4;
+}
+.activity-row:last-child { background-image: none; }
+.activity-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--muted); }
+.activity-dot.success { background: var(--success); }
+.activity-dot.warning { background: var(--warning); }
+.activity-dot.danger  { background: var(--danger); }
+.activity-dot.accent  { background: var(--accent); }
+.activity-dot.violet  { background: var(--violet); }
+.activity-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.activity-title { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.activity-detail { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.activity-meta {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--muted);
+}
+
+/* --- Activity widget timeline (.tl-meta + canon dot variants) --------- */
+.tl-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.tl-dot.warn   { background: var(--warning-dim); border-color: var(--warning); }
+.tl-dot.accent { background: var(--accent-dim);  border-color: var(--accent); }
+.theme-admin .tl-body { gap: 2px; }
+.theme-admin .tl-title { font-size: 13px; }
+
+/* --- Deferred dashboard conformance (folded from U2/U3 re-audit) ------ */
+.theme-admin .kpi-card { min-height: 90px; }
+.theme-admin .sidebar-footer { gap: 12px; }

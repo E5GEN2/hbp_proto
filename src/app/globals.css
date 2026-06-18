@@ -1084,6 +1084,21 @@ table.dt { table-layout: fixed; }
 }
 .backlink:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .backlink svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+
+/* Floating Telegram help CTA — rendered only on checkout routes
+   (checkout/layout.tsx). Canon `.telegram-cta`. */
+.telegram-cta {
+  position: fixed; bottom: 24px; right: 24px; z-index: 50;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent); color: #fff;
+  padding: 10px 16px; border-radius: 999px;
+  font: 600 13px var(--font-sans); text-decoration: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  transition: background-color .15s;
+}
+.telegram-cta:hover { background: var(--accent-hover); color: #fff; }
+.telegram-cta-icon { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+.telegram-cta-icon svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; }
 .topbar-balance {
   display: inline-flex;
@@ -1381,6 +1396,10 @@ table.dt { table-layout: fixed; }
   .topbar { padding: 0 16px; }
   .backlink-slot { padding: 10px 16px 0; }
   .page { padding: 16px; }
+
+  /* Telegram CTA squeezes to an icon disc bottom-right (no bottom bar here). */
+  .telegram-cta { padding: 0; width: 48px; height: 48px; justify-content: center; bottom: 16px; right: 16px; }
+  .telegram-cta-label { display: none; }
   .kpi-strip,
   .plan-cards,
   .orders-grid,

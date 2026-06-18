@@ -9,6 +9,18 @@ import { money } from '@/lib/money';
 
 const PER_PAGE = 12;
 
+const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+const PAY_EVENT: Record<string, string> = {
+  CONFIRMED: 'Payment confirmed', PAID: 'Payment confirmed', AWAITING: 'Payment awaiting',
+  PENDING: 'Payment awaiting', FAILED: 'Payment failed', REFUNDED: 'Refund issued',
+  REFUND_REQUESTED: 'Refund requested', MANUAL_REVIEW: 'Manual review',
+};
+
+// Canon Clients .dt anchor scheme: 360px Client + 164px Client ID + 240px Last
+// event = 764px fixed; middle cols share the slack by --w weights (col-total 9).
+const FLEX = (w: number) => `calc((100% - 764px) * ${w} / 9)`;
+
 export default async function AdminClientsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const view = searchParams.status ?? 'all';
   const tier = searchParams.tier ?? '';
@@ -32,7 +44,11 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
   const [clients, total, allCount, activeCount, churnedCount, blockedCount] = await Promise.all([
     prisma.user.findMany({
       where, orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { orders: true } } },
+      include: {
+        _count: { select: { orders: true } },
+        orders: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true } },
+        payments: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, status: true } },
+      },
       skip: (page - 1) * PER_PAGE, take: PER_PAGE,
     }),
     prisma.user.count({ where }),
@@ -42,71 +58,122 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
     prisma.user.count({ where: { role: 'CLIENT', status: 'BLOCKED' } }),
   ]);
 
+  // Per-client aggregates for the visible page (active orders + LTV)
+  const ids = clients.map(c => c.id);
+  const [activeGrp, ltvGrp] = await Promise.all([
+    ids.length ? prisma.order.groupBy({ by: ['clientId'], where: { clientId: { in: ids }, status: 'ACTIVE' }, _count: { _all: true } }) : [],
+    ids.length ? prisma.payment.groupBy({ by: ['clientId'], where: { clientId: { in: ids }, status: { in: ['CONFIRMED', 'PAID'] } }, _sum: { net: true } }) : [],
+  ]);
+  const activeMap = new Map(activeGrp.map(g => [g.clientId, g._count._all] as const));
+  const ltvMap = new Map(ltvGrp.map(g => [g.clientId, Number(g._sum.net ?? 0)] as const));
+
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(searchParams)) if (v) sp.set(k, v);
+
+  const tabs = [
+    { v: 'all', l: 'All', n: allCount },
+    { v: 'active', l: 'Active', n: activeCount },
+    { v: 'churned', l: 'Churned', n: churnedCount },
+    { v: 'blocked', l: 'Blocked', n: blockedCount },
+  ];
 
   return (
     <>
       <AdminTopbar crumbs={[{ label: 'Clients' }]} action={<ClientsToolbar />} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
-        <div className="tabs" style={{ marginBottom: 8 }}>
-          {[
-            { v: 'all',     l: 'All',     n: allCount     },
-            { v: 'active',  l: 'Active',  n: activeCount  },
-            { v: 'churned', l: 'Churned', n: churnedCount },
-            { v: 'blocked', l: 'Blocked', n: blockedCount },
-          ].map(t => {
-            const tsp = new URLSearchParams(sp);
-            tsp.set('status', t.v); tsp.delete('page');
-            return (
-              <Link key={t.v} href={`/admin/clients?${tsp.toString()}`} className={`tab ${view === t.v ? 'active' : ''}`}>
-                {t.l}<span className="tab-count">{t.n}</span>
-              </Link>
-            );
-          })}
-        </div>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
             { kind: 'search', name: 'q', placeholder: 'Search by ID, name, email, telegram…' },
-            { kind: 'select', name: 'tier', label: 'All tiers', options: [
+            { kind: 'select', name: 'tier', label: 'Tier: all', size: 'sm', options: [
               { value: 'STANDARD', label: 'Standard' }, { value: 'PRO', label: 'Pro' }, { value: 'VIP', label: 'VIP' },
             ]},
-            { kind: 'select', name: 'risk', label: 'All risk', options: [
+            { kind: 'select', name: 'risk', label: 'Risk: all', size: 'sm', options: [
               { value: 'NONE', label: 'None' }, { value: 'REVIEW', label: 'Under review' }, { value: 'FLAG', label: 'Flagged' },
             ]},
           ]}
+          exportLabel="Export CSV"
         />
-        <div className="table-wrap" style={{ marginTop: 8 }}>
-          <table className="table">
-            <thead><tr><th>Client</th><th>ID</th><th>Tier</th><th>Country</th><th>Orders</th><th>Balance</th><th>Status</th><th>Risk</th><th>Joined</th></tr></thead>
-            <tbody>
-              {clients.length === 0 ? (
-                <tr><td colSpan={9}><div className="empty"><div className="empty-desc">No clients match these filters.</div></div></td></tr>
-              ) : clients.map(c => (
-                <tr key={c.id}>
-                  <td>
-                    <Link href={`/admin/clients/${c.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span className="avatar">{c.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}</span>
-                      <div>
-                        <div style={{ fontWeight: 500, color: 'var(--text)' }}>{c.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.email}{c.telegram && ` · ${c.telegram}`}</div>
-                      </div>
-                    </Link>
-                  </td>
-                  <td className="mono">{c.id}</td>
-                  <td><span className={`chip ${c.tier === 'VIP' ? 'accent' : c.tier === 'PRO' ? 'info' : 'muted'}`}>{c.tier.toLowerCase()}</span></td>
-                  <td>{c.country ?? '—'}</td>
-                  <td className="mono">{c._count.orders}</td>
-                  <td className="mono">{money(Number(c.balance))}</td>
-                  <td><span className={`chip ${c.status.toLowerCase()}`}>{c.status.toLowerCase()}</span></td>
-                  <td><span className={`chip ${c.risk === 'NONE' ? 'muted' : c.risk.toLowerCase()}`}>{c.risk.toLowerCase()}</span></td>
-                  <td>{fmtAdminStamp(c.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="panel">
+          <div className="tabs">
+            {tabs.map(t => {
+              const tsp = new URLSearchParams(sp);
+              tsp.set('status', t.v); tsp.delete('page');
+              return (
+                <Link key={t.v} href={`/admin/clients?${tsp.toString()}`} className={`tab ${view === t.v ? 'active' : ''}`}>
+                  {t.l}<span className="tab-count">{t.n}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="table-wrap">
+            <table className="dt">
+              <colgroup>
+                <col style={{ width: 360 }} />
+                <col style={{ width: 'var(--anchor-id)' }} />
+                <col style={{ width: FLEX(2) }} />
+                <col style={{ width: FLEX(2) }} />
+                <col style={{ width: FLEX(3) }} />
+                <col style={{ width: FLEX(2) }} />
+                <col style={{ width: 240 }} />
+              </colgroup>
+              <thead><tr>
+                <th className="col-text">Client</th>
+                <th className="col-id">Client ID</th>
+                <th className="col-num">Orders</th>
+                <th className="col-money">LTV</th>
+                <th className="col-status">Status</th>
+                <th className="col-status">Risk</th>
+                <th className="col-text">Last event</th>
+              </tr></thead>
+              <tbody>
+                {clients.length === 0 ? (
+                  <tr><td colSpan={7}><div className="empty"><div className="empty-desc">No clients match these filters.</div></div></td></tr>
+                ) : clients.map(c => {
+                  const status = c.status.toLowerCase();
+                  const activeOrders = activeMap.get(c.id) ?? 0;
+                  const ltv = ltvMap.get(c.id) ?? 0;
+                  const lastOrder = c.orders[0];
+                  const lastPay = c.payments[0];
+                  let ev: { date: Date; label: string } | null = null;
+                  if (lastOrder) ev = { date: lastOrder.createdAt, label: 'Order created' };
+                  if (lastPay && (!ev || lastPay.createdAt > ev.date)) ev = { date: lastPay.createdAt, label: PAY_EVENT[lastPay.status] ?? 'Payment' };
+                  return (
+                    <tr key={c.id}>
+                      <td className="col-text">
+                        <div className="client-cell">
+                          <div className={`avatar client-avatar ${status}`}>{initials(c.name)}</div>
+                          <div className="client-cell-body">
+                            <div className="client-cell-name">
+                              <Link href={`/admin/clients/${c.id}`} className="client-name-link">{c.name}</Link>
+                              {c.tier !== 'STANDARD' && <span className="client-tier">{c.tier === 'VIP' ? 'VIP' : 'Pro'}</span>}
+                            </div>
+                            <div className="client-cell-contact">{c.email}{c.telegram && c.telegram !== '—' && <><span className="sep">·</span>{c.telegram}</>}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="col-id"><Link href={`/admin/clients/${c.id}`} className="client-link">{c.id}</Link></td>
+                      <td className="col-num">{activeOrders}<span className="muted"> / {c._count.orders}</span></td>
+                      <td className="col-money">{money(ltv)}</td>
+                      <td className="col-status"><span className={`chip ${status}`}>{cap(status)}</span></td>
+                      <td className="col-status">
+                        {c.risk === 'NONE' ? <span className="risk-clean">—</span>
+                          : c.risk === 'REVIEW' ? <span className="chip review">Review</span>
+                          : <span className="chip flag">Flagged</span>}
+                      </td>
+                      {ev
+                        ? <td className="col-text"><span className="td-mono">{fmtAdminStamp(ev.date)}</span> <span className="muted">· {ev.label}</span></td>
+                        : <td className="col-text muted">—</td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/clients" search={sp} />
         </div>
-        <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/clients" search={sp} />
       </main>
     </>
   );

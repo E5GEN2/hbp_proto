@@ -54,7 +54,6 @@ export default async function AdminEditPlanPage({ params }: { params: { id: stri
   return (
     <>
       <AdminTopbar crumbs={[
-        { label: 'Dashboard', href: '/admin' },
         { label: 'Plans', href: '/admin/plans' },
         { label: plan.name },
       ]} />

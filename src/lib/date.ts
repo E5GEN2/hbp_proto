@@ -1,23 +1,28 @@
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// All absolute stamps render in UTC. The DB stores UTC instants and the admin
+// clock is labelled UTC, so UTC is the correct display — and, critically, it is
+// deterministic: a value rendered on the server (server tz) and re-rendered
+// during client-component hydration (browser tz) now match, so tables no longer
+// throw React #425 hydration-text-mismatch errors.
 export function fmtDate(d: Date | null | undefined) {
   if (!d) return '—';
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
 export function fmtDateTime(d: Date | null | undefined) {
   if (!d) return '—';
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const m = String(d.getUTCMinutes()).padStart(2, '0');
   return `${fmtDate(d)} ${h}:${m}`;
 }
 
-// Admin-style "22 Apr · 09:42"
+// Admin-style "22 Apr · 09:42" (UTC)
 export function fmtAdminStamp(d: Date | null | undefined) {
   if (!d) return '—';
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} · ${h}:${m}`;
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const m = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} · ${h}:${m}`;
 }
 
 export function fmtRel(d: Date | null | undefined) {
@@ -42,5 +47,5 @@ export function daysLeft(expires: Date | null | undefined) {
 
 export function fmtTimelineStamp(d: Date | null | undefined) {
   if (!d) return '—';
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }

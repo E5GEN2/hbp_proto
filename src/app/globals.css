@@ -471,6 +471,40 @@ table.dt { table-layout: fixed; }
 .bulk-summary { display: flex; align-items: center; gap: 8px; font: 500 12.5px var(--font-sans); color: var(--text); }
 .bulk-actions { display: flex; align-items: center; gap: 8px; }
 
+/* ════ ADMIN list-page canon bits not already in the shared primitives ════
+   .bulk-count, .tab.emphasis, .exc-subfilters/.exc-pill are admin-only canon
+   classes (the client uses .bulk-summary and has no exception sub-filters), so
+   they live global without colliding with .theme-client. */
+/* Table-wrap inside an admin panel is a bare container — the panel supplies the
+   border/radius (mirror of the client rule). Allow horizontal scroll so the
+   fixed-layout .dt keeps readable columns on narrow viewports. */
+.theme-admin .panel > .table-wrap {
+  border: none; border-radius: 0; background: transparent;
+  overflow-x: auto; overflow-y: hidden;
+}
+
+.bulk-count { font-size: 12px; font-weight: 600; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.bulk-count::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+
+.tab.emphasis { color: var(--warning); }
+.tab.emphasis:hover { color: var(--warning); }
+.tab.emphasis .tab-count { background: var(--warning-dim); color: var(--warning); }
+.tab.emphasis.active { color: var(--warning); border-bottom-color: var(--warning); font-weight: 650; }
+.tab.emphasis.active .tab-count { background: var(--warning); color: #1a1107; }
+
+.filter-select-sm { min-width: 130px; }
+.filter-select-md { min-width: 140px; }
+
+/* Exception sub-filter bar — visible only on the Orders Exceptions tab */
+.exc-subfilters { display: none; gap: 8px; padding: 10px 20px; background: var(--warning-dim); border-bottom: 1px solid rgba(255,184,77,.18); align-items: center; flex-wrap: wrap; }
+.exc-subfilters.visible { display: flex; }
+.exc-subfilters-label { font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--warning); padding-right: 4px; }
+.exc-pill { height: 26px; padding: 0 10px; background: var(--surface); border: 1px solid rgba(255,184,77,.22); border-radius: 999px; color: var(--text-secondary); font-size: 11px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: background .12s, border-color .12s, color .12s; }
+.exc-pill:hover { border-color: var(--warning); color: var(--text); }
+.exc-pill.active { background: var(--warning); color: #1a1107; border-color: var(--warning); font-weight: 650; }
+.exc-pill-count { background: var(--surface-2); color: var(--muted); padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 650; }
+.exc-pill.active .exc-pill-count { background: rgba(26,17,7,.2); color: #1a1107; }
+
 /* Checkbox — inline-block + absolute ::after (canon; prevents row jitter). */
 .chk {
   width: 16px; height: 16px;

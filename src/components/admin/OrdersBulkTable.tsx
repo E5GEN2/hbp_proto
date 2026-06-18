@@ -22,11 +22,15 @@ type Row = {
   expiresAt: Date | null;
 };
 
+// Canon .dt anchor scheme: L = 64px chk + 164px Order ID + 164px Expires R-anchor
+// = 392px fixed; seven middle cols share the slack by --w weights (col-total 25).
+const FLEX = (w: number) => `calc((100% - 392px) * ${w} / 25)`;
+
 export function OrdersBulkTable({ orders }: { orders: Row[] }) {
   const router = useRouter();
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [confirm, setConfirm] = useState<null | 'cancel' | 'suspend' | 'resume' | 'send-creds'>(null);
+  const [confirm, setConfirm] = useState<null | 'cancel' | 'suspend'>(null);
   const [pending, start] = useTransition();
 
   function toggle(id: string) {
@@ -36,15 +40,9 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
       return next;
     });
   }
-  function toggleAll() {
-    if (selected.size === orders.length) setSelected(new Set());
-    else setSelected(new Set(orders.map(o => o.id)));
-  }
   function clear() { setSelected(new Set()); }
 
   const sel = orders.filter(o => selected.has(o.id));
-  const statuses = new Set(sel.map(o => o.status));
-  const pays = new Set(sel.map(o => o.paymentStatus));
 
   // Action availability based on row-state intersection
   const canCancel = sel.length > 0 && sel.every(o => ['NEW', 'AWAITING', 'PROVISIONING', 'ACTIVE', 'SUSPENDED'].includes(o.status));
@@ -67,61 +65,66 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
 
   return (
     <>
-      {selected.size > 0 && (
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 5,
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)', padding: '10px 14px',
-          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-        }}>
-          <span style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>{selected.size} selected</span>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-            {[...statuses].map(s => s.toLowerCase()).join(', ')}
-          </span>
-          <div style={{ flex: 1 }} />
+      <div className={`bulk-bar ${selected.size > 0 ? 'visible' : ''}`}>
+        <span className="bulk-count">{selected.size} selected</span>
+        <div className="bulk-actions">
           {canSendCreds && <button className="btn sm" disabled={pending} onClick={() => bulkRun(id => sendCredentialsAction(id, 'EMAIL'), 'Sent credentials')}>Send credentials</button>}
           {canResume && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(resumeOrderAction, 'Resumed')}>Resume</button>}
           {canSuspend && <button className="btn sm" disabled={pending} onClick={() => setConfirm('suspend')}>Suspend</button>}
           {canCancel && <button className="btn sm danger" disabled={pending} onClick={() => setConfirm('cancel')}>Cancel</button>}
           <button className="btn sm" onClick={clear}>Clear</button>
         </div>
-      )}
+      </div>
 
       <div className="table-wrap">
-        <table className="table">
+        <table className="dt">
+          <colgroup>
+            <col style={{ width: 64 }} />
+            <col style={{ width: 'var(--anchor-id)' }} />
+            <col style={{ width: FLEX(3) }} />
+            <col style={{ width: FLEX(4) }} />
+            <col style={{ width: FLEX(4) }} />
+            <col style={{ width: FLEX(2) }} />
+            <col style={{ width: FLEX(3) }} />
+            <col style={{ width: FLEX(5) }} />
+            <col style={{ width: FLEX(4) }} />
+            <col style={{ width: 'var(--anchor-date)' }} />
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ width: 32 }}>
-                <input type="checkbox"
-                  checked={orders.length > 0 && selected.size === orders.length}
-                  ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < orders.length; }}
-                  onChange={toggleAll}
-                />
-              </th>
-              <th>Order ID</th><th>Client</th><th>Plan</th><th>Carrier</th><th>Region</th><th>Amount</th><th>Payment</th><th>Status</th><th>Created</th><th>Expires</th>
+              <th className="col-chk"></th>
+              <th className="col-id">Order ID</th>
+              <th className="col-id">Client ID</th>
+              <th className="col-text">Plan</th>
+              <th className="col-text">Carrier · Region</th>
+              <th className="col-money">Amount</th>
+              <th className="col-status">Payment</th>
+              <th className="col-status">Status</th>
+              <th className="col-date">Created</th>
+              <th className="col-date">Expires</th>
             </tr>
           </thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={11}><div className="empty"><div className="empty-desc">No orders match these filters. Adjust or reset.</div></div></td></tr>
+              <tr><td colSpan={10}><div className="empty"><div className="empty-desc">No orders match these filters. Adjust or reset.</div></div></td></tr>
             ) : orders.map(o => (
-              <tr key={o.id} style={{ background: selected.has(o.id) ? 'var(--accent-subtle)' : undefined }}>
-                <td><input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} /></td>
-                <td><Link href={`/admin/orders/${o.id}`} className="mono td-link">{o.id}</Link></td>
-                <td><Link href={`/admin/clients/${o.clientId}`} className="mono td-link">{o.clientId}</Link></td>
-                <td>{o.planName}</td>
-                <td>{o.planCarrier}</td>
-                <td>{o.region}</td>
-                <td>{money(o.amount)}</td>
-                <td><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
-                <td>
+              <tr key={o.id} style={selected.has(o.id) ? { background: 'var(--accent-subtle)' } : undefined}>
+                <td className="col-chk">
+                  <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} style={{ accentColor: 'var(--accent)' }} />
+                </td>
+                <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
+                <td className="col-id"><Link href={`/admin/clients/${o.clientId}`} className="td-link">{o.clientId}</Link></td>
+                <td className="col-text">{o.planName}</td>
+                <td className="col-text">{o.planCarrier} · {o.region}</td>
+                <td className="col-money">{money(o.amount)}</td>
+                <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{o.paymentStatus.toLowerCase()}</span></td>
+                <td className="col-status">
                   {o.exception
                     ? <span className="chip danger">{o.exception.toLowerCase().replace(/_/g, ' ')}</span>
-                    : <span className={`chip ${o.status.toLowerCase().replace('_','-')}`}>{o.status.toLowerCase()}</span>}
+                    : <span className={`chip ${o.status.toLowerCase().replace('_', '-')}`}>{o.status.toLowerCase()}</span>}
                 </td>
-                <td>{fmtAdminStamp(o.createdAt)}</td>
-                <td>{fmtAdminStamp(o.expiresAt)}</td>
+                <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
+                <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>
               </tr>
             ))}
           </tbody>

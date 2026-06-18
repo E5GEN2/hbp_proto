@@ -3,8 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
-import { money } from '@/lib/money';
-import { TogglePlanButton } from '@/components/admin/ActionButtons';
+import { PlansBulkTable } from '@/components/admin/PlansBulkTable';
 
 const PER_PAGE = 12;
 
@@ -47,54 +46,43 @@ export default async function AdminPlansPage({ searchParams }: { searchParams: R
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(searchParams)) if (v) sp.set(k, v);
 
+  const rows = plans.map(p => {
+    const allocated = allocMap.get(p.id) ?? 0;
+    const available = Math.max(0, p.availableQuota - allocated);
+    const capacityState: 'sold-out' | 'low' | 'available' =
+      available === 0 && p.availableQuota > 0 ? 'sold-out'
+      : (p.availableQuota > 0 && available / p.availableQuota < 0.15 ? 'low' : 'available');
+    return {
+      id: p.id, name: p.name, carrier: p.carrier, region: p.region, pool: p.pool,
+      durationDays: p.durationDays, price: Number(p.price), quota: p.availableQuota,
+      allocated, available, capacityState, active: p.active,
+    };
+  });
+
   return (
     <>
-      <AdminTopbar crumbs={[{ label: 'Plans' }]} action={<Link className="btn primary" href="/admin/plans/new">+ Create plan</Link>} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
+      <AdminTopbar crumbs={[{ label: 'Plans' }]} />
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
             { kind: 'search', name: 'q', placeholder: 'Search by plan id, name, pool…' },
-            { kind: 'select', name: 'carrier', label: 'All carriers', options: carriers },
-            { kind: 'select', name: 'region', label: 'All regions', options: regions },
-            { kind: 'select', name: 'duration', label: 'All durations', options: [
+            { kind: 'select', name: 'carrier', label: 'Carrier: all', size: 'sm', options: carriers },
+            { kind: 'select', name: 'region', label: 'Region: all', size: 'md', options: regions },
+            { kind: 'select', name: 'duration', label: 'Duration: all', size: 'sm', options: [
               { value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' },
             ]},
-            { kind: 'select', name: 'status', label: 'All statuses', options: [
+            { kind: 'select', name: 'status', label: 'Status: all', size: 'sm', options: [
               { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Disabled' },
             ]},
           ]}
+          action={<Link className="btn primary" href="/admin/plans/new">+ Create plan</Link>}
         />
-        <div className="table-wrap" style={{ marginTop: 8 }}>
-          <table className="table">
-            <thead><tr><th>Plan</th><th>Carrier</th><th>Region</th><th>Pool</th><th>Duration</th><th>Price</th><th>Quota</th><th>Allocated</th><th>Available</th><th>Status</th><th>Visibility</th><th>Actions</th></tr></thead>
-            <tbody>
-              {plans.length === 0 ? (
-                <tr><td colSpan={12}><div className="empty"><div className="empty-desc">No plans match these filters.</div></div></td></tr>
-              ) : plans.map(p => {
-                const allocated = allocMap.get(p.id) ?? 0;
-                const avail = Math.max(0, p.availableQuota - allocated);
-                const state = avail === 0 && p.availableQuota > 0 ? 'sold-out' : (avail / Math.max(p.availableQuota, 1) < 0.15 ? 'low' : 'available');
-                return (
-                  <tr key={p.id}>
-                    <td><Link href={`/admin/plans/${p.id}`} className="td-link">{p.name}</Link></td>
-                    <td>{p.carrier}</td>
-                    <td>{p.region}</td>
-                    <td>{p.pool}</td>
-                    <td className="mono">{p.durationDays} days</td>
-                    <td className="mono">{money(Number(p.price))}</td>
-                    <td className="mono">{p.availableQuota}</td>
-                    <td className="mono">{allocated}</td>
-                    <td className="mono">{avail} <span className={`chip ${state === 'low' || state === 'sold-out' ? state.replace('-','') : 'muted'} sm`} style={{ marginLeft: 6 }}>{state}</span></td>
-                    <td><span className={`chip ${p.active ? 'success' : 'muted'}`}>{p.active ? 'Active' : 'Disabled'}</span></td>
-                    <td><span className={`chip ${p.visibility === 'PUBLIC' ? 'muted' : 'info'}`}>{p.visibility.toLowerCase()}</span></td>
-                    <td><TogglePlanButton planId={p.id} active={p.active} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+
+        <div className="panel">
+          <div className="panel-header"><span className="panel-title">Plan catalog</span></div>
+          <PlansBulkTable plans={rows} />
+          <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/plans" search={sp} />
         </div>
-        <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/plans" search={sp} />
       </main>
     </>
   );

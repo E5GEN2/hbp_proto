@@ -149,7 +149,10 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
                   <tr><td colSpan={6}><div className="empty"><div className="empty-desc">No log events match.</div></div></td></tr>
                 ) : logs.map(l => {
                   const roleSlug = l.actor ? (ROLE_SLUG[l.actor.role] ?? '') : '';
-                  const roleLabel = roleSlug ? roleSlug.charAt(0).toUpperCase() + roleSlug.slice(1) : 'System';
+                  // admin roles → Super/Ops/Support · CLIENT actor → Client · no actor → System
+                  const roleLabel = roleSlug
+                    ? roleSlug.charAt(0).toUpperCase() + roleSlug.slice(1)
+                    : (l.actor ? 'Client' : 'System');
                   const name = l.actor?.name ?? 'System';
                   const initials = l.actor?.initials ?? (l.actor?.name?.charAt(0) ?? 'S');
                   const chipCls = LOG_ACTION_CHIP[l.action] ?? 'new';

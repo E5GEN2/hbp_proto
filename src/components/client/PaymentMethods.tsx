@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { money } from '@/lib/money';
 import * as BA from '@/lib/billing-actions';
 
 type Method = {
@@ -15,11 +16,26 @@ type Method = {
   locked: boolean;
 };
 
-export function PaymentMethodsList({ methods, balance }: { methods: Method[]; balance: number }) {
+const WalletIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" stroke="none" /></svg>
+);
+const CardIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></svg>
+);
+
+export function PaymentMethodsPanel({ methods, balance }: { methods: Method[]; balance: number }) {
   const router = useRouter();
   const toast = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [pending, start] = useTransition();
+
+  // Account balance pinned to the very top (system fixture, can't move),
+  // then default first among the remaining methods. Mirrors canon sort.
+  const list = [...methods].sort((a, b) => {
+    if (a.kind === 'BALANCE' && b.kind !== 'BALANCE') return -1;
+    if (b.kind === 'BALANCE' && a.kind !== 'BALANCE') return 1;
+    return (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0);
+  });
 
   function setDefault(id: string) {
     start(async () => {
@@ -44,27 +60,47 @@ export function PaymentMethodsList({ methods, balance }: { methods: Method[]; ba
 
   return (
     <>
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {methods.map(m => (
-          <div key={m.id} style={{ padding: 14, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{m.brand}</div>
-              {m.isDefault && <span className="chip accent sm">Default</span>}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-              {m.last4 ? `•• ${m.last4}` : m.kind === 'BALANCE' ? `Balance: $${balance.toFixed(2)}` : '—'}
-              {m.exp && ` · exp ${m.exp}`}
-              {m.locked && ' · Locked'}
-            </div>
-            {!m.locked && (
-              <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                {!m.isDefault && <button className="btn sm" disabled={pending} onClick={() => setDefault(m.id)}>Set as default</button>}
-                <button className="btn sm" disabled={pending} onClick={() => remove(m.id, `${m.brand}${m.last4 ? ' •• ' + m.last4 : ''}`)}>Remove</button>
+      <div className="methods-grid methods-grid-stack">
+        {list.map(m => {
+          const isBalance = m.kind === 'BALANCE';
+          const isCard = m.kind === 'CARD';
+          const subLine = isBalance
+            ? money(balance)
+            : isCard
+              ? `•••• ${m.last4 ?? '0000'}`
+              : (m.last4 ? `…${m.last4}` : '');
+          const expLabel = m.exp
+            ? `Expires ${m.exp}`
+            : isBalance ? 'Always available' : m.kind === 'CRYPTO' ? 'No expiry' : '';
+          // Set as default never applies to Balance (the action rejects it);
+          // Remove never applies to locked methods.
+          const canSetDefault = !m.isDefault && !isBalance;
+          const canRemove = !m.locked;
+          const showActions = canSetDefault || canRemove;
+          return (
+            <div key={m.id} className={`method-card ${m.isDefault ? 'default' : ''}`}>
+              <div className="method-card-header">
+                <span className="method-card-brand-name">
+                  <span className="method-card-brand-icon">{isBalance ? <WalletIcon /> : isCard ? <CardIcon /> : null}</span>
+                  {m.brand}
+                </span>
+                {m.isDefault && <span className="chip accent method-card-default-chip">Default</span>}
               </div>
-            )}
-          </div>
-        ))}
-        <button className="btn" style={{ borderStyle: 'dashed' }} onClick={() => setAddOpen(true)}>+ Add payment method</button>
+              {subLine && <div className="method-card-last4">{subLine}</div>}
+              {expLabel && <div className="method-card-exp">{expLabel}</div>}
+              {showActions && (
+                <div className="method-card-actions">
+                  {canSetDefault && <button className="btn" disabled={pending} onClick={() => setDefault(m.id)}>Set as default</button>}
+                  {canRemove && <button className="btn ghost" disabled={pending} onClick={() => remove(m.id, `${m.brand}${m.last4 ? ' •• ' + m.last4 : ''}`)}>Remove</button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <button className="method-add-card" onClick={() => setAddOpen(true)}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+          <span className="method-add-card-label">Add payment method</span>
+        </button>
       </div>
       <AddPaymentMethodModal open={addOpen} onClose={() => setAddOpen(false)} />
     </>

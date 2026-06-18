@@ -10,6 +10,6 @@ export function Stage15Badge({ children = 'v1.5' }: { children?: React.ReactNode
 }
 
 // Just the inline pill, no tooltip
-export function Stage15Pill() {
-  return <span className="stage15-badge">v1.5</span>;
+export function Stage15Pill({ children = 'v1.5' }: { children?: React.ReactNode }) {
+  return <span className="stage15-badge">{children}</span>;
 }

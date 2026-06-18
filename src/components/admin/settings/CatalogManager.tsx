@@ -24,10 +24,9 @@ export function CatalogManager({ kinds, items }: {
         toast('Added', `${kind}: ${value}`, 'success');
         setDrafts(d => ({ ...d, [kind]: '' }));
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
-
   function remove(id: number, value: string) {
     if (!confirm(`Remove "${value}"?`)) return;
     start(async () => {
@@ -35,32 +34,47 @@ export function CatalogManager({ kinds, items }: {
         await removeCatalogItemAction(id);
         toast('Removed', value, 'success');
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-      {kinds.map(k => (
-        <div key={k.kind} className="panel" style={{ padding: 16 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>{k.label}</div>
-          <ul style={{ margin: '0 0 10px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
-            {(items[k.kind] ?? []).map(i => (
-              <li key={i.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 6 }}>
-                <span style={{ fontSize: 12.5, color: 'var(--text)' }}>{i.value}</span>
-                <button className="btn sm" disabled={pending} onClick={() => remove(i.id, i.value)} style={{ padding: '2px 6px', fontSize: 10.5 }}>×</button>
-              </li>
-            ))}
-            {(items[k.kind] ?? []).length === 0 && <li style={{ fontSize: 11.5, color: 'var(--muted)', padding: '4px 10px' }}>None yet</li>}
-          </ul>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <input className="form-input" value={drafts[k.kind] ?? ''} onChange={e => setDrafts({ ...drafts, [k.kind]: e.target.value })}
-              onKeyDown={e => { if (e.key === 'Enter') add(k.kind); }}
-              placeholder={`+ Add ${k.label.toLowerCase()}`} />
-            <button className="btn sm primary" disabled={pending || !(drafts[k.kind] ?? '').trim()} onClick={() => add(k.kind)}>Add</button>
-          </div>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="catalog-grid">
+        {kinds.map(k => {
+          const list = items[k.kind] ?? [];
+          return (
+            <div className="catalog-card" key={k.kind}>
+              <div className="catalog-card-head">
+                <span className="catalog-card-title">{k.label}</span>
+                <span className="catalog-card-count">{list.length}</span>
+              </div>
+              <div className="catalog-list">
+                {list.length === 0
+                  ? <span className="catalog-empty">None yet</span>
+                  : list.map(i => (
+                    <span className="catalog-tag" key={i.id}>
+                      {i.value}
+                      <button disabled={pending} onClick={() => remove(i.id, i.value)} aria-label={`Remove ${i.value}`}>×</button>
+                    </span>
+                  ))}
+              </div>
+              <div className="catalog-add">
+                <input
+                  value={drafts[k.kind] ?? ''}
+                  placeholder={`Add ${k.label.toLowerCase()}…`}
+                  onChange={e => setDrafts({ ...drafts, [k.kind]: e.target.value })}
+                  onKeyDown={e => { if (e.key === 'Enter') add(k.kind); }}
+                />
+                <button disabled={pending || !(drafts[k.kind] ?? '').trim()} onClick={() => add(k.kind)}>Add</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '0 20px 20px' }}>
+        <span className="muted" style={{ fontSize: 11.5 }}>Catalog changes affect new plans only — existing plans keep their snapshotted values.</span>
+      </div>
+    </>
   );
 }

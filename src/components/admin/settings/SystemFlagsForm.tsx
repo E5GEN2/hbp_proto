@@ -5,6 +5,8 @@ import { useToast } from '@/components/ui/Toast';
 import { HelpTip } from '@/components/ui/HelpTip';
 import { setSystemFlagAction } from '@/lib/settings-actions';
 
+type Flags = { maxConcurrentOrdersPerClient: number; maxProxyReplacementsPerOrder: number; supportRefundCapUSD: number; discountCapWithoutSuperApprovalPercent: number };
+
 export function SystemFlagsForm({ initial }: {
   initial: {
     systemAutoProvisionOnPayment: boolean;
@@ -13,7 +15,7 @@ export function SystemFlagsForm({ initial }: {
     require2FAForRefund: boolean;
     requireNoteOnSuspend: boolean;
     freezeNewOrders: boolean;
-    flags: { maxConcurrentOrdersPerClient: number; maxProxyReplacementsPerOrder: number; supportRefundCapUSD: number; discountCapWithoutSuperApprovalPercent: number };
+    flags: Flags;
   };
 }) {
   const router = useRouter();
@@ -30,77 +32,72 @@ export function SystemFlagsForm({ initial }: {
         toast(`${key} ${next ? 'enabled' : 'disabled'}`, hint ?? '', next ? 'success' : 'warning');
         router.refresh();
       } catch (e: any) {
-        toast('Save failed', e.message, 'danger');
+        toast('Save failed', e.message, 'warning');
         setState(state);
       }
     });
   }
 
-  function saveLimit(key: keyof typeof state.flags, n: number) {
+  function saveLimit(key: keyof Flags, n: number) {
     setState({ ...state, flags: { ...state.flags, [key]: n } });
     start(async () => {
       try {
-        const existingFlags = { ...state.flags, [key]: n };
-        await setSystemFlagAction('flags', existingFlags);
+        await setSystemFlagAction('flags', { ...state.flags, [key]: n });
         toast('Limit saved', `${key} = ${n}`, 'success');
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
 
   return (
-    <>
-      <Section label="Operational toggles">
-        <Toggle label="Auto-provision proxies on payment confirm" hint="When ON, payment confirm immediately assigns proxies from the pool." value={state.systemAutoProvisionOnPayment} onChange={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
-        <Toggle label="Auto-replace on faulty proxy" hint="Health probe → auto-pick a replacement from the same pool." value={state.autoReplaceOnFaulty} onChange={() => flip('autoReplaceOnFaulty')} pending={pending} />
-        <Toggle label="Auto-release proxies after grace" hint="Expired orders past grace window cycle proxies back into the pool." value={state.autoReleaseAfterGrace} onChange={() => flip('autoReleaseAfterGrace')} pending={pending} />
-        <Toggle label="Require 2FA for refund" value={state.require2FAForRefund} onChange={() => flip('require2FAForRefund')} pending={pending} />
-        <Toggle label="Require note on suspend" value={state.requireNoteOnSuspend} onChange={() => flip('requireNoteOnSuspend')} pending={pending} />
-      </Section>
-      <Section label="Emergency">
-        <Toggle danger label="Freeze new orders" hint="Client portal will reject all new orders. Existing active orders are NOT affected. Auto-renewals continue normally." value={state.freezeNewOrders} onChange={() => flip('freezeNewOrders', 'Client portal will reject new orders')} pending={pending} />
-      </Section>
-      <Section label="Limits">
-        <NumberRow label="Max concurrent orders per client" min={1} max={999} value={state.flags.maxConcurrentOrdersPerClient} onSave={n => saveLimit('maxConcurrentOrdersPerClient', n)} pending={pending} />
-        <NumberRow label="Max proxy replacements per order" min={1} max={10} value={state.flags.maxProxyReplacementsPerOrder} onSave={n => saveLimit('maxProxyReplacementsPerOrder', n)} pending={pending} />
-        <NumberRow label="Support refund cap (USD)" min={0} max={99999} value={state.flags.supportRefundCapUSD} onSave={n => saveLimit('supportRefundCapUSD', n)} pending={pending} />
-        <NumberRow label="Discount cap without Super approval (%)" min={0} max={100} value={state.flags.discountCapWithoutSuperApprovalPercent} onSave={n => saveLimit('discountCapWithoutSuperApprovalPercent', n)} pending={pending} />
-      </Section>
-    </>
-  );
-}
-
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 8 }}>{label}</div>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-function Toggle({ label, hint, value, onChange, pending, danger }: { label: string; hint?: string; value: boolean; onChange: () => void; pending: boolean; danger?: boolean }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <div style={{ flex: 1, paddingRight: 16 }}>
-        <div style={{ fontSize: 13, color: danger && value ? 'var(--danger)' : 'var(--text)', fontWeight: danger ? 600 : 400 }}>
-          {label}{hint && <HelpTip>{hint}</HelpTip>}
-        </div>
-        {hint && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{hint.slice(0, 80)}{hint.length > 80 ? '…' : ''}</div>}
+    <div className="form-grid cols-2">
+      <div className="form-field full"><div className="subsection-title">Operational flags</div></div>
+      <FlagToggle label="Auto-provision proxies on order paid" tip="When payment confirms, pick an available proxy from the plan's pool automatically." on={state.systemAutoProvisionOnPayment} onClick={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
+      <FlagToggle label="Auto-replace on faulty-proxy detection" tip="If a proxy fails health checks, queue a replacement from the same pool without waiting for an admin." on={state.autoReplaceOnFaulty} onClick={() => flip('autoReplaceOnFaulty')} pending={pending} />
+      <FlagToggle label="Auto-release proxies after grace window" tip="Once grace ends, return the proxy to the pool. Disable only for custom contracts." on={state.autoReleaseAfterGrace} onClick={() => flip('autoReleaseAfterGrace')} pending={pending} />
+      <FlagToggle label="Require 2FA for every refund action" on={state.require2FAForRefund} onClick={() => flip('require2FAForRefund')} pending={pending} />
+      <FlagToggle label="Require internal note for suspend / block" on={state.requireNoteOnSuspend} onClick={() => flip('requireNoteOnSuspend')} pending={pending} />
+      <div className="form-field full">
+        <label className="hstack">
+          <span className={`toggle-v2 danger ${state.freezeNewOrders ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={() => flip('freezeNewOrders', 'Client portal will reject new orders')} />
+          <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Freeze new orders (emergency)</span>
+          <HelpTip>Blocks the client portal from creating any new orders. Existing orders unaffected. Use during incidents only.</HelpTip>
+        </label>
       </div>
-      <span className={`toggle ${value ? 'on' : ''} ${danger && value ? 'danger' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer', opacity: pending ? 0.6 : 1 }} onClick={onChange} />
+
+      <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Limits</div></div>
+      <LimitField label="Max concurrent orders per client" min={1} max={999} value={state.flags.maxConcurrentOrdersPerClient} onSave={n => saveLimit('maxConcurrentOrdersPerClient', n)} pending={pending} />
+      <LimitField label="Max proxy replacements per order" min={1} max={10} value={state.flags.maxProxyReplacementsPerOrder} onSave={n => saveLimit('maxProxyReplacementsPerOrder', n)} pending={pending} />
+      <LimitField label="Support refund cap (USD)" min={0} max={99999} value={state.flags.supportRefundCapUSD} onSave={n => saveLimit('supportRefundCapUSD', n)} pending={pending} />
+      <LimitField label="Discount cap without Super approval (%)" min={0} max={100} value={state.flags.discountCapWithoutSuperApprovalPercent} onSave={n => saveLimit('discountCapWithoutSuperApprovalPercent', n)} pending={pending} />
+
+      <div className="form-field full">
+        <span className="muted" style={{ fontSize: 11.5 }}>Toggles persist immediately. Limit changes save when you click Save next to the field.</span>
+      </div>
     </div>
   );
 }
 
-function NumberRow({ label, min, max, value, onSave, pending }: { label: string; min: number; max: number; value: number; onSave: (n: number) => void; pending: boolean }) {
-  const [local, setLocal] = useState(String(value));
-  const dirty = parseInt(local, 10) !== value;
+function FlagToggle({ label, tip, on, onClick, pending }: { label: string; tip?: string; on: boolean; onClick: () => void; pending: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <span style={{ fontSize: 12.5, color: 'var(--text)' }}>{label}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <input className="form-input mono" type="number" min={min} max={max} value={local} onChange={e => setLocal(e.target.value)} style={{ width: 90, textAlign: 'right' }} />
+    <div className="form-field">
+      <label className="hstack">
+        <span className={`toggle-v2 ${on ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={onClick} />
+        <span>{label}</span>
+        {tip && <HelpTip>{tip}</HelpTip>}
+      </label>
+    </div>
+  );
+}
+
+function LimitField({ label, min, max, value, onSave, pending }: { label: string; min: number; max: number; value: number; onSave: (n: number) => void; pending: boolean }) {
+  const [local, setLocal] = useState(String(value));
+  const dirty = parseInt(local, 10) !== value && local.trim() !== '';
+  return (
+    <div className="form-field">
+      <div className="form-label">{label} <span className="req">*</span></div>
+      <div className="hstack">
+        <input className="form-input" type="number" min={min} max={max} value={local} onChange={e => setLocal(e.target.value)} style={{ flex: 1 }} />
         {dirty && <button className="btn sm primary" disabled={pending} onClick={() => onSave(parseInt(local, 10))}>Save</button>}
       </div>
     </div>

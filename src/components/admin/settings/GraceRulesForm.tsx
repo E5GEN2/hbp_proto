@@ -30,50 +30,37 @@ export function GraceRulesForm({ initial }: { initial: Grace }) {
         await saveGraceRulesAction(g);
         toast('Grace rules saved', '', 'success');
         router.refresh();
-      } catch (e: any) { toast('Validation failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Validation failed', e.message, 'warning'); }
     });
   }
 
-  return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 18 }}>
-        <Num label="Default grace period (hours)" value={g.defaultGraceHours} onChange={v => setG({ ...g, defaultGraceHours: v })} max={720} />
-        <Num label="Pre-renewal reminder (hours)" value={g.preRenewalReminderHours} onChange={v => setG({ ...g, preRenewalReminderHours: v })} max={720} />
-        <Num label="Second reminder (hours)" value={g.secondReminderHours} onChange={v => setG({ ...g, secondReminderHours: v })} max={168} hint="Must be < pre-renewal" />
-        <Num label="Third reminder (hours)" value={g.thirdReminderHours} onChange={v => setG({ ...g, thirdReminderHours: v })} max={168} hint="Must be < second reminder" />
-      </div>
-      <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 8 }}>Per-tier grace</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 18 }}>
-        <Num label="VIP grace (hours)" value={g.VIPGraceHours} onChange={v => setG({ ...g, VIPGraceHours: v })} max={720} />
-        <Num label="Pro grace (hours)" value={g.ProGraceHours} onChange={v => setG({ ...g, ProGraceHours: v })} max={720} />
-        <Num label="Standard grace (hours)" value={g.StandardGraceHours} onChange={v => setG({ ...g, StandardGraceHours: v })} max={720} />
-      </div>
-      <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 8 }}>Auto-behavior</div>
-      <Toggle label="Auto-renew 24h before expiry (if card on file)" value={g.autoRenew24hBeforeExpiry} onChange={v => setG({ ...g, autoRenew24hBeforeExpiry: v })} />
-      <Toggle label="Keep proxy reachable during grace period" value={g.keepProxyDuringGrace} onChange={v => setG({ ...g, keepProxyDuringGrace: v })} />
-      <Toggle label="Auto-suspend after 3 failed auto-renews" value={g.autoSuspendAfter3Fails} onChange={v => setG({ ...g, autoSuspendAfter3Fails: v })} />
-      <div style={{ marginTop: 20 }}>
-        <button className="btn primary" disabled={!dirty || pending} onClick={save}>{pending ? 'Saving…' : 'Save grace rules'}</button>
-      </div>
-    </>
+  type NumKey = 'defaultGraceHours' | 'preRenewalReminderHours' | 'secondReminderHours' | 'thirdReminderHours' | 'VIPGraceHours' | 'ProGraceHours' | 'StandardGraceHours';
+  const num = (k: NumKey) => (
+    <input className="form-input" type="number" min={0} max={720} step={1}
+      value={g[k]} onChange={e => setG({ ...g, [k]: parseInt(e.target.value || '0', 10) })} />
   );
-}
 
-function Num({ label, value, onChange, max, hint }: { label: string; value: number; onChange: (n: number) => void; max: number; hint?: string }) {
   return (
-    <div>
-      <label className="form-label">{label}</label>
-      <input className="form-input mono" type="number" min={0} max={max} value={value} onChange={e => onChange(parseInt(e.target.value || '0', 10))} />
-      {hint && <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>{hint}</div>}
-    </div>
-  );
-}
+    <div className="form-grid cols-2">
+      <div className="form-field full"><div className="subsection-title">Global defaults</div></div>
+      <div className="form-field"><div className="form-label">Default grace period (hours) <span className="req">*</span></div>{num('defaultGraceHours')}</div>
+      <div className="form-field"><div className="form-label">Pre-renewal reminder (hours before expiry) <span className="req">*</span></div>{num('preRenewalReminderHours')}</div>
+      <div className="form-field"><div className="form-label">Second reminder</div>{num('secondReminderHours')}</div>
+      <div className="form-field"><div className="form-label">Third reminder (at expiry)</div>{num('thirdReminderHours')}</div>
 
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <span style={{ fontSize: 13, color: 'var(--text)' }}>{label}</span>
-      <span className={`toggle ${value ? 'on' : ''}`} style={{ cursor: 'pointer' }} onClick={() => onChange(!value)} />
+      <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.autoRenew24hBeforeExpiry ? 'on' : ''}`} onClick={() => setG({ ...g, autoRenew24hBeforeExpiry: !g.autoRenew24hBeforeExpiry })} /> Auto-renew: charge 24h before expiry if card on file</label></div>
+      <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.keepProxyDuringGrace ? 'on' : ''}`} onClick={() => setG({ ...g, keepProxyDuringGrace: !g.keepProxyDuringGrace })} /> Keep proxy assigned during grace (client can still use)</label></div>
+      <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.autoSuspendAfter3Fails ? 'on' : ''}`} onClick={() => setG({ ...g, autoSuspendAfter3Fails: !g.autoSuspendAfter3Fails })} /> Auto-suspend after 3 failed auto-renew attempts</label></div>
+
+      <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Per-tier overrides</div></div>
+      <div className="form-field"><div className="form-label">VIP grace (hours)</div>{num('VIPGraceHours')}</div>
+      <div className="form-field"><div className="form-label">Pro grace (hours)</div>{num('ProGraceHours')}</div>
+      <div className="form-field"><div className="form-label">Standard grace (hours) <span className="req">*</span></div>{num('StandardGraceHours')}</div>
+
+      <div className="form-actions-row">
+        <button className="btn" disabled={!dirty || pending} onClick={() => setG(initial)}>Reset</button>
+        <button className="btn primary" disabled={!dirty || pending} onClick={save}>{pending ? 'Saving…' : 'Save changes'}</button>
+      </div>
     </div>
   );
 }

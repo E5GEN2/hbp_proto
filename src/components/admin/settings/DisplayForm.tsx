@@ -9,33 +9,35 @@ export function DisplayForm({ initial }: { initial: { timeFormat: 'UTC' | 'GMT' 
   const toast = useToast();
   const [pending, start] = useTransition();
 
-  function set(v: 'UTC' | 'GMT') {
+  function set(v: string) {
     if (v === initial.timeFormat) return;
     start(async () => {
       try {
-        await setTimeFormatAction(v);
+        await setTimeFormatAction(v as 'UTC' | 'GMT');
         toast('Time format updated', v, 'success');
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <label className="form-label">Time format</label>
-      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', width: 'max-content' }}>
-        {(['UTC', 'GMT'] as const).map(v => (
-          <button key={v} onClick={() => set(v)} disabled={pending}
-            style={{
-              padding: '8px 18px', fontSize: 12.5, fontWeight: 500,
-              background: initial.timeFormat === v ? 'var(--surface)' : 'transparent',
-              color: initial.timeFormat === v ? 'var(--text)' : 'var(--muted)',
-              borderRadius: 6,
-            }}>{v}</button>
-        ))}
+    <div className="form-grid cols-2">
+      <div className="form-field full"><div className="subsection-title">Time</div></div>
+      <div className="form-field">
+        <div className="form-label">Time format</div>
+        <select className="form-select" defaultValue={initial.timeFormat} disabled={pending} onChange={e => set(e.target.value)}>
+          <option value="UTC">UTC — Coordinated Universal Time</option>
+          <option value="GMT">GMT — Greenwich Mean Time</option>
+        </select>
       </div>
-      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
-        Both UTC and GMT have zero offset. The label is cosmetic — choose whichever your team uses internally.
+      <div className="form-field">
+        <div className="form-label">Live clock</div>
+        <input className="form-input" value="Sidebar header · always visible" disabled />
+      </div>
+
+      <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Future preferences</div></div>
+      <div className="form-field full">
+        <span className="muted" style={{ fontSize: 12 }}>Theme, density, table row height, sidebar width — to be added as the system evolves. Both UTC and GMT share zero offset; the label is cosmetic.</span>
       </div>
     </div>
   );

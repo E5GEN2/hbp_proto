@@ -7,79 +7,79 @@ import { setProviderEnabledAction } from '@/lib/settings-actions';
 
 type ProviderCfg = {
   enabled: boolean;
-  accountId?: string;
-  publishableKey?: string;
-  webhookSecret?: string;
-  confirmations?: number;
-  currencies?: string[];
+  accountId?: string; publishableKey?: string; webhookSecret?: string;
+  confirmations?: number; currencies?: string[];
 };
 
 export function ProvidersForm({ initial }: {
   initial: { stripe?: ProviderCfg; crypto?: ProviderCfg; bank?: ProviderCfg; paypal?: ProviderCfg };
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+    <div className="form-grid">
       <ProviderCard
-        name="Stripe" provider="stripe" initial={initial.stripe ?? { enabled: false }}
-        impactWhenDisabling={[
-          'The client portal will stop accepting card payments',
-          'Existing subscriptions / auto-renews on cards stop being charged',
+        name="Stripe" desc="Primary card processor · Live mode" provider="stripe"
+        cfg={initial.stripe ?? { enabled: false }}
+        impact={[
+          'New card checkouts blocked immediately',
+          'Auto-renew via card pauses',
           'Crypto and bank-transfer providers continue working',
           'Re-enable from this same screen',
         ]}
         fields={[
           { name: 'accountId', label: 'Account ID' },
           { name: 'publishableKey', label: 'Publishable key' },
-          { name: 'webhookSecret', label: 'Webhook signing secret' },
+          { name: 'webhookSecret', label: 'Webhook secret' },
         ]}
+        cols={3}
       />
       <ProviderCard
-        name="CoinPayments (crypto)" provider="crypto" initial={initial.crypto ?? { enabled: false }}
-        impactWhenDisabling={[
-          'New crypto checkouts blocked',
-          'Pending crypto invoices unaffected',
-          'Card and bank-transfer providers continue',
-        ]}
+        name="Crypto (CoinPayments)" desc="USDT (TRC20 / ERC20), USDC, BTC" provider="crypto"
+        cfg={initial.crypto ?? { enabled: false }}
+        impact={['New crypto checkouts blocked', 'Pending crypto invoices unaffected', 'Card and bank-transfer providers continue']}
         fields={[
-          { name: 'confirmations', label: 'Confirmations required', kind: 'number' },
+          { name: 'confirmations', label: 'Confirmations required (USDT)' },
+          { name: 'currencies', label: 'Accepted currencies' },
         ]}
+        cols={2}
       />
       <ProviderCard
-        name="Bank transfer" provider="bank" initial={initial.bank ?? { enabled: false }}
-        impactWhenDisabling={[
-          'Clients can no longer pay by invoice / wire',
-          'In-flight invoices keep their existing payment window',
-        ]}
-        fields={[]}
+        name="Bank transfer (invoice)" desc="Manual confirmation by Ops" provider="bank"
+        cfg={initial.bank ?? { enabled: false }}
+        impact={['New invoice checkouts blocked', 'In-flight invoices unaffected', 'Card and crypto providers continue']}
+        fields={[]} cols={2} activeLabel="Active"
       />
-      <ProviderCard
-        name="PayPal" provider="paypal" initial={initial.paypal ?? { enabled: false }}
-        impactWhenDisabling={[]}
-        fields={[]}
-      />
+
+      <div className="provider-card disconnected">
+        <div className="hstack between">
+          <div className="vstack">
+            <span style={{ fontSize: 14, fontWeight: 650, color: 'var(--text)' }}>PayPal</span>
+            <span className="muted">Not connected · OAuth connect ships in Phase 2</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-field full"><span className="muted" style={{ fontSize: 11.5 }}>Enable / disable persists immediately. Editing provider credentials is gated to Super Admin in production (Phase 2 RBAC).</span></div>
     </div>
   );
 }
 
-function ProviderCard({
-  name, provider, initial, fields, impactWhenDisabling,
-}: {
-  name: string; provider: 'stripe' | 'crypto' | 'bank' | 'paypal';
-  initial: ProviderCfg;
-  fields: { name: string; label: string; kind?: 'text' | 'number' }[];
-  impactWhenDisabling: string[];
+function ProviderCard({ name, desc, provider, cfg, fields, impact, cols, activeLabel = 'Connected' }: {
+  name: string; desc: string;
+  provider: 'stripe' | 'crypto' | 'bank';
+  cfg: ProviderCfg;
+  fields: { name: string; label: string }[];
+  impact: string[];
+  cols: 2 | 3;
+  activeLabel?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  function flip(toOn: boolean) {
-    if (!toOn && impactWhenDisabling.length > 0) {
-      setConfirmOpen(true);
-      return;
-    }
-    doFlip(toOn);
+  function flip() {
+    if (cfg.enabled && impact.length > 0) { setConfirmOpen(true); return; }
+    doFlip(!cfg.enabled);
   }
   function doFlip(toOn: boolean) {
     start(async () => {
@@ -87,40 +87,42 @@ function ProviderCard({
         await setProviderEnabledAction(provider, toOn);
         toast(`${name} ${toOn ? 'enabled' : 'disabled'}`, '', toOn ? 'success' : 'warning');
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
 
   return (
-    <div className="panel" style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{name}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className={`chip ${initial.enabled ? 'success' : 'muted'} sm`}>{initial.enabled ? 'Connected' : 'Disabled'}</span>
-          <span className={`toggle ${initial.enabled ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={() => flip(!initial.enabled)} />
+    <div className="provider-card">
+      <div className="hstack between">
+        <div className="vstack">
+          <span style={{ fontSize: 14, fontWeight: 650, color: 'var(--text)' }}>{name}</span>
+          <span className="muted">{desc}</span>
+        </div>
+        <div className="hstack">
+          <span className={`chip ${cfg.enabled ? (activeLabel === 'Active' ? 'active' : 'paid') : 'muted'} sm`}>{cfg.enabled ? activeLabel : 'Disabled'}</span>
+          <span className={`toggle-v2 ${cfg.enabled ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={flip} />
         </div>
       </div>
-      {fields.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginTop: 12 }}>
-          {fields.map(f => (
-            <div key={f.name}>
-              <label className="form-label">{f.label}</label>
-              <input className="form-input mono" type={f.kind === 'number' ? 'number' : 'text'} defaultValue={String((initial as any)[f.name] ?? '')} disabled />
-            </div>
-          ))}
-          <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>Editing provider credentials is gated to Super Admin in production (Phase 2 RBAC).</div>
+      {cfg.enabled && fields.length > 0 && (
+        <div className={`form-grid cols-${cols}`} style={{ padding: '14px 0 0' }}>
+          {fields.map(f => {
+            const raw = (cfg as any)[f.name];
+            const val = Array.isArray(raw) ? raw.join(', ') : raw ?? '';
+            return (
+              <div className="form-field" key={f.name}>
+                <div className="form-label">{f.label}</div>
+                <input className="form-input" defaultValue={String(val)} disabled />
+              </div>
+            );
+          })}
         </div>
       )}
       <ConfirmAction
         open={confirmOpen} onClose={() => setConfirmOpen(false)}
-        title={`Disable ${name}?`}
-        entityLabel={`Provider · ${name}`}
-        message={`This affects the client portal immediately.`}
-        impact={impactWhenDisabling}
-        requireReason
-        confirmLabel={`Disable ${name}`}
-        confirmTone="danger"
-        onConfirm={async () => doFlip(false)}
+        title={`Disable ${name}?`} entityLabel={`Provider · ${name}`}
+        message="This affects the client portal immediately."
+        impact={impact} requireReason confirmLabel={`Disable ${name}`} confirmTone="danger"
+        onConfirm={async () => { setConfirmOpen(false); doFlip(false); }}
       />
     </div>
   );

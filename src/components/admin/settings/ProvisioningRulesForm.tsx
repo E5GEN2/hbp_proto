@@ -11,6 +11,8 @@ type Rule = {
   autoAssign: boolean; notes: string | null;
 };
 
+const W = (w: number) => `calc(100% * ${w} / 20)`;
+
 export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
   rules: Rule[];
   carriers: string[]; regions: string[]; pools: string[];
@@ -32,7 +34,6 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
     setForm({ id: r.id, carrier: r.carrier, region: r.region, defaultPool: r.defaultPool, fallbackPools: r.fallbackPools, autoAssign: r.autoAssign, notes: r.notes });
     setOpen(true);
   }
-
   function save() {
     start(async () => {
       try {
@@ -44,7 +45,7 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
         toast(editing ? 'Rule updated' : 'Rule created', `${form.carrier}/${form.region}`, 'success');
         setOpen(false);
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
   function del(id: string, label: string) {
@@ -54,35 +55,56 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
         await deleteProvisioningRuleAction(id);
         toast('Rule deleted', label, 'success');
         router.refresh();
-      } catch (e: any) { toast('Failed', e.message, 'danger'); }
+      } catch (e: any) { toast('Failed', e.message, 'warning'); }
     });
   }
 
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button className="btn primary" onClick={openCreate}>+ Add rule</button>
+    <div className="panel-section">
+      <div className="panel-title-row">
+        <div className="vstack">
+          <span className="subsection-title">Provisioning rules · {rules.length} mapped</span>
+          <span className="muted">Order checkout uses these to pre-pick a pool. Auto-assign OFF = client sees a pool dropdown at checkout.</span>
+        </div>
+        <button className="btn primary sm" onClick={openCreate}>+ Add rule</button>
       </div>
+
       <div className="table-wrap">
-        <table className="table">
-          <thead><tr><th>ID</th><th>Carrier</th><th>Region</th><th>Default pool</th><th>Fallback chain</th><th>Auto-assign</th><th></th></tr></thead>
+        <table className="dt">
+          <colgroup>
+            <col style={{ width: W(4) }} />
+            <col style={{ width: W(4) }} />
+            <col style={{ width: W(4) }} />
+            <col style={{ width: W(3) }} />
+            <col style={{ width: W(3) }} />
+            <col style={{ width: W(2) }} />
+          </colgroup>
+          <thead><tr>
+            <th className="col-text">Carrier · Region</th>
+            <th className="col-text">Default pool</th>
+            <th className="col-text">Fallback chain</th>
+            <th className="col-text">Auto-assign</th>
+            <th className="col-text">Notes</th>
+            <th className="col-action"></th>
+          </tr></thead>
           <tbody>
-            {rules.length === 0
-              ? <tr><td colSpan={7}><div className="empty"><div className="empty-desc">No rules yet.</div></div></td></tr>
-              : rules.map(r => (
-                <tr key={r.id}>
-                  <td className="mono">{r.id}</td>
-                  <td>{r.carrier}</td>
-                  <td>{r.region}</td>
-                  <td>{r.defaultPool}</td>
-                  <td>{r.fallbackPools.length > 0 ? r.fallbackPools.join(' → ') : '—'}</td>
-                  <td><span className={`chip ${r.autoAssign ? 'success' : 'muted'}`}>{r.autoAssign ? 'On' : 'Off (manual picker)'}</span></td>
-                  <td style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn sm" onClick={() => openEdit(r)}>Edit</button>
-                    <button className="btn sm" onClick={() => del(r.id, `${r.carrier}/${r.region}`)}>Delete</button>
-                  </td>
-                </tr>
-              ))}
+            {rules.length === 0 ? (
+              <tr><td colSpan={6}><div className="empty"><div className="empty-desc">No provisioning rules yet. All plans fall into the manual queue at checkout.</div></div></td></tr>
+            ) : rules.map(r => (
+              <tr key={r.id}>
+                <td className="col-text td-primary">{r.carrier} · {r.region}</td>
+                <td className="col-text">{r.defaultPool}</td>
+                <td className="col-text muted">{r.fallbackPools.length > 0 ? r.fallbackPools.join(' → ') : '—'}</td>
+                <td className="col-text"><span className={`chip ${r.autoAssign ? 'active' : 'muted'} sm`}>{r.autoAssign ? 'ON' : 'OFF · manual picker'}</span></td>
+                <td className="col-text muted">{r.notes || '—'}</td>
+                <td className="col-action">
+                  <span className="hstack" style={{ justifyContent: 'flex-end' }}>
+                    <a className="td-link" onClick={() => openEdit(r)}>Edit</a>
+                    <a className="td-link" onClick={() => del(r.id, `${r.carrier}/${r.region}`)}>Delete</a>
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -92,43 +114,45 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
           <button className="btn" onClick={() => setOpen(false)} disabled={pending}>Cancel</button>
           <button className="btn primary" onClick={save} disabled={pending}>{pending ? 'Saving…' : editing ? 'Save changes' : 'Create rule'}</button>
         </>}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          <div>
-            <label className="form-label">Carrier *</label>
+        <div className="form-grid cols-3" style={{ padding: 0 }}>
+          <div className="form-field">
+            <div className="form-label">Carrier <span className="req">*</span></div>
             <select className="form-select" value={form.carrier ?? ''} onChange={e => setForm({ ...form, carrier: e.target.value })}>
               {carriers.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
-          <div>
-            <label className="form-label">Region *</label>
+          <div className="form-field">
+            <div className="form-label">Region <span className="req">*</span></div>
             <select className="form-select" value={form.region ?? ''} onChange={e => setForm({ ...form, region: e.target.value })}>
               {regions.map(r => <option key={r}>{r}</option>)}
             </select>
           </div>
-          <div>
-            <label className="form-label">Default pool *</label>
+          <div className="form-field">
+            <div className="form-label">Default pool <span className="req">*</span></div>
             <select className="form-select" value={form.defaultPool ?? ''} onChange={e => setForm({ ...form, defaultPool: e.target.value })}>
               {pools.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Fallback pools (comma-separated; ordered)</label>
+          <div className="form-field full">
+            <div className="form-label">Fallback pools (comma-separated; ordered)</div>
             <input className="form-input" value={(form.fallbackPools ?? []).join(', ')}
               onChange={e => setForm({ ...form, fallbackPools: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
           </div>
-          <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border-subtle)' }}>
-            <div>
-              <div style={{ fontSize: 13, color: 'var(--text)' }}>Auto-assign at checkout</div>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>OFF = client-portal checkout shows a pool dropdown</div>
-            </div>
-            <span className={`toggle ${form.autoAssign ? 'on' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setForm({ ...form, autoAssign: !form.autoAssign })} />
+          <div className="form-field full">
+            <label className="hstack between" style={{ alignItems: 'flex-start' }}>
+              <span className="vstack">
+                <span style={{ fontSize: 13, color: 'var(--text)' }}>Auto-assign at checkout</span>
+                <span className="muted" style={{ fontSize: 11.5 }}>OFF = client-portal checkout shows a pool dropdown</span>
+              </span>
+              <span className={`toggle-v2 ${form.autoAssign ? 'on' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setForm({ ...form, autoAssign: !form.autoAssign })} />
+            </label>
           </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Notes (optional)</label>
+          <div className="form-field full">
+            <div className="form-label">Notes (optional)</div>
             <textarea className="form-textarea" rows={2} value={form.notes ?? ''} onChange={e => setForm({ ...form, notes: e.target.value })} />
           </div>
         </div>
       </Modal>
-    </>
+    </div>
   );
 }

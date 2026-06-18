@@ -9,6 +9,13 @@ export type Crumb = { label: string; href?: string };
 // and global [bell][New Order] chrome on the right — present on every page.
 // `action` is a transitional slot for page-specific primaries that have not yet
 // been relocated to their page filter-bar; it renders left of the bell.
+//
+// Canon roots EVERY non-dashboard route at a clickable "Dashboard" segment
+// (withDashboardRoot): "Dashboard / Orders", "Dashboard / Orders / Order ORD-…".
+// So when `crumbs` is given we prepend the Dashboard root automatically; a bare
+// `title` (the dashboard page itself) renders a single current segment.
+const DASHBOARD_ROOT: Crumb = { label: 'Dashboard', href: '/admin' };
+
 export function AdminTopbar({
   title,
   crumbs,
@@ -18,7 +25,10 @@ export function AdminTopbar({
   crumbs?: Crumb[];
   action?: React.ReactNode;
 }) {
-  const segs: Crumb[] = crumbs && crumbs.length > 0 ? crumbs : [{ label: title ?? '' }];
+  const segs: Crumb[] =
+    crumbs && crumbs.length > 0
+      ? (crumbs[0].label === 'Dashboard' ? crumbs : [DASHBOARD_ROOT, ...crumbs])
+      : [{ label: title ?? '' }];
 
   return (
     <header className="topbar">

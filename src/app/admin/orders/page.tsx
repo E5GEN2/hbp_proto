@@ -105,7 +105,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <AdminTopbar title="Orders" />
+      <AdminTopbar crumbs={[{ label: 'Orders' }]} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[

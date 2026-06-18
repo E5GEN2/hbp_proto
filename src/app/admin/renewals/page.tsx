@@ -62,7 +62,7 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
 
   return (
     <>
-      <AdminTopbar title="Renewals" />
+      <AdminTopbar crumbs={[{ label: 'Renewals' }]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 8 }}>
           {[

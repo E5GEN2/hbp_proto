@@ -49,7 +49,7 @@ export default async function AdminPlansPage({ searchParams }: { searchParams: R
 
   return (
     <>
-      <AdminTopbar title="Plans" action={<Link className="btn primary" href="/admin/plans/new">+ Create plan</Link>} />
+      <AdminTopbar crumbs={[{ label: 'Plans' }]} action={<Link className="btn primary" href="/admin/plans/new">+ Create plan</Link>} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <FilterBar
           filters={[

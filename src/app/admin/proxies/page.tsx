@@ -66,7 +66,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <AdminTopbar title="Proxies" action={<ProxiesToolbar carriers={carriers} regions={regions} pools={pools} />} />
+      <AdminTopbar crumbs={[{ label: 'Proxies' }]} action={<ProxiesToolbar carriers={carriers} regions={regions} pools={pools} />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 8 }}>
           {tabLink({ health: 'faulty' }, '⚠ Health Issues', faulty, searchParams.health === 'faulty')}

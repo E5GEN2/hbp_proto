@@ -47,7 +47,7 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <AdminTopbar title="Clients" action={<ClientsToolbar />} />
+      <AdminTopbar crumbs={[{ label: 'Clients' }]} action={<ClientsToolbar />} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 8 }}>
           {[

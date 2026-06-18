@@ -45,7 +45,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
 
   return (
     <>
-      <AdminTopbar title="Payments" />
+      <AdminTopbar crumbs={[{ label: 'Payments' }]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
         <div className="tabs" style={{ marginBottom: 8 }}>
           {[

@@ -1841,6 +1841,27 @@ table.dt { table-layout: fixed; }
 .avatar.client-avatar.churned  { background: var(--surface-2);   border-color: var(--border);       color: var(--muted); }
 .avatar.client-avatar.blocked  { background: var(--danger-dim);  border-color: rgba(239,68,68,.3);  color: var(--danger); }
 
+/* ===== Admin Logs — audit table (canon) ===== */
+.avatar.sm { width: 24px; height: 24px; font-size: 10px; }
+/* Role-tinted avatar (mirrors .role-chip colours) */
+.theme-admin .avatar.sm.role-super   { background: rgba(192,132,252,.12); color: #c084fc; }
+.theme-admin .avatar.sm.role-ops     { background: var(--accent-dim);     color: var(--accent); }
+.theme-admin .avatar.sm.role-support { background: var(--success-dim);    color: var(--success); }
+/* Admin column — composite avatar + name cell */
+.dt thead th.col-actor, .dt tbody td.col-actor { text-align: left; }
+.dt tbody td.col-actor { font-size: 13px; color: var(--text-secondary); }
+.dt tbody td.col-actor .actor-cell { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
+.dt tbody td.col-actor .actor-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Role chip (also used by Settings → Admin Users) */
+.role-chip {
+  display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 5px;
+  font-size: 10.5px; font-weight: 600; line-height: 1.45; letter-spacing: .04em;
+  white-space: nowrap; text-transform: uppercase; background: var(--surface-2); color: var(--muted);
+}
+.role-chip.super   { color: #c084fc;          background: rgba(192,132,252,.12); }
+.role-chip.ops     { color: var(--accent);    background: var(--accent-dim); }
+.role-chip.support { color: var(--success);   background: var(--success-dim); }
+
 /* --- Client detail identity header ------------------------------------- */
 .client-detail-identity { display: flex; align-items: center; gap: 14px; }
 .client-detail-identity .avatar.lg { flex-shrink: 0; }

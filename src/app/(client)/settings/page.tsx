@@ -5,65 +5,88 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { ProfileForm, ChangePasswordForm, NotifPrefsForm } from '@/components/client/SettingsForm';
 import Link from 'next/link';
 
+const TABS = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'security', label: 'Security' },
+  { key: 'notifications', label: 'Notifications' },
+] as const;
+
 export default async function SettingsPage({ searchParams }: { searchParams: { tab?: string } }) {
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });
   if (!me) return null;
-  const tab = searchParams.tab ?? 'profile';
+  const tab = (TABS.some(t => t.key === searchParams.tab) ? searchParams.tab : 'profile') as typeof TABS[number]['key'];
+  const initials = me.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <>
       <ClientTopbar title="My Settings" balance={Number(me.balance)} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-          <div className="tabs" style={{ marginBottom: 24 }}>
-            <Link href="/settings?tab=profile"       className={`tab ${tab === 'profile' ? 'active' : ''}`}>Profile</Link>
-            <Link href="/settings?tab=security"      className={`tab ${tab === 'security' ? 'active' : ''}`}>Security</Link>
-            <Link href="/settings?tab=notifications" className={`tab ${tab === 'notifications' ? 'active' : ''}`}>Notifications</Link>
-          </div>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div style={{ maxWidth: 'var(--page-w)', margin: '0 auto', width: '100%' }}>
+          <div className="panel">
+            <div className="panel-header"><span className="panel-title">My Settings</span></div>
+            <div className="tabs">
+              {TABS.map(t => (
+                <Link key={t.key} href={`/settings?tab=${t.key}`} className={`tab ${tab === t.key ? 'active' : ''}`}>{t.label}</Link>
+              ))}
+            </div>
 
-          {tab === 'profile' && (
-            <div className="panel" style={{ padding: 24 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-                <span className="avatar" style={{ width: 56, height: 56, fontSize: 18 }}>{me.name.split(' ').map(s => s[0]).slice(0, 2).join('')}</span>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontSize: 17, fontWeight: 650, color: 'var(--text)' }}>{me.name}</div>
-                    {me.tier !== 'STANDARD' && <span className={`chip ${me.tier === 'VIP' ? 'accent' : 'info'}`}>{me.tier.toLowerCase()}</span>}
+            {tab === 'profile' && (
+              <div className="settings-section">
+                <div className="profile-header">
+                  <div className="profile-avatar">{initials}</div>
+                  <div className="profile-header-body">
+                    <div className="profile-header-name-row">
+                      <div className="profile-header-name">{me.name}</div>
+                      {me.tier !== 'STANDARD' && <span className="client-tier">{me.tier}</span>}
+                    </div>
+                    <div className="profile-header-email">{me.email}</div>
                   </div>
-                  <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{me.email}</div>
                 </div>
+                <ProfileForm initial={{ name: me.name, telegram: me.telegram, country: me.country }} />
               </div>
-              <ProfileForm initial={{ name: me.name, telegram: me.telegram, country: me.country }} />
-            </div>
-          )}
+            )}
 
-          {tab === 'security' && (
-            <div className="panel" style={{ padding: 24 }}>
-              <h3 style={{ marginTop: 0, color: 'var(--text)' }}>Change password</h3>
-              <ChangePasswordForm />
-              <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '24px 0' }} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600 }}>Two-factor authentication</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Add an extra step to sign-in.</div>
+            {tab === 'security' && (
+              <>
+                <div className="settings-section">
+                  <div className="settings-section-title">Change password</div>
+                  <ChangePasswordForm />
                 </div>
-                <span className={`toggle ${me.twoFactorEnabled ? 'on' : ''}`} style={{ opacity: 0.5, cursor: 'not-allowed' }} title="2FA wizard ships in a follow-up batch" />
-              </div>
-            </div>
-          )}
+                <div className="settings-section">
+                  <div className="settings-section-title">Two-factor authentication</div>
+                  <div className="toggle-row" style={{ paddingLeft: 0, paddingRight: 0, backgroundImage: 'none' }}>
+                    <div className="toggle-row-body">
+                      <div className="toggle-row-title">2FA via authenticator app</div>
+                      <div className="toggle-row-caption">
+                        {me.twoFactorEnabled ? 'Enabled — codes required at sign-in.' : 'Disabled — sign-in only requires your password.'}
+                      </div>
+                    </div>
+                    <span
+                      className={`toggle ${me.twoFactorEnabled ? 'on' : ''}`}
+                      role="switch"
+                      aria-checked={me.twoFactorEnabled}
+                      title="2FA wizard ships in a follow-up batch"
+                      style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
-          {tab === 'notifications' && (
-            <div className="panel" style={{ padding: 24 }}>
-              <NotifPrefsForm initial={{
-                emailRenewal: me.emailRenewal,
-                emailIncidents: me.emailIncidents,
-                emailMarketing: me.emailMarketing,
-                telegramAll: me.telegramAll,
-              }} />
-            </div>
-          )}
+            {tab === 'notifications' && (
+              <NotifPrefsForm
+                initial={{
+                  emailRenewal: me.emailRenewal,
+                  emailIncidents: me.emailIncidents,
+                  emailMarketing: me.emailMarketing,
+                  telegramAll: me.telegramAll,
+                }}
+                email={me.email}
+              />
+            )}
+          </div>
         </div>
       </main>
     </>

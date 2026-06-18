@@ -27,16 +27,25 @@ export function ProfileForm({ initial }: {
 
   return (
     <>
-      <form className="form-grid-3">
-        <div><label className="form-label">Display name</label><input className="form-input" value={name} onChange={e => setName(e.target.value)} /></div>
-        <div><label className="form-label">Telegram</label><input className="form-input" placeholder="@handle" value={telegram} onChange={e => setTelegram(e.target.value)} /></div>
-        <div><label className="form-label">Country</label>
+      <div className="settings-form-grid cols-3">
+        <div className="settings-field">
+          <label className="settings-field-label">Display name</label>
+          <input className="form-input" value={name} maxLength={60} onChange={e => setName(e.target.value)} />
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">Telegram</label>
+          <div className="form-input-prefix">
+            <input className="form-input" placeholder="username" maxLength={32} value={telegram} onChange={e => setTelegram(e.target.value)} />
+          </div>
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">Country</label>
           <select className="form-select" value={country} onChange={e => setCountry(e.target.value)}>
             {['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
-      </form>
-      <div style={{ marginTop: 20 }}>
+      </div>
+      <div className="settings-actions">
         <button className="btn primary" onClick={save} disabled={!dirty || pending}>{pending ? 'Saving…' : 'Save'}</button>
       </div>
     </>
@@ -63,17 +72,32 @@ export function ChangePasswordForm() {
 
   return (
     <>
-      <div className="form-grid-2">
-        <div><label className="form-label">New password</label><input className="form-input" type="password" value={a} onChange={e => setA(e.target.value)} /></div>
-        <div><label className="form-label">Confirm</label><input className="form-input" type="password" value={b} onChange={e => setB(e.target.value)} /></div>
+      <div className="settings-form-grid">
+        <div className="settings-field">
+          <label className="settings-field-label">New password</label>
+          <input className="form-input" type="password" autoComplete="new-password" value={a} onChange={e => setA(e.target.value)} />
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">Confirm new password</label>
+          <input className="form-input" type="password" autoComplete="new-password" value={b} onChange={e => setB(e.target.value)} />
+        </div>
       </div>
-      <button className="btn primary" onClick={submit} disabled={pending || !a || !b} style={{ marginTop: 16 }}>{pending ? 'Updating…' : 'Update password'}</button>
+      <div className="settings-actions">
+        <button className="btn primary" onClick={submit} disabled={pending || !a || !b}>{pending ? 'Updating…' : 'Update password'}</button>
+      </div>
     </>
   );
 }
 
-export function NotifPrefsForm({ initial }: {
+const EMAIL_CHANNELS: { key: 'emailRenewal' | 'emailIncidents' | 'emailMarketing'; title: string; caption: string }[] = [
+  { key: 'emailRenewal',   title: 'Renewal reminders', caption: 'Sent 24 hours before an order expires.' },
+  { key: 'emailIncidents', title: 'Service incidents', caption: 'Outages, degraded health, planned maintenance.' },
+  { key: 'emailMarketing', title: 'Product updates',   caption: 'New features, releases, occasional offers. No spam.' },
+];
+
+export function NotifPrefsForm({ initial, email }: {
   initial: { emailRenewal: boolean; emailIncidents: boolean; emailMarketing: boolean; telegramAll: boolean };
+  email: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -81,6 +105,7 @@ export function NotifPrefsForm({ initial }: {
   const [pending, start] = useTransition();
 
   function setPref<K extends keyof typeof prefs>(k: K, v: boolean) {
+    const prev = prefs;
     const next = { ...prefs, [k]: v };
     setPrefs(next);
     start(async () => {
@@ -89,29 +114,51 @@ export function NotifPrefsForm({ initial }: {
         router.refresh();
       } catch (e: any) {
         toast('Save failed', e.message, 'danger');
-        setPrefs(prefs); // revert
+        setPrefs(prev); // revert
       }
     });
   }
 
   return (
     <>
-      <h3 style={{ marginTop: 0, color: 'var(--text)' }}>Email notifications</h3>
-      <Row label="Renewal reminders" value={prefs.emailRenewal} onChange={v => setPref('emailRenewal', v)} disabled={pending} />
-      <Row label="Service incidents" value={prefs.emailIncidents} onChange={v => setPref('emailIncidents', v)} disabled={pending} />
-      <Row label="Product updates" value={prefs.emailMarketing} onChange={v => setPref('emailMarketing', v)} disabled={pending} />
-      <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '24px 0' }} />
-      <h3 style={{ marginTop: 0, color: 'var(--text)' }}>Telegram notifications</h3>
-      <Row label="All notifications" value={prefs.telegramAll} onChange={v => setPref('telegramAll', v)} disabled={pending} />
+      <div className="settings-section">
+        <div className="settings-section-title">Email notifications</div>
+        <div className="settings-section-desc">
+          Choose which emails we send to <strong>{email}</strong>. Critical security alerts
+          (login from new device, password change) can&rsquo;t be disabled.
+        </div>
+        <div style={{ margin: '0 -20px' }}>
+          {EMAIL_CHANNELS.map(c => (
+            <ToggleRow key={c.key} title={c.title} caption={c.caption} value={prefs[c.key]} disabled={pending} onChange={v => setPref(c.key, v)} />
+          ))}
+        </div>
+      </div>
+      <div className="settings-section">
+        <div className="settings-section-title">Telegram Notifications</div>
+        <div style={{ margin: '0 -20px' }}>
+          <ToggleRow title="All notifications" caption="Mirror of all email notifications via Telegram." value={prefs.telegramAll} disabled={pending} onChange={v => setPref('telegramAll', v)} />
+        </div>
+      </div>
     </>
   );
 }
 
-function Row({ label, value, onChange, disabled }: { label: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function ToggleRow({ title, caption, value, onChange, disabled }: {
+  title: string; caption: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean;
+}) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <span style={{ fontSize: 13, color: 'var(--text)' }}>{label}</span>
-      <span className={`toggle ${value ? 'on' : ''}`} style={{ cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }} onClick={() => !disabled && onChange(!value)} />
+    <div className="toggle-row">
+      <div className="toggle-row-body">
+        <div className="toggle-row-title">{title}</div>
+        <div className="toggle-row-caption">{caption}</div>
+      </div>
+      <span
+        className={`toggle ${value ? 'on' : ''}`}
+        role="switch"
+        aria-checked={value}
+        style={{ cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
+        onClick={() => !disabled && onChange(!value)}
+      />
     </div>
   );
 }

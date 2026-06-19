@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
+import { signalStructural } from '@/lib/nav-history';
 
 // Canon nav icons (client-panel.html ICONS) — stroke style inherited via .nav-item svg
 const ICONS: Record<string, JSX.Element> = {
@@ -38,13 +39,13 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
       </div>
       <nav className="nav">
         {NAV.map(n => (
-          <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`}>
+          <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`} onClick={signalStructural}>
             <NavIcon name={n.icon} />
             <span>{n.label}</span>
           </Link>
         ))}
         <div className="nav-divider dashed" />
-        <Link href="/settings" className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
+        <Link href="/settings" className={`nav-item ${isActive('/settings') ? 'active' : ''}`} onClick={signalStructural}>
           <NavIcon name="settings" />
           <span>My Settings</span>
         </Link>

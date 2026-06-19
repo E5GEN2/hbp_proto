@@ -1,6 +1,9 @@
+'use client';
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { GlobalNewOrder } from './shell/NewOrderContext';
+import { NavBacklink } from '@/components/ui/NavBacklink';
+import { signalStructural } from '@/lib/nav-history';
 
 export type Crumb = { label: string; href?: string };
 
@@ -30,15 +33,8 @@ export function AdminTopbar({
       ? (crumbs[0].label === 'Dashboard' ? crumbs : [DASHBOARD_ROOT, ...crumbs])
       : [{ label: title ?? '' }];
 
-  // Universal backlink (canon #backlinkSlot): "← Back to {previous}". Canon
-  // drives it off a runtime history stack — entity links (rows/KPI tiles) push,
-  // sidebar/breadcrumb nav clears. We approximate that statically with the
-  // nearest LINKABLE ancestor below the current screen (the page's structural
-  // parent list), matching the client portal. Top-level list pages have only
-  // the Dashboard root as a linkable ancestor (not in `crumbs`), so they show
-  // no backlink — exactly as the sidebar-reached canon pages clear the stack.
-  const backlinkParent =
-    crumbs && crumbs.length > 1 ? [...crumbs.slice(0, -1)].reverse().find(c => c.href) : undefined;
+  // Current-page label for the nav-history stack — the last (current) segment.
+  const currentLabel = segs[segs.length - 1]?.label ?? '';
 
   return (
     <>
@@ -51,7 +47,8 @@ export function AdminTopbar({
               <Fragment key={i}>
                 {i > 0 && <span className="route-sep">/</span>}
                 {!isLast && c.href ? (
-                  <Link className="route-seg parent" href={c.href}>{c.label}</Link>
+                  // Breadcrumb nav is a structural jump (canon clears the back stack).
+                  <Link className="route-seg parent" href={c.href} onClick={signalStructural}>{c.label}</Link>
                 ) : (
                   <span className={`route-seg ${isLast ? 'current' : 'parent'}`}>{c.label}</span>
                 )}
@@ -72,14 +69,7 @@ export function AdminTopbar({
         <GlobalNewOrder />
       </div>
     </header>
-    {backlinkParent && (
-      <div className="backlink-slot">
-        <Link className="backlink" href={backlinkParent.href!}>
-          <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-          Back to {backlinkParent.label}
-        </Link>
-      </div>
-    )}
+    <NavBacklink label={currentLabel} />
     </>
   );
 }

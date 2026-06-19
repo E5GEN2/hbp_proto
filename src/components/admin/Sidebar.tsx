@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { useEffect, useState } from 'react';
+import { signalStructural } from '@/lib/nav-history';
 
 // Canon nav icons (prototype.html sidebar) — 24×24, stroke style inherited via .nav-item svg
 const ICONS: Record<string, JSX.Element> = {
@@ -101,7 +102,7 @@ export function AdminSidebar({
             {g.items.map(n => {
               const b = badges[n.href] ?? 0;
               return (
-                <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`}>
+                <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`} onClick={signalStructural}>
                   <NavIcon name={n.icon} />
                   <span>{n.label}</span>
                   {b > 0 && <span className="nav-badge">{b}</span>}

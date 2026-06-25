@@ -776,3 +776,14 @@
 @media (max-width: 1024px) {
   .mkt .hero__title { margin-left: auto !important; margin-right: auto !important; }
 }
+
+/* ── Isolation fix (addition — not in the source design) ──
+   The design reuses the bare class names `.topbar` and `.nav`, which ALSO exist in
+   the app's shared globals.css (the portal shell). `.mkt` scoping keeps the design's
+   CSS from leaking out, but it does NOT stop the global rules from leaking IN to
+   elements that share those names. The global `.topbar` adds a solid surface
+   background, a bottom border, a fixed height, 32px side padding and sticky
+   positioning; `.nav` adds overflow-y:auto. Neutralize them so the marketing nav
+   renders as designed: a transparent container with full-width pills. */
+.mkt .topbar { background: none; border-bottom: 0; height: auto; padding: 0; position: static; z-index: auto; flex-shrink: initial; }
+.mkt .nav { overflow: visible; }

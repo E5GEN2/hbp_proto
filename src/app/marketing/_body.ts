@@ -41,7 +41,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     @@PROMO@@
     <nav class="nav__links nav__right">
       <a href="#plans" class="t-h-s" style="color: var(--gold-text); font-weight: 500">US 5G</a>
-      <a class="nav__icon" href="https://t.me/proxy" target="_blank" rel="noopener" aria-label="Telegram">
+      <a class="nav__icon" href="https://t.me/US5Gwetrust" target="_blank" rel="noopener" aria-label="Telegram">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width: 22px; height: 22px; color: var(--ink);"><path d="M21.5 4.3 18.2 20c-.2 1-.9 1.3-1.8.8L11.5 17l-2.4 2.3c-.3.3-.5.5-1 .5l.4-5L17.7 7c.4-.4-.1-.6-.6-.2L7 13.1 2.6 11.7c-.9-.3-1-.9.2-1.4l17-6.6c.8-.3 1.5.2 1.7 1.6Z"></path></svg>
       </a>
       <a class="nav__cta" href="@@SIGNIN@@">Sign in</a>
@@ -315,7 +315,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
       </div>
       <div class="cta-strip__actions">
         <a class="btn btn--gold" href="#plans">Buy Proxy <span class="arr">→</span></a>
-        <a class="btn btn--quiet" href="https://t.me/proxy" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:16px;height:16px;"><path d="M21.5 4.3 18.2 20c-.2 1-.9 1.3-1.8.8L11.5 17l-2.4 2.3c-.3.3-.5.5-1 .5l.4-5L17.7 7c.4-.4-.1-.6-.6-.2L7 13.1 2.6 11.7c-.9-.3-1-.9.2-1.4l17-6.6c.8-.3 1.5.2 1.7 1.6Z"></path></svg>Contact us</a>
+        <a class="btn btn--quiet" href="https://t.me/US5Gwetrust" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:16px;height:16px;"><path d="M21.5 4.3 18.2 20c-.2 1-.9 1.3-1.8.8L11.5 17l-2.4 2.3c-.3.3-.5.5-1 .5l.4-5L17.7 7c.4-.4-.1-.6-.6-.2L7 13.1 2.6 11.7c-.9-.3-1-.9.2-1.4l17-6.6c.8-.3 1.5.2 1.7 1.6Z"></path></svg>Contact us</a>
       </div>
     </div>
   </div>
@@ -359,7 +359,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <h4>Retention</h4>
     <p>Operational metadata is retained only as long as needed for billing reconciliation and abuse prevention, then purged. You may request deletion of your account data at any time.</p>
     <h4>Your choices</h4>
-    <p>You can access, correct, or delete your account information, and opt out of non-essential email. Reach us at <a href="https://t.me/proxy" target="_blank" rel="noopener">@proxy</a> on Telegram.</p>
+    <p>You can access, correct, or delete your account information, and opt out of non-essential email. Reach us at <a href="https://t.me/US5Gwetrust" target="_blank" rel="noopener">@US5Gwetrust</a> on Telegram.</p>
     <h4>Contact</h4>
     <p>Questions about this policy can be sent to our support channel. We reply in minutes, not days.</p>
   </div>

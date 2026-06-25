@@ -8,6 +8,8 @@ import { CatalogManager } from '@/components/admin/settings/CatalogManager';
 import { ProvidersForm } from '@/components/admin/settings/ProvidersForm';
 import { NotificationsForm } from '@/components/admin/settings/NotificationsForm';
 import { ProvisioningRulesForm } from '@/components/admin/settings/ProvisioningRulesForm';
+import { AnnouncementForm } from '@/components/admin/settings/AnnouncementForm';
+import { coerceAnnouncement } from '@/lib/announcement';
 import { fmtAdminStamp } from '@/lib/date';
 
 // Canon tab order (prototype #settingsTabs)
@@ -21,6 +23,7 @@ const TABS = [
   { v: 'catalog',      l: 'Catalog' },
   { v: 'provisioning', l: 'Provisioning' },
   { v: 'flags',        l: 'System Flags' },
+  { v: 'announcements', l: 'Announcements' },
   { v: 'help',         l: 'Help & Process' },
 ];
 
@@ -37,6 +40,7 @@ const META: Record<string, string[]> = {
   catalog:      ['Master lists that drive every plan dropdown', 'Existing plans keep their snapshotted values'],
   provisioning: ['Default pool policy per Carrier · Region', 'Applies to plans that don’t override'],
   flags:        ['Flags take effect immediately', 'Red flags require confirmation'],
+  announcements: ['Controls the promo banner on the public marketing site', 'Saved changes appear on /marketing immediately'],
   help:         ['Workflow visualisations and process documentation'],
 };
 
@@ -72,6 +76,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
   const flags = (map.flags ?? {}) as any;
   const display = (map.display ?? { timeFormat: 'UTC' }) as any;
   const notifs = (map.notifications ?? {}) as any;
+  const announcement = coerceAnnouncement(map['marketing.announcement']);
 
   const catalogByKind: Record<string, { id: number; value: string }[]> = {};
   for (const c of catalogItems) {
@@ -254,6 +259,8 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
                 },
               }} />
             )}
+
+            {tab === 'announcements' && <AnnouncementForm initial={announcement} />}
 
             {tab === 'help' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 20 }}>

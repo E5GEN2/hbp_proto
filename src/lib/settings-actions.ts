@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdminRole } from './auth';
 import { prisma } from './prisma';
+import { ANNOUNCEMENT_KEY, type Announcement, type AnnouncementVariant } from './announcement';
 
 async function getAdminActor() {
   const session = await getServerSession(authOptions);
@@ -32,6 +33,36 @@ export async function setSystemFlagAction(key: string, value: any) {
     data: { actorId: actor.id, action: 'FLAG.UPDATE', objectType: 'SYSTEM', objectId: key, detail: `${key} = ${JSON.stringify(value)}` },
   });
   bust();
+  return { ok: true };
+}
+
+/* ─── MARKETING ANNOUNCEMENT ───────────────────────────────────────── */
+
+const ANN_VARIANTS: AnnouncementVariant[] = ['promo', 'info', 'warning'];
+
+export async function saveAnnouncementAction(data: Announcement) {
+  const actor = await getAdminActor();
+  const value: Announcement = {
+    enabled: !!data.enabled,
+    text: String(data.text ?? '').slice(0, 200),
+    href: String(data.href ?? '').slice(0, 300),
+    variant: ANN_VARIANTS.includes(data.variant) ? data.variant : 'promo',
+  };
+  await prisma.systemSetting.upsert({
+    where: { key: ANNOUNCEMENT_KEY },
+    update: { value: value as any },
+    create: { key: ANNOUNCEMENT_KEY, value: value as any },
+  });
+  await prisma.log.create({
+    data: {
+      actorId: actor.id,
+      action: 'FLAG.UPDATE',
+      objectType: 'SYSTEM',
+      objectId: ANNOUNCEMENT_KEY,
+      detail: `enabled=${value.enabled} · ${JSON.stringify(value.text)}`,
+    },
+  });
+  bust(); // bust() already revalidates /marketing
   return { ok: true };
 }
 

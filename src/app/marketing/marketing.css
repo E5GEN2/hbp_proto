@@ -766,3 +766,13 @@
 /* slim scrollbar */
 .mkt .legal-modal__body::-webkit-scrollbar { width: 8px; }
 .mkt .legal-modal__body::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 999px; }
+
+/* ── Responsiveness fix (addition — not in the source design) ──
+   The design's hero <h1> carries an inline `margin: 14px 334px 0px` for the
+   desktop centered-narrow column; below ~1024px that 334px side margin collapses
+   the title into vertical letters. Neutralize the horizontal margins on smaller
+   screens (it !important-overrides the inline style). Desktop ≥1025px is untouched
+   and stays byte-identical to the design. */
+@media (max-width: 1024px) {
+  .mkt .hero__title { margin-left: auto !important; margin-right: auto !important; }
+}

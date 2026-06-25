@@ -1,73 +1,128 @@
-import Link from 'next/link';
+import './marketing.css';
+import type { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
 import { money } from '@/lib/money';
+import { durationLabel } from '@/lib/catalog';
+import { getAnnouncement, renderPromoHtml } from '@/lib/announcement';
+import { renderMarketingBody } from './_body';
+import { MarketingView } from './MarketingView';
 
-// Don't pre-render at build time — needs the DB
 export const dynamic = 'force-dynamic';
 
-export default async function MarketingPage() {
-  const plans = await prisma.plan.findMany({
-    where: { active: true, visibility: 'PUBLIC', deletedAt: null },
-    orderBy: { durationDays: 'asc' },
-  });
-  const byDur = new Map<number, typeof plans[number]>();
-  for (const p of plans) if (!byDur.has(p.durationDays)) byDur.set(p.durationDays, p);
-  const tiers = [...byDur.values()];
+export const metadata: Metadata = {
+  title: 'Comet Proxy — Premium Mobile Proxies. Real 5G IPs from US Carriers.',
+  description:
+    'Premium mobile proxies on real US-carrier devices. Unlimited bandwidth, flexible rotation, transparent pricing.',
+};
 
+// Sign in + Buy route through the existing return-aware auth flow.
+const SIGNIN_HREF = '/login';
+const buyHref = (days: number) =>
+  `/login?return=${encodeURIComponent(`/checkout?duration=${days}&qty=1&autoExtend=1&ref=site`)}`;
+
+const CHECK =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 12 10 18 20 6"></polyline></svg>';
+
+// The design's three tiers — copy/features ported verbatim; price + ribbon defaults.
+// `price` is a fallback; a matching live Plan (by duration) overrides it.
+type Tier = {
+  days: number;
+  eyebrow: string;     // pill markup included
+  ribbon: string;      // '' when none
+  cardClass: string;
+  btnClass: string;
+  price: number;
+  features: string[];
+};
+
+const TIERS: Tier[] = [
+  {
+    days: 7,
+    eyebrow: 'Starter <span class="pill">Mobile</span>',
+    ribbon: '',
+    cardClass: 'plan',
+    btnClass: 'btn btn--ink',
+    price: 19,
+    features: ['5G mobile IPs', 'Unlimited bandwidth', 'Dedicated access', 'Auto‑rotation + URL rotation'],
+  },
+  {
+    days: 30,
+    eyebrow:
+      'Best value <span class="pill" style="background:var(--gold-dim); border-color: rgba(181,138,74,.3); color: var(--gold-text)">Mobile</span>',
+    ribbon: '<span class="plan__ribbon plan__ribbon--popular">Most popular</span>',
+    cardClass: 'plan plan--popular',
+    btnClass: 'btn btn--gold',
+    price: 55,
+    features: [
+      '5G mobile IPs',
+      'Unlimited bandwidth',
+      'Dedicated access',
+      'Auto‑rotation + URL rotation',
+      'Priority Telegram support',
+    ],
+  },
+  {
+    days: 90,
+    eyebrow: 'Pro <span class="pill">Mobile</span>',
+    ribbon: '<span class="plan__ribbon plan__ribbon--promo">10% off</span>',
+    cardClass: 'plan',
+    btnClass: 'btn btn--ink',
+    price: 149,
+    features: [
+      '5G mobile IPs',
+      'Unlimited bandwidth',
+      'Dedicated access',
+      'Auto‑rotation + URL rotation',
+      'Priority Telegram support',
+    ],
+  },
+];
+
+function renderCard(t: Tier, price: number): string {
+  const items = t.features.map((f) => `<li>${CHECK}${f}</li>`).join('');
   return (
-    <div className="theme-client" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <header style={{ height: 'var(--topbar-h)', padding: '0 32px', display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-          <span style={{ color: 'var(--accent)' }}>●</span> HBP Proxies
-        </div>
-        <div style={{ flex: 1 }} />
-        <Link href="/login" className="btn">Sign in</Link>
-      </header>
-      <main style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px' }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Mobile proxies. Built for scale.</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 12, maxWidth: 680 }}>
-          Premium 4G LTE proxies from real carrier networks. Sticky sessions, rotating IPs, transparent pricing.
-        </p>
-
-        <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          {tiers.map((p, idx) => (
-            <div key={p.id} className="panel" style={{ padding: 24, position: 'relative', overflow: 'visible' }}>
-              {idx === 1 && (
-                <div style={{ position: 'absolute', top: -11, right: 20, background: 'var(--accent)', color: 'white', padding: '4px 14px', borderRadius: 999, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>Most popular</div>
-              )}
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Mobile · 3 locations</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text)', marginTop: 6 }}>{p.durationDays} days</div>
-              <div style={{ fontSize: 14, marginTop: 6, color: 'var(--accent-text)', fontWeight: 600 }}>{money(Number(p.price))} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/ per proxy</span></div>
-              {p.capacityState === 'LOW' && (
-                <div className="chip warning" style={{ marginTop: 10 }}>Limited availability</div>
-              )}
-              <ul style={{ marginTop: 16, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Feature>4G LTE on real carrier modems</Feature>
-                <Feature>Sticky sessions + rotation URL</Feature>
-                <Feature>IP whitelisting (up to 5 IPs)</Feature>
-                <Feature>HTTP + SOCKS5 protocols</Feature>
-              </ul>
-              <p style={{ marginTop: 12, fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{p.description}</p>
-              <Link href={`/login?return=${encodeURIComponent(`/checkout?duration=${p.durationDays}&qty=1&autoExtend=1&ref=site`)}`}
-                className="btn primary" style={{ marginTop: 16, width: '100%' }}>
-                Buy now
-              </Link>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 32, fontSize: 12.5, color: 'var(--muted)', textAlign: 'center' }}>
-          Already have an account? <Link href="/login" style={{ color: 'var(--accent-text)' }}>Sign in</Link> · No account? Just click <strong>Buy now</strong> — we&rsquo;ll guide you through registration.
-        </div>
-      </main>
-    </div>
+    `<article class="${t.cardClass}">` +
+    t.ribbon +
+    `<div class="plan__eyebrow">${t.eyebrow}</div>` +
+    `<h3 class="plan__name">${durationLabel(t.days)}</h3>` +
+    `<div class="plan__price"><span class="v">${money(price)}</span><span class="u">/ proxy</span></div>` +
+    `<div class="plan__divider"></div>` +
+    `<ul class="plan__list">${items}</ul>` +
+    `<div class="plan__cta"><a class="${t.btnClass}" href="${buyHref(t.days)}">Buy now <span class="arr">→</span></a></div>` +
+    `</article>`
   );
 }
 
-function Feature({ children }: { children: React.ReactNode }) {
+export default async function MarketingPage() {
+  // Plan cards: design defaults, overridden by live Plan data per duration (catalog logic:
+  // group sellable PUBLIC plans by durationDays, take max price within a duration).
+  const plans = await prisma.plan.findMany({
+    where: { active: true, visibility: 'PUBLIC', deletedAt: null },
+  });
+  const livePrice = new Map<number, number>();
+  for (const p of plans) {
+    if (p.capacityState === 'SOLD_OUT') continue;
+    const v = Number(p.price);
+    livePrice.set(p.durationDays, Math.max(livePrice.get(p.durationDays) ?? 0, v));
+  }
+  const planCards = TIERS.map((t) => renderCard(t, livePrice.get(t.days) ?? t.price)).join('\n');
+
+  const announcement = await getAnnouncement();
+  const html = renderMarketingBody({
+    promo: renderPromoHtml(announcement),
+    signInHref: SIGNIN_HREF,
+    planCards,
+  });
+
   return (
-    <li style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-      <span style={{ color: 'var(--success)' }}>✓</span> {children}
-    </li>
+    <>
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+      <MarketingView html={html} />
+    </>
   );
 }

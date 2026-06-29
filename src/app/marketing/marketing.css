@@ -324,11 +324,14 @@
 }
 .mkt .hero__title .gold { color: var(--gold-text); font-weight: var(--fw-medium); }
 .mkt .hero__sub {
-  margin: 28px auto 0;
-  max-width: 580px;
-  font-size: var(--text-body-l); font-weight: var(--fw-regular);
-  line-height: var(--lh-body-l);
-  color: var(--ink-soft);
+  margin: 28px auto 0;            /* auto = horizontal centering (text-align:center parent); 28px top gap */
+  max-width: 540px;              /* width per design spec */
+  font-size: var(--text-body-l); /* 17px */
+  font-weight: var(--fw-medium); /* 500 */
+  line-height: var(--lh-body-l); /* 1.55 */
+  letter-spacing: 0;             /* tracking 0 */
+  text-align: center;
+  color: #8190a1;                /* slate */
 }
 .mkt .hero__tagline {
   margin-top: 36px;

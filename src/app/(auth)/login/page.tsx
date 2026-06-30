@@ -8,6 +8,11 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const ret = params.get('return') ?? '/';
+  const fromSite = params.get('from') === 'site';
+  const carry = fromSite ? '&from=site' : '';
+  const registerHref = `/register?return=${encodeURIComponent(ret)}${carry}`;
+  const forgotHref = `/forgot${fromSite ? '?from=site' : ''}`;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -28,44 +33,34 @@ function LoginForm() {
   }
 
   return (
-    <div className="panel" style={{ width: 380, padding: 0 }}>
-      <div style={{ padding: '28px 28px 8px' }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>Sign in</div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>Connect · Route · Unlock</div>
-      </div>
-      <form onSubmit={onSubmit} style={{ padding: '8px 28px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
+    <div className="auth-card">
+      <div className="auth-title">Sign in</div>
+      <div className="auth-subtitle">Connect · Route · Unlock</div>
+      <form className="auth-form" onSubmit={onSubmit}>
+        <div className="form-row">
           <label className="form-label">Email</label>
-          <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="form-input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
         </div>
-        <div>
+        <div className="form-row">
           <label className="form-label">Password</label>
-          <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
         </div>
-        {err && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{err}</div>}
-        <button className="btn primary" type="submit" disabled={loading} style={{ marginTop: 4 }}>
+        {err && <div className="form-help error">{err}</div>}
+        <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 4 }}>
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12.5 }}>
-          <Link href="/forgot" style={{ color: 'var(--muted)' }}>Forgot password?</Link>
-          <Link href={`/register?return=${encodeURIComponent(ret)}`} style={{ color: 'var(--accent-text)' }}>Create account</Link>
-        </div>
-        <div style={{ marginTop: 12, padding: 10, background: 'var(--surface-2)', borderRadius: 8, fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.6 }}>
-          <div><strong style={{ color: 'var(--text)' }}>Test clients</strong> (password <code style={{ color: 'var(--text)' }}>demo1234</code>):</div>
-          <div>· demo@example.com — Standard, $0</div>
-          <div>· jordan@example.com — Pro, $250</div>
-          <div>· yuki@example.com — VIP, $500</div>
-          <div style={{ marginTop: 8 }}><strong style={{ color: 'var(--text)' }}>Admin operators</strong> (password <code style={{ color: 'var(--text)' }}>admin1234</code>):</div>
-          <div>· admin@hbp.local (super) · ops@hbp.local · support@hbp.local</div>
-        </div>
       </form>
+      <div className="auth-links">
+        <Link href={forgotHref}>Forgot password?</Link>
+        <Link href={registerHref}>Create account</Link>
+      </div>
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="panel" style={{ padding: 28 }}>Loading…</div>}>
+    <Suspense fallback={<div className="auth-card">Loading…</div>}>
       <LoginForm />
     </Suspense>
   );

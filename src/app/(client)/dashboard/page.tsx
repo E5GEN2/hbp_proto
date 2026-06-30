@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
+import { PlanShowcase } from '@/components/client/PlanShowcase';
 import { money } from '@/lib/money';
 import { daysLeft } from '@/lib/date';
 
@@ -200,23 +201,9 @@ async function EmptyPlans() {
     where: { active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { durationDays: 'asc' },
   });
-  const byDur = new Map<number, typeof plans[number]>();
-  for (const p of plans) if (!byDur.has(p.durationDays)) byDur.set(p.durationDays, p);
-  const tiers = [...byDur.values()].slice(0, 3);
-  if (tiers.length === 0) {
-    return <div className="empty"><div className="empty-title">No plans available</div><div className="empty-desc">All plans are currently sold out. Please check back soon.</div></div>;
-  }
-  return (
-    <div className="plan-cards">
-      {tiers.map(p => (
-        <div key={p.id} className="panel" style={{ padding: 20 }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Mobile · 3 locations</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>{p.durationDays} days</div>
-          <div style={{ fontSize: 14, color: 'var(--accent-text)', fontWeight: 600, marginTop: 4 }}>{money(Number(p.price))} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>/ per proxy</span></div>
-          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 12, lineHeight: 1.5 }}>{p.description}</p>
-          <Link href={`/checkout?duration=${p.durationDays}`} className="btn primary" style={{ marginTop: 16, width: '100%' }}>Select plan</Link>
-        </div>
-      ))}
-    </div>
-  );
+  // Same cards as the marketing site + catalog — only price + duration are live.
+  const lite = plans
+    .filter(p => p.capacityState !== 'SOLD_OUT')
+    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) }));
+  return <PlanShowcase plans={lite} hrefFor={d => `/checkout?duration=${d}`} />;
 }

@@ -2045,7 +2045,9 @@ table.dt { table-layout: fixed; }
 }
 .auth-topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  width: 100%; max-width: 1240px; margin: 0 auto; padding: 22px 32px 0;
+  /* Match the marketing nav: a 1240px row centred with a 56px gutter, so the
+     logo sits in the exact same place as on the site (not 32px further in). */
+  width: min(1240px, 100% - 112px); margin: 0 auto; padding: 22px 0 0;
 }
 .auth-main { flex: 1; display: grid; place-items: center; padding: 24px 24px 64px; }
 
@@ -2116,7 +2118,9 @@ table.dt { table-layout: fixed; }
 .demo-creds-fixed code { font: 500 11px var(--font-mono); color: var(--text); }
 .demo-creds-list { font: 500 11px var(--font-mono); color: var(--text-secondary); word-break: break-word; margin-top: 2px; }
 @media (max-width: 600px) { .demo-creds-fixed { display: none; } }
+/* Marketing narrows its gutter to 24px below 920px. */
+@media (max-width: 920px) { .auth-topbar { width: min(1240px, 100% - 48px); } }
 @media (max-width: 560px) {
-  .auth-topbar { padding: 14px 18px 0; }
+  .auth-topbar { padding-top: 14px; }
   .site-logo-host .topbar__logo svg { height: 34px !important; }
 }

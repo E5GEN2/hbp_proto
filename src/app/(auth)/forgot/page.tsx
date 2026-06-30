@@ -11,14 +11,14 @@ function ForgotForm() {
 
   return (
     <div className="auth-card">
-      <div className="auth-title">Forgot password</div>
+      <div className="auth-title">Forgot password?</div>
       <div className="auth-subtitle">Enter your email — we&rsquo;ll send a recovery code.</div>
       {!sent ? (
         <>
           <form className="auth-form" onSubmit={(e) => { e.preventDefault(); setSent(true); }}>
             <div className="form-row">
               <label className="form-label">Email</label>
-              <input className="form-input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
             </div>
             <button className="btn primary lg" type="submit" style={{ width: '100%', marginTop: 4 }}>Send code</button>
           </form>

@@ -2063,6 +2063,12 @@ table.dt { table-layout: fixed; }
   box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 8px 28px -16px rgba(17,24,39,.18);
 }
 .site-logo-host .topbar__logo svg { display: block; }
+/* The wordmark is authored in Source Sans 3 (loaded by the auth layout). Pin the
+   family on the SVG text so it actually renders in it — otherwise the inherited
+   app font wins over the SVG's presentation attribute and the wider fallback
+   pushes "proxies" past the viewBox edge (clip on the right). */
+.site-logo-host .topbar__logo text,
+.site-logo-host .topbar__logo tspan { font-family: "Source Sans 3", sans-serif; }
 
 /* Back-to-site link (only when arriving from the marketing site) */
 .auth-backlink {

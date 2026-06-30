@@ -44,9 +44,8 @@ function LoginForm() {
           <label className="form-label">Password</label>
           <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
         </div>
-        <div className="auth-divider" />
         {err && <div className="form-help error">{err}</div>}
-        <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 4 }}>
+        <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 24 }}>
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>

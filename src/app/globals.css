@@ -2106,8 +2106,13 @@ table.dt { table-layout: fixed; }
   letter-spacing: .04em; text-transform: uppercase;
   color: var(--text-disabled); margin-bottom: 0;
 }
-/* Divider between the inputs and the submit button — a little breathing room. */
-.auth-form .auth-divider { border-top: 1px solid var(--border-subtle); margin: 4px 0; }
+/* Auth inputs: field height matches the submit button (42px) with proportionally
+   larger text, plus the canon client-portal hover (border strengthens). Scoped to
+   .auth-card so the app-wide .form-input is untouched; the scoped :focus keeps the
+   accent ring winning when a field is both hovered and focused. */
+.auth-card .form-input { height: 42px; padding: 0 12px; font-size: 16px; }
+.auth-card .form-input:hover { border-color: var(--border-strong); }
+.auth-card .form-input:focus { border-color: var(--accent); background: var(--surface); }
 .form-help { font: 400 11.5px/1.4 var(--font-sans); color: var(--muted); }
 .form-help.error { color: var(--danger); }
 .auth-links {

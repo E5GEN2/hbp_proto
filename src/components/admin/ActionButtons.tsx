@@ -199,9 +199,13 @@ export function TogglePlanButton({ planId, active }: { planId: string; active: b
   }
   return (
     <button className="btn primary" onClick={async () => {
-      await A.togglePlanActiveAction(planId, true);
-      toast('Plan enabled', planId, 'success');
-      router.refresh();
+      try {
+        await A.togglePlanActiveAction(planId, true);
+        toast('Plan enabled', planId, 'success');
+        router.refresh();
+      } catch (e: any) {
+        toast('Could not enable plan', e?.message ?? 'Failed', 'danger');
+      }
     }}>Enable plan</button>
   );
 }

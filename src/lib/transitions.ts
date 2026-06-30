@@ -497,6 +497,26 @@ export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor:
    PLANS
    ════════════════════════════════════════════════════════════════════════ */
 
+// At most this many plans may be active AND public (i.e. shown as cards) at once.
+// Admins can keep unlimited internal/disabled plans; only the publicly-sellable
+// set is capped — it maps 1:1 to the (≤3) plan cards on marketing + the portal.
+export const MAX_ACTIVE_PUBLIC_PLANS = 3;
+
+// Throws if the active+public set is already full. `excludePlanId` omits the plan
+// being changed (it's the one transitioning in) so re-saving an already-counted
+// plan never trips the cap. Pass null for creates.
+async function assertActivePublicCapAvailable(tx: Tx, excludePlanId: string | null) {
+  const count = await tx.plan.count({
+    where: {
+      active: true, visibility: 'PUBLIC', deletedAt: null,
+      ...(excludePlanId ? { id: { not: excludePlanId } } : {}),
+    },
+  });
+  if (count >= MAX_ACTIVE_PUBLIC_PLANS) {
+    throw new Error(`Limit reached: only ${MAX_ACTIVE_PUBLIC_PLANS} plans can be active and public at once. Disable or hide another plan first.`);
+  }
+}
+
 export async function togglePlanActive({
   planId, actor, active, reason,
 }: { planId: string; actor: Actor; active: boolean; reason?: string }) {
@@ -504,6 +524,8 @@ export async function togglePlanActive({
     const plan = await tx.plan.findUnique({ where: { id: planId } });
     if (!plan) throw new Error('Plan not found');
     if (plan.active === active) return { ok: true, noop: true };
+    // Enabling a public plan consumes one of the 3 active+public slots.
+    if (active && plan.visibility === 'PUBLIC') await assertActivePublicCapAvailable(tx, planId);
     await tx.plan.update({ where: { id: planId }, data: { active } });
     await log(tx, actor.id, 'PLAN.UPDATE', 'PLAN', planId, `${active ? 'Enabled' : 'Disabled'}${reason ? ' · ' + reason : ''} — ${active ? 'visible in client catalog' : 'hidden from client catalog'}`);
     return { ok: true };
@@ -552,6 +574,7 @@ export async function createPlan({ input, actor }: { input: PlanInput; actor: Ac
     if (input.price < 0 || input.price > 99999) throw new Error('Price must be between 0 and 99999');
     if (input.availableQuota < 0 || input.availableQuota > 9999) throw new Error('Quota must be between 0 and 9999');
     if (input.durationDays <= 0) throw new Error('Duration must be > 0');
+    if (input.active && input.visibility === 'PUBLIC') await assertActivePublicCapAvailable(tx, null);
 
     const id = await nextPlanId(tx, input.carrier, input.durationDays);
     const sku = id.replace('PLAN-', 'SKU-');
@@ -610,6 +633,15 @@ export async function updatePlan({ planId, input, actor }: { planId: string; inp
       }
     }
     if (Object.keys(data).length === 0) return { ok: true, noop: true };
+
+    // Guard the cap when this edit moves the plan INTO the active+public set
+    // (turning active on and/or switching visibility to public).
+    const willActive = data.active ?? before.active;
+    const willVisibility = data.visibility ?? before.visibility;
+    const wasActivePublic = before.active && before.visibility === 'PUBLIC';
+    if (!wasActivePublic && willActive && willVisibility === 'PUBLIC') {
+      await assertActivePublicCapAvailable(tx, planId);
+    }
 
     await tx.plan.update({ where: { id: planId }, data });
     await log(tx, actor.id, 'PLAN.UPDATE', 'PLAN', planId, diffs.join(' · ') || 'updated');

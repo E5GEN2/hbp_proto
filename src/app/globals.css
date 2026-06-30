@@ -2095,6 +2095,11 @@ table.dt { table-layout: fixed; }
   box-shadow: 0 24px 48px -28px rgba(17,24,39,.18);
 }
 .auth-title { font: 650 18px var(--font-sans); color: var(--text); letter-spacing: -0.01em; }
+/* Title row: heading left, "Don't have an account yet? Create account" top-right. */
+.auth-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.auth-switch { font: 400 12px var(--font-sans); color: var(--muted); text-align: right; }
+.auth-switch a { color: var(--accent-text); cursor: pointer; white-space: nowrap; }
+.auth-switch a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .auth-subtitle { font: 400 12.5px/1.5 var(--font-sans); color: var(--muted); margin-top: -10px; }
 .auth-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .form-row { display: flex; flex-direction: column; gap: 6px; }

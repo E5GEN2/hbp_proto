@@ -34,7 +34,10 @@ function LoginForm() {
 
   return (
     <div className="auth-card">
-      <div className="auth-title">Sign in</div>
+      <div className="auth-head">
+        <div className="auth-title">Sign in</div>
+        <div className="auth-switch">Don&rsquo;t have an account yet? <Link href={registerHref}>Create account</Link></div>
+      </div>
       <form className="auth-form" onSubmit={onSubmit}>
         <div className="form-row">
           <label className="form-label">Email</label>
@@ -51,7 +54,6 @@ function LoginForm() {
       </form>
       <div className="auth-links">
         <Link href={forgotHref}>Forgot password?</Link>
-        <Link href={registerHref}>Create account</Link>
       </div>
     </div>
   );

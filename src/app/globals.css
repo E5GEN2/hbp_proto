@@ -2133,7 +2133,7 @@ table.dt { table-layout: fixed; }
 .demo-creds-kind { font-weight: 600; color: var(--text); }
 .demo-creds-pass { color: var(--muted); }
 .demo-creds-fixed code { font: 500 11px var(--font-mono); color: var(--text); }
-.demo-creds-list { font: 500 11px var(--font-mono); color: var(--text-secondary); word-break: break-word; margin-top: 2px; }
+.demo-creds-list { font: 500 11px var(--font-mono); color: var(--text-secondary); word-break: break-word; margin-top: 3px; display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 600px) { .demo-creds-fixed { display: none; } }
 /* Marketing narrows its gutter to 24px below 920px. */
 @media (max-width: 920px) { .auth-topbar { width: min(1240px, 100% - 48px); } }

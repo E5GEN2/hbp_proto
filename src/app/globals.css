@@ -2029,3 +2029,94 @@ table.dt { table-layout: fixed; }
 
 /* --- Proxy detail KPI strip (U8) — center mini-stats like the canon --- */
 .kpi-row .mini-stat { align-items: center; text-align: center; }
+
+/* ============================================================================
+   AUTH PAGES (login / register / forgot) — marketing-consistent shell +
+   the canon .auth-card field design (client-panel.html). Shell uses the
+   marketing cream + dotted background and the Comet logo pill; card + fields
+   use the portal (.theme-client) tokens. All class names are auth-only.
+   ============================================================================ */
+.auth-page {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  background: #F4F2EE;
+  background-image: radial-gradient(rgba(17,24,39,.025) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+.auth-topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: 100%; max-width: 1240px; margin: 0 auto; padding: 22px 32px 0;
+}
+.auth-main { flex: 1; display: grid; place-items: center; padding: 24px 24px 64px; }
+
+/* Comet logo pill (marketing mark, rendered via dangerouslySetInnerHTML) */
+.site-logo-host { display: inline-flex; }
+.site-logo-host .topbar__logo {
+  display: inline-flex; align-items: center; text-decoration: none;
+  background: rgba(250,248,244,.78);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+          backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(201,194,181,.55);
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 8px 28px -16px rgba(17,24,39,.18);
+}
+.site-logo-host .topbar__logo svg { display: block; }
+
+/* Back-to-site link (only when arriving from the marketing site) */
+.auth-backlink {
+  display: inline-flex; align-items: center; gap: 7px;
+  font: 500 12.5px/1 var(--font-sans);
+  color: #5E78A6; text-decoration: none;
+  padding: 8px 14px; border-radius: 999px;
+  background: rgba(250,248,244,.6);
+  border: 1px solid rgba(201,194,181,.45);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: color .2s, border-color .2s;
+}
+.auth-backlink:hover { color: #3F5680; border-color: rgba(94,120,166,.5); }
+.auth-backlink svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Auth card + form (canon .auth-card / .auth-form / .form-row) */
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%; max-width: 420px; padding: 32px;
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 24px 48px -28px rgba(17,24,39,.18);
+}
+.auth-title { font: 650 18px var(--font-sans); color: var(--text); letter-spacing: -0.01em; }
+.auth-subtitle { font: 400 12.5px/1.5 var(--font-sans); color: var(--muted); margin-top: -10px; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.form-row { display: flex; flex-direction: column; gap: 6px; }
+.form-help { font: 400 11.5px/1.4 var(--font-sans); color: var(--muted); }
+.form-help.error { color: var(--danger); }
+.auth-links {
+  margin-top: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  font: 400 12px var(--font-sans); color: var(--muted);
+}
+.auth-links a { color: var(--accent-text); cursor: pointer; }
+.auth-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Demo credentials — fixed, bottom-right, unobtrusive */
+.demo-creds-fixed {
+  position: fixed; right: 18px; bottom: 18px; z-index: 40;
+  width: 286px; max-width: calc(100vw - 36px);
+  background: rgba(250,248,244,.9);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid rgba(201,194,181,.55); border-radius: 12px;
+  box-shadow: 0 14px 36px -18px rgba(17,24,39,.3);
+  padding: 12px 14px;
+  font: 400 11.5px/1.5 var(--font-sans); color: var(--text-secondary);
+}
+.demo-creds-title { font: 650 10px/1 var(--font-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.demo-creds-group { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.demo-creds-kind { font-weight: 600; color: var(--text); }
+.demo-creds-pass { color: var(--muted); }
+.demo-creds-fixed code { font: 500 11px var(--font-mono); color: var(--text); }
+.demo-creds-list { font: 500 11px var(--font-mono); color: var(--text-secondary); word-break: break-word; margin-top: 2px; }
+@media (max-width: 600px) { .demo-creds-fixed { display: none; } }
+@media (max-width: 560px) {
+  .auth-topbar { padding: 14px 18px 0; }
+  .site-logo-host .topbar__logo svg { height: 34px !important; }
+}

@@ -8,6 +8,9 @@ function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const ret = params.get('return') ?? '/dashboard';
+  const fromSite = params.get('from') === 'site';
+  const loginHref = `/login?return=${encodeURIComponent(ret)}${fromSite ? '&from=site' : ''}`;
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,41 +43,38 @@ function RegisterForm() {
   }
 
   return (
-    <div className="panel" style={{ width: 380, padding: 0 }}>
-      <div style={{ padding: '28px 28px 8px' }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>Create account</div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>Start with a 7-day mobile-proxy plan in under 2 minutes.</div>
-      </div>
-      <form onSubmit={onSubmit} style={{ padding: '8px 28px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
+    <div className="auth-card">
+      <div className="auth-title">Create account</div>
+      <div className="auth-subtitle">Start with a 7-day mobile-proxy plan in under 2 minutes.</div>
+      <form className="auth-form" onSubmit={onSubmit}>
+        <div className="form-row">
           <label className="form-label">Full name</label>
           <input className="form-input" value={name} onChange={e => setName(e.target.value)} required minLength={2} />
         </div>
-        <div>
+        <div className="form-row">
           <label className="form-label">Email</label>
-          <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="form-input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
         </div>
-        <div>
-          <label className="form-label">Password (min 8)</label>
-          <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+        <div className="form-row">
+          <label className="form-label">Password</label>
+          <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+          <div className="form-help">Min 8 characters.</div>
         </div>
-        {err && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{err}</div>}
-        <button className="btn primary" type="submit" disabled={loading}>
+        {err && <div className="form-help error">{err}</div>}
+        <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 4 }}>
           {loading ? 'Creating…' : 'Create account'}
         </button>
-        <div style={{ marginTop: 8, fontSize: 12.5, textAlign: 'center' }}>
-          <Link href={`/login?return=${encodeURIComponent(ret)}`} style={{ color: 'var(--muted)' }}>
-            Have an account? <span style={{ color: 'var(--accent-text)' }}>Sign in</span>
-          </Link>
-        </div>
       </form>
+      <div className="auth-links">
+        <Link href={loginHref}>Have an account? Sign in</Link>
+      </div>
     </div>
   );
 }
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div className="panel" style={{ padding: 28 }}>Loading…</div>}>
+    <Suspense fallback={<div className="auth-card">Loading…</div>}>
       <RegisterForm />
     </Suspense>
   );

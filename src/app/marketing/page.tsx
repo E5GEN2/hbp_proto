@@ -16,7 +16,8 @@ export const metadata: Metadata = {
 };
 
 // Sign in + Buy route through the existing return-aware auth flow.
-const SIGNIN_HREF = '/login';
+// from=site lets the auth page show a "Back to site" link.
+const SIGNIN_HREF = '/login?from=site';
 const buyHref = (days: number) =>
   `/login?return=${encodeURIComponent(`/checkout?duration=${days}&qty=1&autoExtend=1&ref=site`)}`;
 

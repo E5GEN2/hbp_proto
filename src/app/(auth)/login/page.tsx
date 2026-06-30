@@ -35,15 +35,14 @@ function LoginForm() {
   return (
     <div className="auth-card">
       <div className="auth-title">Sign in</div>
-      <div className="auth-subtitle">Connect · Route · Unlock</div>
       <form className="auth-form" onSubmit={onSubmit}>
         <div className="form-row">
           <label className="form-label">Email</label>
-          <input className="form-input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
         </div>
         <div className="form-row">
           <label className="form-label">Password</label>
-          <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+          <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
         </div>
         {err && <div className="form-help error">{err}</div>}
         <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 4 }}>

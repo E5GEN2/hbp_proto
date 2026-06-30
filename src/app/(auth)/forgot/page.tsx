@@ -20,6 +20,7 @@ function ForgotForm() {
               <label className="form-label">Email</label>
               <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
             </div>
+            <div className="auth-divider" />
             <button className="btn primary lg" type="submit" style={{ width: '100%', marginTop: 4 }}>Send code</button>
           </form>
           <div className="auth-links" style={{ justifyContent: 'center' }}>

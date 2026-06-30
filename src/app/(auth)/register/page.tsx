@@ -58,6 +58,7 @@ function RegisterForm() {
           <label className="form-label">Password</label>
           <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
         </div>
+        <div className="auth-divider" />
         {err && <div className="form-help error">{err}</div>}
         <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 4 }}>
           {loading ? 'Creating…' : 'Create account'}

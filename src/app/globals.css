@@ -2045,9 +2045,10 @@ table.dt { table-layout: fixed; }
 }
 .auth-topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  /* Match the marketing nav: a 1240px row centred with a 56px gutter, so the
-     logo sits in the exact same place as on the site (not 32px further in). */
-  width: min(1240px, 100% - 112px); margin: 0 auto; padding: 22px 0 0;
+  /* Match the marketing nav: a 1240px row centred with a 56px gutter, and the
+     same 14px top offset (the site's sticky nav sits at top:14px), so the logo
+     sits in the exact same place as on the site. */
+  width: min(1240px, 100% - 112px); margin: 0 auto; padding: 14px 0 0;
 }
 .auth-main { flex: 1; display: grid; place-items: center; padding: 24px 24px 64px; }
 
@@ -2095,8 +2096,18 @@ table.dt { table-layout: fixed; }
 }
 .auth-title { font: 650 18px var(--font-sans); color: var(--text); letter-spacing: -0.01em; }
 .auth-subtitle { font: 400 12.5px/1.5 var(--font-sans); color: var(--muted); margin-top: -10px; }
-.auth-form { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .form-row { display: flex; flex-direction: column; gap: 6px; }
+/* Field labels match the canon (client-panel.html): small-caps, tracked, muted —
+   not the app-wide sentence-case .form-label. Scoped to .auth-card so the shared
+   global label style elsewhere is untouched. */
+.auth-card .form-label {
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-disabled); margin-bottom: 0;
+}
+/* Divider between the inputs and the submit button — a little breathing room. */
+.auth-form .auth-divider { border-top: 1px solid var(--border-subtle); margin: 4px 0; }
 .form-help { font: 400 11.5px/1.4 var(--font-sans); color: var(--muted); }
 .form-help.error { color: var(--danger); }
 .auth-links {
@@ -2127,6 +2138,5 @@ table.dt { table-layout: fixed; }
 /* Marketing narrows its gutter to 24px below 920px. */
 @media (max-width: 920px) { .auth-topbar { width: min(1240px, 100% - 48px); } }
 @media (max-width: 560px) {
-  .auth-topbar { padding-top: 14px; }
   .site-logo-host .topbar__logo svg { height: 34px !important; }
 }

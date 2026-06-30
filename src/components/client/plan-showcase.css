@@ -42,17 +42,21 @@
   font-family: "Source Sans 3", "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* Cards are locked to the website's #plans geometry (367px wide, 14px gap, the
+   tighter 22/20 padding) and left-aligned, so wide portal viewports leave free
+   space on the right for additional info. minmax(0,367px) caps each card at the
+   site size yet lets them shrink (never overflow) on narrower widths. */
 .plan-showcase .plans {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px;
-  align-items: stretch; position: relative;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 367px)); gap: 14px;
+  justify-content: start; align-items: stretch; position: relative;
 }
 .plan-showcase .plan {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  padding: 32px 28px;
-  display: flex; flex-direction: column; gap: 20px;
+  padding: 22px 20px;
+  display: flex; flex-direction: column; gap: 14px;
   transition: border-color .2s var(--ease), transform .2s var(--ease), box-shadow .2s var(--ease);
 }
 .plan-showcase .plan:hover {
@@ -105,6 +109,8 @@
 .plan-showcase .btn--ink:hover { background: var(--slate-deep); }
 .plan-showcase .btn--gold { background: var(--gold); color: #fff; }
 .plan-showcase .btn--gold:hover { background: var(--gold-hover); }
+/* Site #plans tightens the CTA padding at this card width. */
+.plan-showcase .plan__cta .btn { padding: 12px 18px; }
 
 /* Popular plan — gold border + ribbon */
 .plan-showcase .plan--popular {

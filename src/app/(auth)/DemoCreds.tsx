@@ -8,12 +8,20 @@ export function DemoCreds() {
         <span className="demo-creds-kind">Clients</span>
         <span className="demo-creds-pass">pass <code>demo1234</code></span>
       </div>
-      <div className="demo-creds-list">demo@example.com · jordan@example.com · yuki@example.com</div>
+      <div className="demo-creds-list">
+        <div>demo@example.com</div>
+        <div>jordan@example.com</div>
+        <div>yuki@example.com</div>
+      </div>
       <div className="demo-creds-group">
         <span className="demo-creds-kind">Admins</span>
         <span className="demo-creds-pass">pass <code>admin1234</code></span>
       </div>
-      <div className="demo-creds-list">admin@hbp.local · ops@hbp.local · support@hbp.local</div>
+      <div className="demo-creds-list">
+        <div>admin@hbp.local</div>
+        <div>ops@hbp.local</div>
+        <div>support@hbp.local</div>
+      </div>
     </aside>
   );
 }

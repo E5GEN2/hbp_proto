@@ -43,12 +43,12 @@
 }
 
 /* Cards are locked to the website's #plans geometry (367px wide, 14px gap, the
-   tighter 22/20 padding) and left-aligned, so wide portal viewports leave free
-   space on the right for additional info. minmax(0,367px) caps each card at the
-   site size yet lets them shrink (never overflow) on narrower widths. */
+   tighter 22/20 padding) and centred, so the left/right margins are equal on
+   wide portal viewports. minmax(0,367px) caps each card at the site size yet
+   lets them shrink (never overflow) on narrower widths. */
 .plan-showcase .plans {
   display: grid; grid-template-columns: repeat(3, minmax(0, 367px)); gap: 14px;
-  justify-content: start; align-items: stretch; position: relative;
+  justify-content: center; align-items: stretch; position: relative;
 }
 .plan-showcase .plan {
   position: relative;

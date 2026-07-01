@@ -40,6 +40,8 @@
   --ease: cubic-bezier(.22, .61, .36, 1);
 
   font-family: "Source Sans 3", "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Cards on the left, feature column in the freed gutter on the right. */
+  display: flex; align-items: flex-start; gap: 28px;
 }
 
 /* Cards are locked to the website's #plans geometry (367px wide, 14px gap, the
@@ -47,8 +49,30 @@
    space on the right for additional info. minmax(0,367px) caps each card at the
    site size yet lets them shrink (never overflow) on narrower widths. */
 .plan-showcase .plans {
+  flex: 0 1 auto; min-width: 0;
   display: grid; grid-template-columns: repeat(3, minmax(0, 367px)); gap: 14px;
   justify-content: start; align-items: stretch; position: relative;
+}
+/* Feature column (marketing "What sets us apart" items) — hidden by default,
+   revealed only on wide viewports where the gutter beside the cards is roomy. */
+.plan-aside { display: none; }
+.plan-aside .diff__item { display: flex; flex-direction: column; gap: 10px; }
+.plan-aside .diff__icon { width: 40px; height: 40px; }
+.plan-aside .diff__title {
+  margin: 0; display: inline-flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em;
+  color: #5E78A6;
+}
+.plan-aside .diff__title::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: #5e78a6;
+  box-shadow: 0 0 4px 1px rgba(94, 120, 166, .85), 0 0 8px rgba(94, 120, 166, .4);
+}
+@media (min-width: 1600px) {
+  .plan-aside {
+    display: flex; flex-direction: column; gap: 34px;
+    flex: 1 1 0; min-width: 0; padding-top: 6px;
+  }
 }
 .plan-showcase .plan {
   position: relative;
@@ -134,5 +158,6 @@
 .plan-showcase .plan__ribbon--promo { right: 28px; background: var(--slate-deep); box-shadow: 0 8px 18px -8px rgba(94, 120, 166, .55); }
 
 @media (max-width: 980px) {
+  .plan-showcase { display: block; }
   .plan-showcase .plans { grid-template-columns: 1fr; }
 }

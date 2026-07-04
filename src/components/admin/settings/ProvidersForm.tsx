@@ -33,7 +33,7 @@ export function ProvidersForm({ initial }: {
         cols={3}
       />
       <ProviderCard
-        name="Crypto (CoinPayments)" desc="USDT (TRC20 / ERC20), USDC, BTC" provider="crypto"
+        name="Crypto (NOWPayments)" desc="USDT (TRC20 / ERC20), USDC, BTC" provider="crypto"
         cfg={initial.crypto ?? { enabled: false }}
         impact={['New crypto checkouts blocked', 'Pending crypto invoices unaffected', 'Card and bank-transfer providers continue']}
         fields={[

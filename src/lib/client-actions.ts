@@ -8,6 +8,8 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
+import { npEnabled, npCreateInvoice } from './nowpayments';
+import { appUrl } from './app-url';
 import * as T from './transitions';
 
 async function getClientUserId() {
@@ -148,17 +150,34 @@ export const depositAction = guarded(async function depositAction({ amount, meth
   const isInstant = method === 'card';
   const now = new Date();
 
+  // Real crypto top-up: hosted NOWPayments invoice — balance is credited by
+  // the IPN webhook once the transfer lands, never by the client.
+  let paymentUrl: string | null = null;
+  let externalRef: string | null = null;
+  if (method === 'crypto' && npEnabled()) {
+    const inv = await npCreateInvoice({
+      amountUsd: amount,
+      paymentId: payId,
+      description: `Balance top-up $${amount}`,
+      successUrl: appUrl('/billing'),
+      cancelUrl: appUrl('/billing'),
+    });
+    paymentUrl = inv.invoiceUrl;
+    externalRef = inv.invoiceId;
+  }
+
   await prisma.$transaction(async tx => {
     await tx.payment.create({
       data: {
         id: payId,
         orderId: null,
         clientId,
-        provider: method === 'card' ? 'Stripe' : 'CoinPayments',
-        method: method === 'card' ? 'Wallet top-up' : 'USDT-TRC20',
+        provider: method === 'card' ? 'Stripe' : npEnabled() ? 'NOWPayments' : 'CoinPayments',
+        method: method === 'card' ? 'Wallet top-up' : npEnabled() ? 'Crypto' : 'USDT-TRC20',
         gross: amount, fees: 0, net: amount,
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
+        externalRef,
       },
     });
     if (isInstant) {
@@ -181,5 +200,5 @@ export const depositAction = guarded(async function depositAction({ amount, meth
   });
 
   bust();
-  return { ok: true, paymentId: payId, instant: isInstant };
+  return { ok: true, paymentId: payId, instant: isInstant, ...(paymentUrl ? { paymentUrl } : {}) };
 });

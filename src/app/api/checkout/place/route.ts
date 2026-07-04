@@ -7,6 +7,8 @@ import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/l
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
 import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
+import { npEnabled, npCreateInvoice } from '@/lib/nowpayments';
+import { appUrl } from '@/lib/app-url';
 
 const Schema = z.object({
   planId: z.string(),
@@ -27,6 +29,10 @@ export async function POST(req: Request) {
 
   if (paymentMethod === 'card' && !mockPaymentsAllowed()) {
     return NextResponse.json({ error: 'Card payments are not available yet — use balance or crypto.' }, { status: 400 });
+  }
+  // Crypto needs either a real processor (NOWPayments) or the dev mock.
+  if (paymentMethod === 'crypto' && !npEnabled() && !mockPaymentsAllowed()) {
+    return NextResponse.json({ error: 'Crypto payments are temporarily unavailable — use balance or contact support.' }, { status: 400 });
   }
 
   // Admin provider toggles (Settings → Payment Providers) gate NEW charges,
@@ -78,6 +84,27 @@ export async function POST(req: Request) {
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   const wantsAutoProvision = isInstant && plan.autoProvision;
 
+  // Real crypto: create the hosted NOWPayments invoice BEFORE persisting
+  // anything — if the processor is down, no dangling order is left behind.
+  // The IPN webhook settles by order_id = our payment id.
+  let paymentUrl: string | null = null;
+  let externalRef: string | null = null;
+  if (paymentMethod === 'crypto' && npEnabled()) {
+    try {
+      const inv = await npCreateInvoice({
+        amountUsd: total,
+        paymentId,
+        description: `Order ${orderId} — ${qty} × ${plan.name}`,
+        successUrl: appUrl(`/orders/${orderId}`),
+        cancelUrl: appUrl('/checkout'),
+      });
+      paymentUrl = inv.invoiceUrl;
+      externalRef = inv.invoiceId;
+    } catch (e: any) {
+      return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
+    }
+  }
+
   const now = new Date();
 
   await prisma.$transaction(async tx => {
@@ -87,14 +114,15 @@ export async function POST(req: Request) {
         id: paymentId,
         orderId,
         clientId: userId,
-        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'CoinPayments' : 'Stripe',
-        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'USDT-TRC20' : 'Visa •• 4242',
+        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'NOWPayments' : 'CoinPayments') : 'Stripe',
+        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'Crypto' : 'USDT-TRC20') : 'Visa •• 4242',
         gross: total,
         // Fees only where a processor charges them — balance payments carry none
         fees: paymentMethod === 'card' ? total * 0.03 : 0,
         net: paymentMethod === 'card' ? total * 0.97 : total,
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
+        externalRef,
       },
     });
 
@@ -214,7 +242,7 @@ export async function POST(req: Request) {
     });
   });
 
-  return NextResponse.json({ ok: true, orderId });
+  return NextResponse.json({ ok: true, orderId, ...(paymentUrl ? { paymentUrl } : {}) });
 }
 
 // Renewal branch. Instant methods (balance/card) extend immediately; crypto
@@ -253,19 +281,40 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
   const paymentId = await nextPaymentId();
   const now = new Date();
 
+  // Real crypto renewal: hosted invoice first (same contract as new orders) —
+  // the IPN webhook extends the order once the transfer lands.
+  let paymentUrl: string | null = null;
+  let externalRef: string | null = null;
+  if (paymentMethod === 'crypto' && npEnabled()) {
+    try {
+      const inv = await npCreateInvoice({
+        amountUsd: total,
+        paymentId,
+        description: `Renewal of order ${order.id} — ${order.qty} × ${order.plan.name}`,
+        successUrl: appUrl(`/orders/${order.id}`),
+        cancelUrl: appUrl(`/orders/${order.id}`),
+      });
+      paymentUrl = inv.invoiceUrl;
+      externalRef = inv.invoiceId;
+    } catch (e: any) {
+      return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
+    }
+  }
+
   await prisma.$transaction(async tx => {
     await tx.payment.create({
       data: {
         id: paymentId,
         orderId: order.id,
         clientId: userId,
-        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'CoinPayments' : 'Stripe',
-        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'USDT-TRC20' : 'Visa •• 4242',
+        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'NOWPayments' : 'CoinPayments') : 'Stripe',
+        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'Crypto' : 'USDT-TRC20') : 'Visa •• 4242',
         gross: total,
         fees: paymentMethod === 'card' ? total * 0.03 : 0,
         net: paymentMethod === 'card' ? total * 0.97 : total,
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
+        externalRef,
       },
     });
 
@@ -318,5 +367,5 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
     });
   });
 
-  return NextResponse.json({ ok: true, orderId: order.id, renewed: isInstant });
+  return NextResponse.json({ ok: true, orderId: order.id, renewed: isInstant, ...(paymentUrl ? { paymentUrl } : {}) });
 }

@@ -33,6 +33,12 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
     start(async () => {
       try {
         const r = await depositAction({ amount: amountNum, method });
+        // Real crypto: hand over to the NOWPayments hosted invoice — balance
+        // is credited by the webhook once the transfer lands.
+        if (r.paymentUrl) {
+          window.location.assign(r.paymentUrl);
+          return;
+        }
         setPaymentId(r.paymentId);
         if (r.instant) {
           setStep('success');

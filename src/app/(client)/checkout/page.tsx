@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
+import { mockPaymentsAllowed } from '@/lib/runtime-flags';
 import { CheckoutFlow } from './CheckoutFlow';
 import { DepositFlow } from './DepositFlow';
 
@@ -29,7 +30,7 @@ export default async function CheckoutPage({ searchParams }: {
       <>
         <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
         <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-          <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} />
+          <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} allowCard={mockPaymentsAllowed()} />
         </main>
       </>
     );
@@ -132,6 +133,7 @@ export default async function CheckoutPage({ searchParams }: {
           step={(searchParams.step ?? 'details') as any}
           balance={Number(me.balance)}
           plans={planSummaries}
+          allowCard={mockPaymentsAllowed()}
         />
       </main>
     </>

@@ -19,7 +19,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true,
 }: {
   duration: number;
   qty: number;
@@ -28,6 +28,7 @@ export function CheckoutFlow({
   step: 'details' | 'payment' | 'processing' | 'success' | 'failed';
   balance: number;
   plans: PlanSummary[];
+  allowCard?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -175,8 +176,8 @@ export function CheckoutFlow({
                   title="Crypto (USDT-TRC20, BTC, ETH)" caption={<>Order activates after on-chain confirmation.</>} />
                 <PayRow icon={<IconWallet />} selected={paymentMethod === 'balance'} disabled={!balanceOk} onClick={() => setPaymentMethod('balance')}
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
-                <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
-                  title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />
+                {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
+                  title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />}
                 {err && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 10 }}>{err}</div>}
               </div>
               <div className="panel-footer payment-actions">

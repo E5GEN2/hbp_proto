@@ -120,9 +120,10 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   }
 
   // Activation
-  const channelLabel = order.credentialsChannel === 'TELEGRAM' ? 'Telegram' : order.credentialsChannel === 'BOTH' ? 'email + Telegram' : 'email';
+  const channelLabel = order.credentialsChannel === 'TELEGRAM' ? 'Telegram' : order.credentialsChannel === 'BOTH' ? 'email + Telegram' : order.credentialsChannel === 'EMAIL' ? 'email' : null;
+  const credsMeta = channelLabel ? `credentials sent · ${channelLabel}` : 'credentials available in portal';
   if (credsSent) {
-    steps.push({ name: 'Activation', state: 'done', meta: `${fmtAdminStamp(order.credentialsSentAt)} · credentials sent · ${channelLabel}`, mode: fulfilMode });
+    steps.push({ name: 'Activation', state: 'done', meta: `${fmtAdminStamp(order.credentialsSentAt)} · ${credsMeta}`, mode: fulfilMode });
   } else if (hasProxy) {
     steps.push({ name: 'Activation', state: 'current', meta: (autoOn && !manualMode) ? 'Sending credentials…' : 'Manual required — Send credentials', mode: fulfilMode });
   } else {

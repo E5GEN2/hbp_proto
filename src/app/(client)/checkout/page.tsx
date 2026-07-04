@@ -6,7 +6,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
-import { mockPaymentsAllowed } from '@/lib/runtime-flags';
+import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
+import { renewalUnitPrice } from '@/lib/renewal';
 import { CheckoutFlow } from './CheckoutFlow';
 import { DepositFlow } from './DepositFlow';
 
@@ -23,6 +24,12 @@ export default async function CheckoutPage({ searchParams }: {
   const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
   if (!me) return null;
 
+  // Admin provider toggles gate which methods are OFFERED (the place/deposit
+  // server paths enforce the same rule); balance is internal, always on.
+  const providers = await enabledProviders();
+  const allowCard = mockPaymentsAllowed() && providers.stripe;
+  const allowCrypto = providers.crypto;
+
   // Deposit branch
   if (searchParams.kind === 'deposit') {
     const presetAmount = searchParams.amount ? parseFloat(searchParams.amount) : undefined;
@@ -30,7 +37,7 @@ export default async function CheckoutPage({ searchParams }: {
       <>
         <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
         <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-          <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} allowCard={mockPaymentsAllowed()} />
+          <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} allowCard={allowCard} allowCrypto={allowCrypto} />
         </main>
       </>
     );
@@ -96,13 +103,15 @@ export default async function CheckoutPage({ searchParams }: {
   let planSummaries: { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; description: string; available: number }[];
   if (renewalOrder) {
     // Single "plan" = the original order's terms; the seats are already held.
+    // Price carries the plan's renewal discount (audit B-6) — the same helper
+    // the server charge paths use, so the summary matches the charge.
     const p = renewalOrder.plan;
     planSummaries = [{
       id: p.id,
       name: p.name,
       region: renewalOrder.region,
       carrier: p.carrier,
-      price: Number(p.price),
+      price: renewalUnitPrice(Number(p.price), p.renewalDiscountPct),
       autoProvision: p.autoProvision,
       description: p.description ?? '',
       available: renewalOrder.qty,
@@ -189,8 +198,10 @@ export default async function CheckoutPage({ searchParams }: {
           step={(searchParams.step ?? 'details') as any}
           balance={Number(me.balance)}
           plans={planSummaries}
-          allowCard={mockPaymentsAllowed()}
+          allowCard={allowCard}
+          allowCrypto={allowCrypto}
           renewOf={renewalOrder?.id}
+          renewalDiscountPct={renewalOrder ? renewalOrder.plan.renewalDiscountPct : 0}
         />
       </main>
     </>

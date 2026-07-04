@@ -94,6 +94,27 @@ export const releaseProxyAction = guarded(async function releaseProxyAction(prox
   return r;
 });
 
+export const returnProxyToPoolAction = guarded(async function returnProxyToPoolAction(proxyId: string) {
+  const actor = await getAdminActor();
+  const r = await T.returnProxyToPool({ proxyId, actor });
+  bust();
+  return r;
+});
+
+export const markProxyHealthyAction = guarded(async function markProxyHealthyAction(proxyId: string) {
+  const actor = await getAdminActor();
+  const r = await T.markProxyHealthy({ proxyId, actor });
+  bust();
+  return r;
+});
+
+export const setProxyMaintenanceAction = guarded(async function setProxyMaintenanceAction(proxyId: string, on: boolean) {
+  const actor = await getAdminActor();
+  const r = await T.setProxyMaintenance({ proxyId, on, actor });
+  bust();
+  return r;
+});
+
 export const togglePlanActiveAction = guarded(async function togglePlanActiveAction(planId: string, active: boolean, reason?: string) {
   const actor = await getAdminActor();
   const r = await T.togglePlanActive({ planId, actor, active, reason });

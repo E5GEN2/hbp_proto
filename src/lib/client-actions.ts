@@ -7,7 +7,7 @@ import { getServerSession } from 'next-auth';
 import bcrypt from 'bcryptjs';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
-import { mockPaymentsAllowed } from './runtime-flags';
+import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import * as T from './transitions';
 
 async function getClientUserId() {
@@ -122,6 +122,10 @@ export const saveNotifPrefsAction = guarded(async function saveNotifPrefsAction(
 export const depositAction = guarded(async function depositAction({ amount, method }: { amount: number; method: 'card' | 'crypto' }) {
   const clientId = await getClientUserId();
   if (method === 'card' && !mockPaymentsAllowed()) throw new Error('Card top-ups are not available yet — use crypto or contact support.');
+  // Admin provider toggles gate NEW charges (audit B-4)
+  const providers = await enabledProviders();
+  if (method === 'card' && !providers.stripe) throw new Error('Card top-ups are currently disabled.');
+  if (method === 'crypto' && !providers.crypto) throw new Error('Crypto top-ups are currently disabled.');
   if (!Number.isFinite(amount) || amount < 1 || amount > 10000) throw new Error('Deposit must be between $1 and $10,000');
   const me = await prisma.user.findUnique({ where: { id: clientId } });
   if (!me) throw new Error('Not found');

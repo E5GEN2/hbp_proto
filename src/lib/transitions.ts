@@ -10,6 +10,7 @@
 
 import { prisma } from './prisma';
 import { nextInvoiceId } from './id';
+import { renewalUnitPrice } from './renewal';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -489,6 +490,80 @@ export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor:
     });
     await tx.proxy.update({ where: { id: proxyId }, data: { status: 'RELEASED', currentOrderId: null } });
     await log(tx, actor.id, 'PROXY.RELEASE', 'PROXY', proxyId, 'Manually released');
+    return { ok: true };
+  });
+}
+
+// RELEASED → AVAILABLE. Same security-reset markers cancelOrder stamps when it
+// returns proxies to pool: the next client must never inherit live credentials.
+export async function returnProxyToPool({ proxyId, actor }: { proxyId: string; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const proxy = await tx.proxy.findUnique({ where: { id: proxyId } });
+    if (!proxy) throw new Error('Proxy not found');
+    if (proxy.status !== 'RELEASED') throw new Error(`Only RELEASED proxies can return to pool (this one is ${proxy.status})`);
+    const now = new Date();
+    await tx.proxy.update({
+      where: { id: proxyId },
+      data: { status: 'AVAILABLE', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
+    });
+    await log(tx, actor.id, 'PROXY.RETURN_TO_POOL', 'PROXY', proxyId, 'Returned to pool · credentials/IP rotation markers stamped');
+    return { ok: true };
+  });
+}
+
+// FAULTY → healthy. If an order is still attached the proxy goes back to
+// serving it (ASSIGNED) and the replacement-pending exception clears;
+// otherwise it returns to the pool as AVAILABLE.
+export async function markProxyHealthy({ proxyId, actor }: { proxyId: string; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const proxy = await tx.proxy.findUnique({
+      where: { id: proxyId },
+      include: { assignments: { where: { releasedAt: null }, include: { order: true } } },
+    });
+    if (!proxy) throw new Error('Proxy not found');
+    if (proxy.status !== 'FAULTY') throw new Error(`Only FAULTY proxies can be marked healthy (this one is ${proxy.status})`);
+
+    const active = proxy.assignments[0];
+    await tx.proxy.update({
+      where: { id: proxyId },
+      data: { status: active ? 'ASSIGNED' : 'AVAILABLE', health: 'HEALTHY', currentOrderId: active ? active.orderId : null },
+    });
+    if (active && active.order.exception === 'REPLACEMENT_PENDING') {
+      await tx.order.update({ where: { id: active.orderId }, data: { exception: null, excInfo: null } });
+      await notify(tx, active.order.clientId,
+        `Proxy ${proxyId} on order ${active.orderId} is healthy again — no replacement needed`,
+        'SUCCESS', `/orders/${active.orderId}`);
+    }
+    await log(tx, actor.id, 'PROXY.MARK_HEALTHY', 'PROXY', proxyId,
+      `Healthy again · ${active ? `back to serving ${active.orderId}` : 'returned to pool'}`);
+    return { ok: true, backTo: active ? active.orderId : null };
+  });
+}
+
+// AVAILABLE/ASSIGNED ↔ MAINTENANCE. Entering maintenance PRESERVES any open
+// assignment (the client keeps the proxy on paper; it just stops being
+// eligible for new work); leaving restores ASSIGNED/AVAILABLE accordingly.
+export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: string; on: boolean; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const proxy = await tx.proxy.findUnique({
+      where: { id: proxyId },
+      include: { assignments: { where: { releasedAt: null }, take: 1 } },
+    });
+    if (!proxy) throw new Error('Proxy not found');
+    if (on) {
+      if (proxy.status !== 'AVAILABLE' && proxy.status !== 'ASSIGNED') {
+        throw new Error(`Only AVAILABLE or ASSIGNED proxies can enter maintenance (this one is ${proxy.status})`);
+      }
+      await tx.proxy.update({ where: { id: proxyId }, data: { status: 'MAINTENANCE' } });
+    } else {
+      if (proxy.status !== 'MAINTENANCE') throw new Error('Proxy is not in maintenance');
+      const active = proxy.assignments[0];
+      await tx.proxy.update({
+        where: { id: proxyId },
+        data: { status: active ? 'ASSIGNED' : 'AVAILABLE', currentOrderId: active ? active.orderId : null },
+      });
+    }
+    await log(tx, actor.id, 'PROXY.MAINTENANCE', 'PROXY', proxyId, on ? 'Entered maintenance' : 'Left maintenance');
     return { ok: true };
   });
 }
@@ -1167,7 +1242,10 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   if (o.status === 'CANCELLED' || o.status === 'PENDING_RENEWAL') throw new Error('Cannot renew this order');
   if (!o.plan.renewalAllowed) throw new Error('Renewals are not available for this plan');
 
-  const price = Number(o.plan.price) * o.qty;
+  // Renewals honour the plan's renewal discount (audit B-6) — same helper as
+  // the checkout renewal path, so the displayed price equals the charged one.
+  const unit = renewalUnitPrice(Number(o.plan.price), o.plan.renewalDiscountPct);
+  const price = unit * o.qty;
   const balance = Number(o.client.balance);
 
   if (balance < price) {

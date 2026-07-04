@@ -61,16 +61,18 @@ export function NotificationsForm({ initial, templates }: {
     <>
       <div className="panel-section">
         <div className="form-grid cols-2">
-          <div className="form-field full"><div className="subsection-title">Client notifications</div></div>
+          {/* Honest-state badges (audit B-4): rule toggles persist, but no email/
+              Telegram pipeline exists yet — nothing is actually sent (Phase 2). */}
+          <div className="form-field full"><div className="subsection-title">Client notifications <span className="chip muted sm" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
           {CLIENT_RULES.map(row)}
 
-          <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Admin alerts (Telegram + Email)</div></div>
+          <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Admin alerts (Telegram + Email) <span className="chip muted sm" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
           {ADMIN_RULES.map(row)}
 
           <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Delivery channels</div></div>
           <div className="form-field"><div className="form-label">Admin email group <span className="req">*</span></div><input className="form-input" placeholder="admins@example.com" disabled /></div>
           <div className="form-field"><div className="form-label">Telegram chat ID <span className="req">*</span></div><input className="form-input" placeholder="-100…" disabled /></div>
-          <div className="form-field full"><span className="muted" style={{ fontSize: 11.5 }}>Toggle changes persist immediately. Delivery-channel wiring (email group · Telegram chat) ships in Phase 2.</span></div>
+          <div className="form-field full"><span className="muted" style={{ fontSize: 11.5 }}>Toggle changes persist immediately but nothing is sent yet — the email/Telegram delivery pipeline ships in Phase 2.</span></div>
         </div>
       </div>
 

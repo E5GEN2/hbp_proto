@@ -19,7 +19,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, renewOf,
 }: {
   duration: number;
   qty: number;
@@ -29,6 +29,7 @@ export function CheckoutFlow({
   balance: number;
   plans: PlanSummary[];
   allowCard?: boolean;
+  renewOf?: string; // renewal mode: paying extends this order — location/qty locked
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -53,7 +54,7 @@ export function CheckoutFlow({
       const r = await fetch('/api/checkout/place', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ planId: plan.id, qty, autoExtend, paymentMethod: method }),
+        body: JSON.stringify({ planId: plan.id, qty, autoExtend, paymentMethod: method, ...(renewOf ? { renewOf } : {}) }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? 'Order failed');
@@ -125,6 +126,21 @@ export function CheckoutFlow({
                 </div>
               </div>
 
+              {renewOf ? (
+                <div className="checkout-side-stack">
+                  <div className="panel">
+                    <div className="panel-header"><span className="panel-title">Renewal</span></div>
+                    <div className="panel-body">
+                      <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val">{renewOf}</span></div>
+                      <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
+                      <div className="kv-row"><span className="kv-label">Proxies</span><span className="kv-val">{qty}</span></div>
+                      <div className="help-text" style={{ marginTop: 10 }}>
+                        Same proxies and location — the new {label} term starts when the current one ends.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="checkout-side-stack">
                 <div className="panel">
                   <div className="panel-header"><span className="panel-title">Location</span></div>
@@ -151,6 +167,7 @@ export function CheckoutFlow({
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
 
@@ -222,8 +239,8 @@ export function CheckoutFlow({
       {step === 'success' && (
         <div className="checkout-success">
           <div className="success-icon"><IconCheck /></div>
-          <div className="success-title">{plan.autoProvision ? 'Order confirmed' : 'Order received'}</div>
-          {!plan.autoProvision && (
+          <div className="success-title">{renewOf ? 'Order renewed' : plan.autoProvision ? 'Order confirmed' : 'Order received'}</div>
+          {!renewOf && !plan.autoProvision && (
             <div className="success-helper">Our team is preparing your proxies. Typical delivery within 24 hours — we&rsquo;ll notify you the moment they&rsquo;re live.</div>
           )}
           <div className="success-summary">

@@ -60,58 +60,104 @@ export default async function CheckoutPage({ searchParams }: {
     }
   }
 
-  const duration = resumeOrder ? resumeOrder.plan.durationDays : parseInt(searchParams.duration ?? '30', 10);
-  const presetQty = resumeOrder ? resumeOrder.qty : parseInt(searchParams.qty ?? '1', 10);
-  const presetLocation = resumeOrder ? resumeOrder.region : searchParams.location;
-  const presetAutoExtend = resumeOrder ? resumeOrder.autoRenew : searchParams.autoExtend !== '0';
-
-  const plans = await prisma.plan.findMany({
-    where: { durationDays: duration, active: true, visibility: 'PUBLIC', deletedAt: null },
-    orderBy: { price: 'asc' },
-  });
-  if (plans.length === 0) {
-    return (
-      <>
-        <ClientTopbar title="Checkout" balance={Number(me.balance)} />
-        <main style={{ padding: 24 }}>
-          <div className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0, color: 'var(--text)' }}>No plans available</h2>
-            <p style={{ color: 'var(--muted)' }}>This duration is currently sold out.</p>
-            <Link href="/catalog" className="btn">Back to catalog</Link>
-          </div>
-        </main>
-      </>
-    );
+  // Renewal branch — terms come from the ORIGINAL order (its plan may even be
+  // retired from the public catalog); the server enforces the same rule.
+  let renewalOrder: OrderWithPlan | null = null;
+  if (!resumeOrder && searchParams.renewOf) {
+    renewalOrder = await prisma.order.findUnique({ where: { id: searchParams.renewOf }, include: { plan: true } });
+    if (!renewalOrder || renewalOrder.clientId !== session!.user.id) {
+      notFound();
+    }
+    if (renewalOrder.status === 'CANCELLED' || renewalOrder.status === 'PENDING_RENEWAL' || !renewalOrder.plan.renewalAllowed) {
+      return (
+        <>
+          <ClientTopbar title="Checkout" balance={Number(me.balance)} />
+          <main style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
+            <div className="panel" style={{ padding: 24 }}>
+              <h2 style={{ marginTop: 0, color: 'var(--text)' }}>This order cannot be renewed</h2>
+              <p style={{ color: 'var(--muted)' }}>
+                {renewalOrder.status === 'CANCELLED' ? 'The order was cancelled.' : 'Renewals are not available for this plan.'}
+              </p>
+              <Link href={`/orders/${renewalOrder.id}`} className="btn primary">View order</Link>
+            </div>
+          </main>
+        </>
+      );
+    }
   }
 
-  const allocationByPlan = new Map<string, number>();
-  for (const p of plans) {
-    const a = await prisma.order.aggregate({
-      _sum: { qty: true },
-      where: { planId: p.id, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+  const duration = resumeOrder ? resumeOrder.plan.durationDays
+    : renewalOrder ? renewalOrder.plan.durationDays
+    : parseInt(searchParams.duration ?? '30', 10);
+  const presetQty = resumeOrder ? resumeOrder.qty : renewalOrder ? renewalOrder.qty : parseInt(searchParams.qty ?? '1', 10);
+  const presetLocation = resumeOrder ? resumeOrder.region : renewalOrder ? renewalOrder.region : searchParams.location;
+  const presetAutoExtend = resumeOrder ? resumeOrder.autoRenew : renewalOrder ? renewalOrder.autoRenew : searchParams.autoExtend !== '0';
+
+  let planSummaries: { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; description: string; available: number }[];
+  if (renewalOrder) {
+    // Single "plan" = the original order's terms; the seats are already held.
+    const p = renewalOrder.plan;
+    planSummaries = [{
+      id: p.id,
+      name: p.name,
+      region: renewalOrder.region,
+      carrier: p.carrier,
+      price: Number(p.price),
+      autoProvision: p.autoProvision,
+      description: p.description ?? '',
+      available: renewalOrder.qty,
+    }];
+  } else {
+    const plans = await prisma.plan.findMany({
+      where: { durationDays: duration, active: true, visibility: 'PUBLIC', deletedAt: null },
+      orderBy: { price: 'asc' },
     });
-    allocationByPlan.set(p.id, a._sum.qty ?? 0);
+    if (plans.length === 0) {
+      return (
+        <>
+          <ClientTopbar title="Checkout" balance={Number(me.balance)} />
+          <main style={{ padding: 24 }}>
+            <div className="panel" style={{ padding: 24 }}>
+              <h2 style={{ marginTop: 0, color: 'var(--text)' }}>No plans available</h2>
+              <p style={{ color: 'var(--muted)' }}>This duration is currently sold out.</p>
+              <Link href="/catalog" className="btn">Back to catalog</Link>
+            </div>
+          </main>
+        </>
+      );
+    }
+
+    const allocationByPlan = new Map<string, number>();
+    for (const p of plans) {
+      const a = await prisma.order.aggregate({
+        _sum: { qty: true },
+        where: { planId: p.id, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+      });
+      allocationByPlan.set(p.id, a._sum.qty ?? 0);
+    }
+    planSummaries = plans.map(p => ({
+      id: p.id,
+      name: p.name,
+      region: p.region,
+      carrier: p.carrier,
+      price: Number(p.price),
+      autoProvision: p.autoProvision,
+      description: p.description ?? '',
+      available: Math.max(0, p.availableQuota - (allocationByPlan.get(p.id) ?? 0)),
+    }));
   }
-  const planSummaries = plans.map(p => ({
-    id: p.id,
-    name: p.name,
-    region: p.region,
-    carrier: p.carrier,
-    price: Number(p.price),
-    autoProvision: p.autoProvision,
-    description: p.description ?? '',
-    available: Math.max(0, p.availableQuota - (allocationByPlan.get(p.id) ?? 0)),
-  }));
 
   // Hint banner copy
   const headerHint = resumeOrder
     ? `Resuming order ${resumeOrder.id} — pick up where you left off.`
-    : searchParams.renewOf
-    ? `Renewing ${searchParams.renewOf} — your balance was insufficient. Top up or use a different method below.`
+    : renewalOrder
+    ? `Renewing ${renewalOrder.id} — paying extends this order's term; your proxies stay the same.`
     : null;
 
   const crumbs = resumeOrder
     ? [{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: 'Checkout' }]
+    : renewalOrder
+    ? [{ label: 'Orders', href: '/orders' }, { label: `Order ${renewalOrder.id}`, href: `/orders/${renewalOrder.id}` }, { label: 'Renew' }]
     : [{ label: 'Catalog', href: '/catalog' }, { label: 'Checkout' }];
 
   return (
@@ -134,6 +180,7 @@ export default async function CheckoutPage({ searchParams }: {
           balance={Number(me.balance)}
           plans={planSummaries}
           allowCard={mockPaymentsAllowed()}
+          renewOf={renewalOrder?.id}
         />
       </main>
     </>

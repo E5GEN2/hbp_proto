@@ -73,14 +73,23 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     });
   }
 
-  const Sel = (k: keyof PlanInput, label: string, opts: CatalogOption[], required = false) => (
-    <div className="form-field">
-      <div className="form-label">{label}{required && <span className="req"> *</span>}</div>
-      <select className="form-select" value={(form as any)[k] ?? ''} onChange={e => set(k, e.target.value as any)} required={required}>
-        {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
-      </select>
-    </div>
-  );
+  const Sel = (k: keyof PlanInput, label: string, opts: CatalogOption[], required = false) => {
+    // A plan can hold a value that was since removed from the catalog (values
+    // are denormalized strings). A controlled <select> with no matching
+    // <option> LOOKS like the first option while the state still holds the
+    // stale value — show the truth as a disabled option instead.
+    const cur = String((form as any)[k] ?? '');
+    const stale = cur !== '' && !opts.some(o => o.value === cur);
+    return (
+      <div className="form-field">
+        <div className="form-label">{label}{required && <span className="req"> *</span>}</div>
+        <select className="form-select" value={cur} onChange={e => set(k, e.target.value as any)} required={required}>
+          {stale && <option value={cur} disabled>{cur} (removed from catalog)</option>}
+          {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+        </select>
+      </div>
+    );
+  };
 
   const Toggle = (k: 'active' | 'autoProvision' | 'autoRenewDefault' | 'renewalAllowed', label: string) => (
     <div className="toggle-row">

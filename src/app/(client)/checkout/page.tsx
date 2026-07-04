@@ -108,10 +108,20 @@ export default async function CheckoutPage({ searchParams }: {
       available: renewalOrder.qty,
     }];
   } else {
-    const plans = await prisma.plan.findMany({
-      where: { durationDays: duration, active: true, visibility: 'PUBLIC', deletedAt: null },
-      orderBy: { price: 'asc' },
-    });
+    const [allPlans, liveRegionItems] = await Promise.all([
+      prisma.plan.findMany({
+        where: { durationDays: duration, active: true, visibility: 'PUBLIC', deletedAt: null },
+        orderBy: { price: 'asc' },
+      }),
+      prisma.catalogItem.findMany({ where: { kind: 'REGION', enabled: true }, select: { value: true } }),
+    ]);
+    // The Location select must offer ONLY current admin locations. Plan.region
+    // is a denormalized string, not an FK — after a location is removed in
+    // admin, plans keep the dead string; drop those plans here so checkout
+    // never shows a location that no longer exists. (The renewal branch above
+    // deliberately bypasses this: renewals keep the original order's terms.)
+    const liveRegions = new Set(liveRegionItems.map(r => r.value));
+    const plans = allPlans.filter(p => liveRegions.has(p.region));
     if (plans.length === 0) {
       return (
         <>

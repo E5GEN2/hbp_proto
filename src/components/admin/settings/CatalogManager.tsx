@@ -73,7 +73,7 @@ export function CatalogManager({ kinds, items }: {
         })}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '0 20px 20px' }}>
-        <span className="muted" style={{ fontSize: 11.5 }}>Catalog changes affect new plans only — existing plans keep their snapshotted values.</span>
+        <span className="muted" style={{ fontSize: 11.5 }}>Catalog changes affect new plans only — existing plans keep their snapshotted values. Locations can’t be removed while active plans use them.</span>
       </div>
     </>
   );

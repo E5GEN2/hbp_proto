@@ -1,5 +1,7 @@
 'use server';
 
+import { guarded } from './action-guard';
+
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import bcrypt from 'bcryptjs';
@@ -24,40 +26,40 @@ function bust() {
   revalidatePath('/admin', 'layout');
 }
 
-export async function clientCancelOrderAction(orderId: string) {
+export const clientCancelOrderAction = guarded(async function clientCancelOrderAction(orderId: string) {
   const clientId = await getClientUserId();
   const r = await T.clientCancelNewOrder({ orderId, clientId });
   bust();
   return r;
-}
+});
 
-export async function clientToggleAutoRenewAction(orderId: string, on: boolean) {
+export const clientToggleAutoRenewAction = guarded(async function clientToggleAutoRenewAction(orderId: string, on: boolean) {
   const clientId = await getClientUserId();
   const r = await T.clientToggleAutoRenew({ orderId, clientId, on });
   bust();
   return r;
-}
+});
 
-export async function clientRequestRefundAction(paymentId: string, reason: string) {
+export const clientRequestRefundAction = guarded(async function clientRequestRefundAction(paymentId: string, reason: string) {
   const clientId = await getClientUserId();
   const r = await T.clientRequestRefund({ paymentId, clientId, reason });
   bust();
   return r;
-}
+});
 
-export async function clientRequestReplacementAction(proxyId: string, reason: string) {
+export const clientRequestReplacementAction = guarded(async function clientRequestReplacementAction(proxyId: string, reason: string) {
   const clientId = await getClientUserId();
   const r = await T.clientRequestReplacement({ proxyId, clientId, reason });
   bust();
   return r;
-}
+});
 
-export async function clientRenewOrderAction(orderId: string) {
+export const clientRenewOrderAction = guarded(async function clientRenewOrderAction(orderId: string) {
   const clientId = await getClientUserId();
   const r = await T.clientRenewOrder({ orderId, clientId });
   bust();
   return r;
-}
+});
 
 export type ProfileSaveInput = {
   name?: string;
@@ -65,7 +67,7 @@ export type ProfileSaveInput = {
   country?: string | null;
 };
 
-export async function saveProfileAction(input: ProfileSaveInput) {
+export const saveProfileAction = guarded(async function saveProfileAction(input: ProfileSaveInput) {
   const clientId = await getClientUserId();
   if (input.telegram && !/^@?[a-zA-Z0-9_]{5,32}$/.test(input.telegram)) {
     throw new Error('Telegram handle must be 5–32 chars, alphanumeric + underscore');
@@ -83,9 +85,9 @@ export async function saveProfileAction(input: ProfileSaveInput) {
   });
   bust();
   return { ok: true };
-}
+});
 
-export async function changePasswordAction(currentPassword: string, newPassword: string) {
+export const changePasswordAction = guarded(async function changePasswordAction(currentPassword: string, newPassword: string) {
   if (!newPassword || newPassword.length < 8) throw new Error('Password must be at least 8 characters');
   const clientId = await getClientUserId();
   // Re-authenticate before changing: a left-open or hijacked session must not
@@ -100,9 +102,9 @@ export async function changePasswordAction(currentPassword: string, newPassword:
     data: { actorId: clientId, action: 'AUTH.PASSWORD_CHANGE', objectType: 'AUTH', objectId: clientId, detail: 'Client changed password' },
   });
   return { ok: true };
-}
+});
 
-export async function saveNotifPrefsAction(prefs: {
+export const saveNotifPrefsAction = guarded(async function saveNotifPrefsAction(prefs: {
   emailRenewal?: boolean;
   emailIncidents?: boolean;
   emailMarketing?: boolean;
@@ -115,9 +117,9 @@ export async function saveNotifPrefsAction(prefs: {
   });
   bust();
   return { ok: true };
-}
+});
 
-export async function depositAction({ amount, method }: { amount: number; method: 'card' | 'crypto' }) {
+export const depositAction = guarded(async function depositAction({ amount, method }: { amount: number; method: 'card' | 'crypto' }) {
   const clientId = await getClientUserId();
   if (method === 'card' && !mockPaymentsAllowed()) throw new Error('Card top-ups are not available yet — use crypto or contact support.');
   if (!Number.isFinite(amount) || amount < 1 || amount > 10000) throw new Error('Deposit must be between $1 and $10,000');
@@ -176,4 +178,4 @@ export async function depositAction({ amount, method }: { amount: number; method
 
   bust();
   return { ok: true, paymentId: payId, instant: isInstant };
-}
+});

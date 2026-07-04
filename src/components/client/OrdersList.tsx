@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
-import * as CA from '@/lib/client-actions';
+import * as CA from '@/lib/ui-actions/client-actions';
 
 export type OrderRow = {
   id: string;

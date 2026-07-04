@@ -1,5 +1,7 @@
 'use server';
 
+import { guarded } from './action-guard';
+
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
@@ -12,7 +14,7 @@ async function getClientUserId() {
   return session.user.id;
 }
 
-export async function addPaymentMethodAction(input: {
+export const addPaymentMethodAction = guarded(async function addPaymentMethodAction(input: {
   brand: string;
   number: string;
   exp: string;
@@ -48,9 +50,9 @@ export async function addPaymentMethodAction(input: {
 
   revalidatePath('/billing');
   return { ok: true, id };
-}
+});
 
-export async function setDefaultPaymentMethodAction(pmId: string) {
+export const setDefaultPaymentMethodAction = guarded(async function setDefaultPaymentMethodAction(pmId: string) {
   const userId = await getClientUserId();
   const pm = await prisma.paymentMethod.findUnique({ where: { id: pmId } });
   if (!pm || pm.userId !== userId) throw new Error('Forbidden');
@@ -61,9 +63,9 @@ export async function setDefaultPaymentMethodAction(pmId: string) {
   ]);
   revalidatePath('/billing');
   return { ok: true };
-}
+});
 
-export async function removePaymentMethodAction(pmId: string) {
+export const removePaymentMethodAction = guarded(async function removePaymentMethodAction(pmId: string) {
   const userId = await getClientUserId();
   const pm = await prisma.paymentMethod.findUnique({ where: { id: pmId } });
   if (!pm || pm.userId !== userId) throw new Error('Forbidden');
@@ -78,4 +80,4 @@ export async function removePaymentMethodAction(pmId: string) {
   });
   revalidatePath('/billing');
   return { ok: true };
-}
+});

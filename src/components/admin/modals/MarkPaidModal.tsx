@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { markPaidAction } from '@/lib/admin-actions';
+import { markPaidAction } from '@/lib/ui-actions/admin-actions';
 
 export function MarkPaidModal({
   open, onClose, paymentId, paymentLabel,

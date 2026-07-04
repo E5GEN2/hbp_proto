@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { Stage15Pill } from '@/components/ui/Stage15Badge';
-import { addWhitelistIpAction, removeWhitelistIpAction } from '@/lib/proxy-actions';
+import { addWhitelistIpAction, removeWhitelistIpAction } from '@/lib/ui-actions/proxy-actions';
 
 export function WhitelistPanel({
   proxyId, entries,

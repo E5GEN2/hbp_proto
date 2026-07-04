@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
-import { releaseProxyAction, markProxyFaultyAction } from '@/lib/admin-actions';
+import { releaseProxyAction, markProxyFaultyAction } from '@/lib/ui-actions/admin-actions';
 
 type Row = {
   id: string;

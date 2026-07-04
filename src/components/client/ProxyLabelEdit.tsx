@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { updateProxyLabelAction } from '@/lib/proxy-actions';
+import { updateProxyLabelAction } from '@/lib/ui-actions/proxy-actions';
 
 export function ProxyLabelEdit({ proxyId, current }: { proxyId: string; current: string | null }) {
   const router = useRouter();

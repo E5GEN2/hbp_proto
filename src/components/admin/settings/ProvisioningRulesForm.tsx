@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
-import { upsertProvisioningRuleAction, deleteProvisioningRuleAction } from '@/lib/settings-actions';
+import { upsertProvisioningRuleAction, deleteProvisioningRuleAction } from '@/lib/ui-actions/settings-actions';
 
 type Rule = {
   id: string; carrier: string; region: string;

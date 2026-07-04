@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
-import { depositAction } from '@/lib/client-actions';
+import { depositAction } from '@/lib/ui-actions/client-actions';
 
 const PRESETS = [25, 50, 100, 250];
 const WALLET = 'TRX9aB7eFmZxXk4mPzRq8nGdLcVtJwS6Hb';

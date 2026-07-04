@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import * as A from '@/lib/admin-actions';
+import * as A from '@/lib/ui-actions/admin-actions';
 import type { PlanInput } from '@/lib/transitions';
 
 type CatalogOption = { value: string };

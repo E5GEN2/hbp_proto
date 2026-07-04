@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { extendOrderAction } from '@/lib/admin-actions';
+import { extendOrderAction } from '@/lib/ui-actions/admin-actions';
 import { fmtDate } from '@/lib/date';
 
 type Mode = 'same' | 'changeQty' | 'swap';

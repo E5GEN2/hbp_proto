@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
-import * as BA from '@/lib/billing-actions';
+import * as BA from '@/lib/ui-actions/billing-actions';
 
 type Method = {
   id: string;

@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import * as CA from '@/lib/client-actions';
+import * as CA from '@/lib/ui-actions/client-actions';
 
 export function ProfileForm({ initial }: {
   initial: { name: string; telegram: string | null; country: string | null };

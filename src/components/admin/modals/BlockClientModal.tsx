@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { blockClientAction } from '@/lib/admin-actions';
+import { blockClientAction } from '@/lib/ui-actions/admin-actions';
 
 const REASONS = ['Fraud', 'TOS violation', 'Abuse / harassment', 'Chargeback', 'Other'] as const;
 

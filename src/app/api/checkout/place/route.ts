@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
+import { mockPaymentsAllowed, newOrdersFrozen } from '@/lib/runtime-flags';
 
 const Schema = z.object({
   planId: z.string(),
@@ -20,6 +21,13 @@ export async function POST(req: Request) {
   const parse = Schema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Bad input' }, { status: 400 });
   const { planId, qty, autoExtend, paymentMethod } = parse.data;
+
+  if (await newOrdersFrozen()) {
+    return NextResponse.json({ error: 'Ordering is temporarily paused — please try again later.' }, { status: 403 });
+  }
+  if (paymentMethod === 'card' && !mockPaymentsAllowed()) {
+    return NextResponse.json({ error: 'Card payments are not available yet — use balance or crypto.' }, { status: 400 });
+  }
 
   const plan = await prisma.plan.findUnique({ where: { id: planId } });
   if (!plan || !plan.active || plan.deletedAt) return NextResponse.json({ error: 'Plan unavailable' }, { status: 400 });
@@ -61,8 +69,9 @@ export async function POST(req: Request) {
         provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'CoinPayments' : 'Stripe',
         method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? 'USDT-TRC20' : 'Visa •• 4242',
         gross: total,
-        fees: isInstant ? total * 0.03 : 0,
-        net: isInstant ? total * 0.97 : total,
+        // Fees only where a processor charges them — balance payments carry none
+        fees: paymentMethod === 'card' ? total * 0.03 : 0,
+        net: paymentMethod === 'card' ? total * 0.97 : total,
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
       },
@@ -121,8 +130,10 @@ export async function POST(req: Request) {
         source: 'in-portal',
         activatedAt: finalActivated,
         expiresAt: finalExpires,
+        // credentialsSentAt = credentials made available in the portal; no email
+        // pipeline exists yet, so no channel is claimed (DECISIONS.md §9)
         credentialsSentAt: finalCredsSent,
-        credentialsChannel: finalCredsSent ? 'EMAIL' : null,
+        credentialsChannel: null,
         exception: finalException,
         excInfo: finalExcInfo,
       },

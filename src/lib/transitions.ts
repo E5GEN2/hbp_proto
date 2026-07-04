@@ -111,7 +111,7 @@ export async function markPaymentPaid({
           activatedAt: willActivate && fullyAssigned ? now : null,
           expiresAt,
           credentialsSentAt: willActivate && fullyAssigned ? now : null,
-          credentialsChannel: willActivate && fullyAssigned ? 'EMAIL' : null,
+          credentialsChannel: null,
           exception: willActivate && !fullyAssigned ? 'PAID_NOT_PROVISIONED' : null,
           excInfo: willActivate && !fullyAssigned ? `Pool capacity hit — only ${assignedCount}/${ord.qty} provisioned` : null,
         },
@@ -378,7 +378,7 @@ export async function assignProxyManually({
           activatedAt: ord.activatedAt ?? now,
           expiresAt: ord.expiresAt ?? new Date(now.getTime() + 30 * 86_400_000),
           credentialsSentAt: ord.credentialsSentAt ?? now,
-          credentialsChannel: ord.credentialsChannel ?? 'EMAIL',
+          credentialsChannel: ord.credentialsChannel ?? null,
           exception: ord.exception === 'PAID_NOT_PROVISIONED' ? null : ord.exception,
           excInfo: ord.exception === 'PAID_NOT_PROVISIONED' ? null : ord.excInfo,
         },
@@ -942,7 +942,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         activatedAt: finalActivated,
         expiresAt: finalExpires,
         credentialsSentAt: finalActivated,
-        credentialsChannel: finalActivated ? 'EMAIL' : null,
+        credentialsChannel: null,
         exception: finalException,
         excInfo: finalExcInfo,
       },
@@ -1165,6 +1165,7 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   if (!o) throw new Error('Order not found');
   if (o.clientId !== clientId) throw new Error('Forbidden');
   if (o.status === 'CANCELLED' || o.status === 'PENDING_RENEWAL') throw new Error('Cannot renew this order');
+  if (!o.plan.renewalAllowed) throw new Error('Renewals are not available for this plan');
 
   const price = Number(o.plan.price) * o.qty;
   const balance = Number(o.client.balance);

@@ -20,6 +20,12 @@ export async function POST(req: Request) {
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   if (order.clientId !== session.user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  // Idempotency: this endpoint is client-triggered — a repeat POST (double-click,
+  // replay) on an already-settled order must not re-assign proxies or reset expiry.
+  if (order.paymentStatus !== 'AWAITING') {
+    return NextResponse.json({ ok: true, already: true });
+  }
+
   const awaitingPay = order.payments.find(p => p.status === 'AWAITING');
   const now = new Date();
   const wantsAutoProvision = order.plan.autoProvision;
@@ -64,7 +70,7 @@ export async function POST(req: Request) {
         activatedAt: finalActivated,
         expiresAt: finalExpires,
         credentialsSentAt: finalActivated,
-        credentialsChannel: finalActivated ? 'EMAIL' : null,
+        credentialsChannel: null,
         exception: finalException,
         excInfo: finalException ? `Pool exhausted — ${assignedCount}/${order.qty} provisioned` : null,
       },

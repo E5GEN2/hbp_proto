@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { nextUserId } from '@/lib/id';
+import { sendEmail, welcomeEmail } from '@/lib/email';
 
 const Schema = z.object({
   name: z.string().min(2).max(80),
@@ -40,6 +41,9 @@ export async function POST(req: Request) {
       locked: true,
     },
   });
+
+  // Best-effort — a mail outage must not fail the signup.
+  await sendEmail({ to: email, ...welcomeEmail(name) });
 
   return NextResponse.json({ ok: true, userId: id });
 }

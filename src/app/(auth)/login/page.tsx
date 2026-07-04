@@ -12,6 +12,7 @@ function LoginForm() {
   const carry = fromSite ? '&from=site' : '';
   const registerHref = `/register?return=${encodeURIComponent(ret)}${carry}`;
   const forgotHref = `/forgot${fromSite ? '?from=site' : ''}`;
+  const justReset = params.get('reset') === '1';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,6 +39,11 @@ function LoginForm() {
         <div className="auth-title">Sign in</div>
         <div className="auth-switch">Don&rsquo;t have an account yet? <Link href={registerHref}>Create account</Link></div>
       </div>
+      {justReset && (
+        <div className="form-help" style={{ color: 'var(--success)', marginTop: 12 }}>
+          Password updated — sign in with your new password.
+        </div>
+      )}
       <form className="auth-form" onSubmit={onSubmit}>
         <div className="form-row">
           <label className="form-label">Email</label>

@@ -60,6 +60,12 @@ export function CheckoutFlow({
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? 'Order failed');
+      // Real crypto: hand over to the NOWPayments hosted invoice — settlement
+      // comes back via webhook. (busy stays on while the browser navigates.)
+      if (j.paymentUrl) {
+        window.location.assign(j.paymentUrl);
+        return;
+      }
       setOrderId(j.orderId);
       setStep(method === 'crypto' ? 'processing' : 'success');
       router.refresh();

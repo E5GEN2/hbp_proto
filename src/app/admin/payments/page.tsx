@@ -73,6 +73,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
             { kind: 'search', name: 'q', placeholder: 'Search by payment, order, client…' },
             { kind: 'select', name: 'provider', label: 'Provider: all', size: 'sm', options: [
               { value: 'Stripe', label: 'Stripe' },
+              { value: 'NOWPayments', label: 'NOWPayments' },
               { value: 'CoinPayments', label: 'CoinPayments' },
               { value: 'Balance', label: 'Balance' },
               { value: 'Bank transfer', label: 'Bank transfer' },

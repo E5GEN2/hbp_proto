@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { updateAutoRotateAction } from '@/lib/proxy-actions';
+import { updateAutoRotateAction } from '@/lib/ui-actions/proxy-actions';
 
 // Stage 1.5 backend per IMPLEMENTATION_BACKLOG.md S4: the plan declares
 // `rotation_policies_allowed[]` and `auto_interval_min_choices[]`. Until those

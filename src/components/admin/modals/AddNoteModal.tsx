@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { addNoteAction } from '@/lib/admin-actions';
+import { addNoteAction } from '@/lib/ui-actions/admin-actions';
 
 export function AddNoteModal({
   open, onClose, objectType, objectId,

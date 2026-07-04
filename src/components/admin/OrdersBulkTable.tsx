@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
-import { cancelOrderAction, suspendOrderAction, resumeOrderAction, sendCredentialsAction } from '@/lib/admin-actions';
+import { cancelOrderAction, suspendOrderAction, resumeOrderAction, sendCredentialsAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 

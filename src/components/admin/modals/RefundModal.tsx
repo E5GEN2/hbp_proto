@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { refundPaymentAction } from '@/lib/admin-actions';
+import { refundPaymentAction } from '@/lib/ui-actions/admin-actions';
 
 const CATEGORIES = ['Customer not satisfied', 'Service not delivered', 'Goodwill', 'Duplicate charge', 'Fraud / chargeback', 'Other'] as const;
 

@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { toggleNotificationRuleAction } from '@/lib/settings-actions';
+import { toggleNotificationRuleAction } from '@/lib/ui-actions/settings-actions';
 import { fmtDate } from '@/lib/date';
 
 const CLIENT_RULES = [

@@ -1,5 +1,7 @@
 'use server';
 
+import { guarded } from './action-guard';
+
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdminRole } from './auth';
@@ -22,7 +24,7 @@ function bust() {
 
 /* ─── SYSTEM FLAGS ─────────────────────────────────────────────────── */
 
-export async function setSystemFlagAction(key: string, value: any) {
+export const setSystemFlagAction = guarded(async function setSystemFlagAction(key: string, value: any) {
   const actor = await getAdminActor();
   await prisma.systemSetting.upsert({
     where: { key },
@@ -34,13 +36,13 @@ export async function setSystemFlagAction(key: string, value: any) {
   });
   bust();
   return { ok: true };
-}
+});
 
 /* ─── MARKETING ANNOUNCEMENT ───────────────────────────────────────── */
 
 const ANN_VARIANTS: AnnouncementVariant[] = ['promo', 'info', 'warning'];
 
-export async function saveAnnouncementAction(data: Announcement) {
+export const saveAnnouncementAction = guarded(async function saveAnnouncementAction(data: Announcement) {
   const actor = await getAdminActor();
   const value: Announcement = {
     enabled: !!data.enabled,
@@ -64,7 +66,7 @@ export async function saveAnnouncementAction(data: Announcement) {
   });
   bust(); // bust() already revalidates /marketing
   return { ok: true };
-}
+});
 
 /* ─── GRACE RULES ──────────────────────────────────────────────────── */
 
@@ -74,7 +76,7 @@ const GRACE_FIELDS = [
   'autoRenew24hBeforeExpiry', 'keepProxyDuringGrace', 'autoSuspendAfter3Fails',
 ] as const;
 
-export async function saveGraceRulesAction(data: Record<string, any>) {
+export const saveGraceRulesAction = guarded(async function saveGraceRulesAction(data: Record<string, any>) {
   const actor = await getAdminActor();
   // Monotonicity validation
   const second = Number(data.secondReminderHours ?? 0);
@@ -97,11 +99,11 @@ export async function saveGraceRulesAction(data: Record<string, any>) {
   });
   bust();
   return { ok: true };
-}
+});
 
 /* ─── DISPLAY ──────────────────────────────────────────────────────── */
 
-export async function setTimeFormatAction(timeFormat: 'UTC' | 'GMT') {
+export const setTimeFormatAction = guarded(async function setTimeFormatAction(timeFormat: 'UTC' | 'GMT') {
   const actor = await getAdminActor();
   await prisma.systemSetting.upsert({
     where: { key: 'display' },
@@ -113,11 +115,11 @@ export async function setTimeFormatAction(timeFormat: 'UTC' | 'GMT') {
   });
   bust();
   return { ok: true };
-}
+});
 
 /* ─── CATALOG ──────────────────────────────────────────────────────── */
 
-export async function addCatalogItemAction(kind: string, value: string) {
+export const addCatalogItemAction = guarded(async function addCatalogItemAction(kind: string, value: string) {
   const actor = await getAdminActor();
   if (!value.trim()) throw new Error('Value required');
   const exists = await prisma.catalogItem.findFirst({ where: { kind: kind as any, value: value.trim() } });
@@ -131,9 +133,9 @@ export async function addCatalogItemAction(kind: string, value: string) {
   });
   bust();
   return { ok: true };
-}
+});
 
-export async function removeCatalogItemAction(id: number) {
+export const removeCatalogItemAction = guarded(async function removeCatalogItemAction(id: number) {
   const actor = await getAdminActor();
   const item = await prisma.catalogItem.findUnique({ where: { id } });
   if (!item) throw new Error('Not found');
@@ -154,11 +156,11 @@ export async function removeCatalogItemAction(id: number) {
   });
   bust();
   return { ok: true };
-}
+});
 
 /* ─── PROVIDERS ────────────────────────────────────────────────────── */
 
-export async function setProviderEnabledAction(provider: 'stripe' | 'crypto' | 'bank' | 'paypal', enabled: boolean) {
+export const setProviderEnabledAction = guarded(async function setProviderEnabledAction(provider: 'stripe' | 'crypto' | 'bank' | 'paypal', enabled: boolean) {
   const actor = await getAdminActor();
   const existing = await prisma.systemSetting.findUnique({ where: { key: 'providers' } });
   const current = (existing?.value as any) ?? {};
@@ -173,11 +175,11 @@ export async function setProviderEnabledAction(provider: 'stripe' | 'crypto' | '
   });
   bust();
   return { ok: true };
-}
+});
 
 /* ─── NOTIFICATIONS ────────────────────────────────────────────────── */
 
-export async function toggleNotificationRuleAction(ruleKey: string, enabled: boolean) {
+export const toggleNotificationRuleAction = guarded(async function toggleNotificationRuleAction(ruleKey: string, enabled: boolean) {
   const actor = await getAdminActor();
   const existing = await prisma.systemSetting.findUnique({ where: { key: 'notifications' } });
   const current = (existing?.value as any) ?? {};
@@ -192,11 +194,11 @@ export async function toggleNotificationRuleAction(ruleKey: string, enabled: boo
   });
   bust();
   return { ok: true };
-}
+});
 
 /* ─── PROVISIONING RULES ───────────────────────────────────────────── */
 
-export async function upsertProvisioningRuleAction(data: {
+export const upsertProvisioningRuleAction = guarded(async function upsertProvisioningRuleAction(data: {
   id?: string;
   carrier: string;
   region: string;
@@ -238,9 +240,9 @@ export async function upsertProvisioningRuleAction(data: {
   }
   bust();
   return { ok: true };
-}
+});
 
-export async function deleteProvisioningRuleAction(id: string) {
+export const deleteProvisioningRuleAction = guarded(async function deleteProvisioningRuleAction(id: string) {
   const actor = await getAdminActor();
   await prisma.provisioningRule.delete({ where: { id } });
   await prisma.log.create({
@@ -248,4 +250,4 @@ export async function deleteProvisioningRuleAction(id: string) {
   });
   bust();
   return { ok: true };
-}
+});

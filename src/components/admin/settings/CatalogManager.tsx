@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { addCatalogItemAction, removeCatalogItemAction } from '@/lib/settings-actions';
+import { addCatalogItemAction, removeCatalogItemAction } from '@/lib/ui-actions/settings-actions';
 
 type Item = { id: number; value: string };
 

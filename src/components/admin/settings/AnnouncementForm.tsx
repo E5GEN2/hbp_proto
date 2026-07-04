@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { saveAnnouncementAction } from '@/lib/settings-actions';
+import { saveAnnouncementAction } from '@/lib/ui-actions/settings-actions';
 import type { Announcement, AnnouncementVariant } from '@/lib/announcement';
 
 const PREVIEW_COLOR: Record<AnnouncementVariant, string> = {

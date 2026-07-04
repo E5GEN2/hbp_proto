@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { ExtendOrderModal } from '@/components/admin/modals/ExtendOrderModal';
-import { cancelOrderAction, markPaidAction } from '@/lib/admin-actions';
+import { cancelOrderAction, markPaidAction } from '@/lib/ui-actions/admin-actions';
 import { fmtAdminStamp } from '@/lib/date';
 
 export type RenewalRow = {

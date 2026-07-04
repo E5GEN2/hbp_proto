@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import * as CA from '@/lib/client-actions';
+import * as CA from '@/lib/ui-actions/client-actions';
 
 const REASONS = [
   'Cannot connect / dropped',

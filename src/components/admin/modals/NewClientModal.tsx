@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { createClientAction } from '@/lib/admin-actions';
+import { createClientAction } from '@/lib/ui-actions/admin-actions';
 
 export function NewClientModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();

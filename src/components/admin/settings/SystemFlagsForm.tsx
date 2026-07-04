@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { HelpTip } from '@/components/ui/HelpTip';
-import { setSystemFlagAction } from '@/lib/settings-actions';
+import { setSystemFlagAction } from '@/lib/ui-actions/settings-actions';
 
 type Flags = { maxConcurrentOrdersPerClient: number; maxProxyReplacementsPerOrder: number; supportRefundCapUSD: number; discountCapWithoutSuperApprovalPercent: number };
 

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import * as A from '@/lib/admin-actions';
+import * as A from '@/lib/ui-actions/admin-actions';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { MarkPaidModal } from './modals/MarkPaidModal';

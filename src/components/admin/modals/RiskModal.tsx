@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { setClientRiskAction } from '@/lib/admin-actions';
+import { setClientRiskAction } from '@/lib/ui-actions/admin-actions';
 
 export function RiskModal({
   open, onClose, userId, currentRisk,

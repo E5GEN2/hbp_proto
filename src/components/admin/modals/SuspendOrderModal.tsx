@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { useToast } from '@/components/ui/Toast';
-import { suspendOrderAction } from '@/lib/admin-actions';
+import { suspendOrderAction } from '@/lib/ui-actions/admin-actions';
 
 export function SuspendOrderModal({
   open, onClose, orderId,

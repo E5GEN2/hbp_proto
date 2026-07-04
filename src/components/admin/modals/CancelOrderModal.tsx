@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { useToast } from '@/components/ui/Toast';
-import { cancelOrderAction } from '@/lib/admin-actions';
+import { cancelOrderAction } from '@/lib/ui-actions/admin-actions';
 
 export function CancelOrderModal({
   open, onClose, orderId, wasPaid, assignmentCount,

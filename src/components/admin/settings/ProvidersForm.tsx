@@ -3,7 +3,7 @@ import { useTransition, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
-import { setProviderEnabledAction } from '@/lib/settings-actions';
+import { setProviderEnabledAction } from '@/lib/ui-actions/settings-actions';
 
 type ProviderCfg = {
   enabled: boolean;

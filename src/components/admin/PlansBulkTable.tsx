@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { togglePlanActiveAction } from '@/lib/admin-actions';
+import { togglePlanActiveAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
 
 type Row = {

@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { saveGraceRulesAction } from '@/lib/settings-actions';
+import { saveGraceRulesAction } from '@/lib/ui-actions/settings-actions';
 
 type Grace = {
   defaultGraceHours: number;

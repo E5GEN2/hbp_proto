@@ -3,7 +3,7 @@ import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { assignProxyAction } from '@/lib/admin-actions';
+import { assignProxyAction } from '@/lib/ui-actions/admin-actions';
 
 type ProxyOpt = { id: string; carrier: string; region: string; pool: string; ip: string; port: number; health: string };
 

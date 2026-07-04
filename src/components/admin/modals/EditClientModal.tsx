@@ -3,7 +3,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { updateClientAction } from '@/lib/admin-actions';
+import { updateClientAction } from '@/lib/ui-actions/admin-actions';
 
 export type EditClientInitial = {
   name: string;

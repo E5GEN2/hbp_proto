@@ -2,7 +2,7 @@
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
-import { setTimeFormatAction } from '@/lib/settings-actions';
+import { setTimeFormatAction } from '@/lib/ui-actions/settings-actions';
 
 export function DisplayForm({ initial }: { initial: { timeFormat: 'UTC' | 'GMT' } }) {
   const router = useRouter();

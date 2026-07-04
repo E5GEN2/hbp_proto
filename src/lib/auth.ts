@@ -68,8 +68,19 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (token && session.user) {
+        // Live status re-check on EVERY session read (audit B-7, decision:
+        // instant): a BLOCKED (or deleted) user is signed out on their next
+        // request instead of riding out the 7-day JWT. Returning null makes
+        // getServerSession() null, so every layout/action guard bounces to
+        // /login. Role is refreshed from the DB too, so role changes also
+        // apply without waiting for token expiry.
+        const u = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { status: true, role: true },
+        });
+        if (!u || u.status === 'BLOCKED') return null as any;
         session.user.id = token.id;
-        session.user.role = token.role;
+        session.user.role = u.role;
       }
       return session;
     },

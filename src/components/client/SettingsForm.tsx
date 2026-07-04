@@ -54,18 +54,20 @@ export function ProfileForm({ initial }: {
 
 export function ChangePasswordForm() {
   const toast = useToast();
+  const [cur, setCur] = useState('');
   const [a, setA] = useState('');
   const [b, setB] = useState('');
   const [pending, start] = useTransition();
 
   function submit() {
+    if (!cur) return toast('Current password required', '', 'warning');
     if (a.length < 8) return toast('Too short', 'Min 8 characters', 'warning');
     if (a !== b) return toast('Passwords don\'t match', '', 'warning');
     start(async () => {
       try {
-        await CA.changePasswordAction(a);
+        await CA.changePasswordAction(cur, a);
         toast('Password updated', '', 'success');
-        setA(''); setB('');
+        setCur(''); setA(''); setB('');
       } catch (e: any) { toast('Failed', e.message, 'danger'); }
     });
   }
@@ -73,6 +75,10 @@ export function ChangePasswordForm() {
   return (
     <>
       <div className="settings-form-grid">
+        <div className="settings-field full">
+          <label className="settings-field-label">Current password</label>
+          <input className="form-input" type="password" autoComplete="current-password" value={cur} onChange={e => setCur(e.target.value)} />
+        </div>
         <div className="settings-field">
           <label className="settings-field-label">New password</label>
           <input className="form-input" type="password" autoComplete="new-password" value={a} onChange={e => setA(e.target.value)} />
@@ -83,7 +89,7 @@ export function ChangePasswordForm() {
         </div>
       </div>
       <div className="settings-actions">
-        <button className="btn primary" onClick={submit} disabled={pending || !a || !b}>{pending ? 'Updating…' : 'Update password'}</button>
+        <button className="btn primary" onClick={submit} disabled={pending || !cur || !a || !b}>{pending ? 'Updating…' : 'Update password'}</button>
       </div>
     </>
   );

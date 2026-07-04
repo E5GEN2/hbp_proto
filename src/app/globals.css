@@ -400,6 +400,30 @@ table.dt { table-layout: fixed; }
 .theme-admin table.dt thead th.col-date, .theme-admin table.dt thead th.col-pct,
 .theme-admin table.dt thead th.col-duration, .theme-admin table.dt thead th.col-volume,
 .theme-admin table.dt thead th.col-action { text-align: center; }
+/* Canon numeric-CELL typography. Canon writes these as `.dt tbody td.col-*`
+   (prototype.html:1113-1129) so they outrank the base `.dt tbody td` font;
+   the app's bare `.col-*` utilities (0,1,0) lose to `table.dt tbody td`
+   (0,1,3), so every numeric/date/money cell was rendering 13px sans instead
+   of the canon 12px mono. Same audit scoping as the th rule above:
+   .theme-admin only, client tables untouched. */
+.theme-admin table.dt tbody td.col-id {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.theme-admin table.dt tbody td.col-num, .theme-admin table.dt tbody td.col-money,
+.theme-admin table.dt tbody td.col-date, .theme-admin table.dt tbody td.col-pct,
+.theme-admin table.dt tbody td.col-duration, .theme-admin table.dt tbody td.col-endpoint,
+.theme-admin table.dt tbody td.col-volume, .theme-admin table.dt tbody td.col-period {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  /* Canon's base `tbody td` never sets overflow — a fixed-width stamp bleeds
+     a few px into the 16px cell padding instead of ellipsizing ("26 May ·
+     13:10" must not truncate to "26 May · 1…" @1440). The app's base td adds
+     hidden+ellipsis; undo it for these fixed-width kinds only. */
+  overflow: visible;
+}
 .col-endpoint { font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 /* Stacked-content cells — allow wrapping without ellipsis cutting second line */
 .table tbody td.cred-stack, table.dt tbody td.cred-stack,
@@ -544,6 +568,18 @@ table.dt { table-layout: fixed; }
   height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
 }
 .theme-admin .tab.emphasis.active::after { background: var(--warning); }
+
+/* Settings grew an 11th tab (Announcements) over canon's 10 — the row fits
+   @1440 with ZERO slack, so any narrower viewport (or a classic scrollbar)
+   makes the flex items shrink and their labels wrap to two lines. Keep the
+   labels on one line and let the bar scroll horizontally instead. Scoped to
+   #settingsTabs only; every other admin tab bar keeps exact canon geometry. */
+.theme-admin #settingsTabs { overflow-x: auto; scrollbar-width: none; }
+.theme-admin #settingsTabs::-webkit-scrollbar { display: none; }
+.theme-admin #settingsTabs .tab { white-space: nowrap; }
+/* overflow-x:auto clips at the content edge — the active underline normally
+   hangs 1px below it (bottom:-1px over the bar's border); lift it inside. */
+.theme-admin #settingsTabs .tab.active::after { bottom: 0; }
 
 /* Renewals split tab-bar (canon .tabs-split) — grouped windows separated by
    thin dividers. The element carries .tabs too, so the .theme-admin .tabs/.tab
@@ -2150,3 +2186,28 @@ table.dt { table-layout: fixed; }
 @media (max-width: 560px) {
   .site-logo-host .topbar__logo svg { height: 34px !important; }
 }
+
+/* ============================================================================
+   Branded error / not-found / loading pages (audit remediation, UI Phase-1).
+   Reuse the auth shell (cream + dots + Comet logo pill + centred .auth-card);
+   only the err-* / load-* additions below are new.
+   ============================================================================ */
+.err-card { max-width: 460px; }
+.err-code { font: 650 40px/1 var(--font-sans); letter-spacing: -0.02em; color: var(--text); }
+.err-desc { font: 400 13.5px/1.65 var(--font-sans); color: var(--muted); margin: 0; }
+.err-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.err-actions .btn { text-decoration: none; }
+.err-digest { font: 400 11px var(--font-mono); color: var(--text-disabled); }
+/* Route-transition fallback — same cream + dots, a quiet spinner. */
+.load-page {
+  min-height: 100vh; display: grid; place-items: center;
+  background: #F4F2EE;
+  background-image: radial-gradient(rgba(17,24,39,.025) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+.load-spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--surface-3); border-top-color: var(--accent);
+  animation: load-spin .8s linear infinite;
+}
+@keyframes load-spin { to { transform: rotate(360deg); } }

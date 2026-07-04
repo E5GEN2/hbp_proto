@@ -28,7 +28,7 @@ export function ProvidersForm({ initial }: {
         fields={[
           { name: 'accountId', label: 'Account ID' },
           { name: 'publishableKey', label: 'Publishable key' },
-          { name: 'webhookSecret', label: 'Webhook secret' },
+          { name: 'webhookSecret', label: 'Webhook secret', secret: true },
         ]}
         cols={3}
       />
@@ -67,7 +67,7 @@ function ProviderCard({ name, desc, provider, cfg, fields, impact, cols, activeL
   name: string; desc: string;
   provider: 'stripe' | 'crypto' | 'bank';
   cfg: ProviderCfg;
-  fields: { name: string; label: string }[];
+  fields: { name: string; label: string; secret?: boolean }[];
   impact: string[];
   cols: 2 | 3;
   activeLabel?: string;
@@ -111,7 +111,7 @@ function ProviderCard({ name, desc, provider, cfg, fields, impact, cols, activeL
             return (
               <div className="form-field" key={f.name}>
                 <div className="form-label">{f.label}</div>
-                <input className="form-input" defaultValue={String(val)} disabled />
+                <input className="form-input" type={f.secret ? 'password' : 'text'} defaultValue={String(val)} disabled />
               </div>
             );
           })}

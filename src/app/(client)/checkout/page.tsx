@@ -175,7 +175,7 @@ export default async function CheckoutPage({ searchParams }: {
           duration={duration}
           qty={presetQty}
           autoExtend={presetAutoExtend}
-          location={presetLocation ?? plans[0].region}
+          location={presetLocation ?? planSummaries[0].region}
           step={(searchParams.step ?? 'details') as any}
           balance={Number(me.balance)}
           plans={planSummaries}

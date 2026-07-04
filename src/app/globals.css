@@ -569,17 +569,20 @@ table.dt { table-layout: fixed; }
 }
 .theme-admin .tab.emphasis.active::after { background: var(--warning); }
 
-/* Settings grew an 11th tab (Announcements) over canon's 10 — the row fits
-   @1440 with ZERO slack, so any narrower viewport (or a classic scrollbar)
-   makes the flex items shrink and their labels wrap to two lines. Keep the
-   labels on one line and let the bar scroll horizontally instead. Scoped to
-   #settingsTabs only; every other admin tab bar keeps exact canon geometry. */
+/* Settings grew an 11th tab (Announcements) over canon's 10 — at canon
+   padding the single-line row is 1246px vs 1170px available @1440, so flex
+   used to shrink the tabs and wrap their labels to two lines. Keep labels on
+   one line (nowrap), tighten inter-tab padding 14→10px so all 11 tabs fit the
+   canonical 1440 width (1158px), and let the bar scroll horizontally (hidden
+   scrollbar) as the fallback for narrower viewports. Scoped to #settingsTabs
+   only; every other admin tab bar keeps exact canon geometry. */
 .theme-admin #settingsTabs { overflow-x: auto; scrollbar-width: none; }
 .theme-admin #settingsTabs::-webkit-scrollbar { display: none; }
-.theme-admin #settingsTabs .tab { white-space: nowrap; }
+.theme-admin #settingsTabs .tab { white-space: nowrap; padding: 0 10px; }
 /* overflow-x:auto clips at the content edge — the active underline normally
-   hangs 1px below it (bottom:-1px over the bar's border); lift it inside. */
-.theme-admin #settingsTabs .tab.active::after { bottom: 0; }
+   hangs 1px below it (bottom:-1px over the bar's border); lift it inside.
+   Inset matches the tightened 10px padding. */
+.theme-admin #settingsTabs .tab.active::after { bottom: 0; left: 10px; right: 10px; }
 
 /* Renewals split tab-bar (canon .tabs-split) — grouped windows separated by
    thin dividers. The element carries .tabs too, so the .theme-admin .tabs/.tab

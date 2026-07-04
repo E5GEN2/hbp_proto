@@ -94,10 +94,27 @@ model User {
   entityNotes              EntityNote[] @relation("NoteAuthor")
   logsAsActor              Log[]        @relation("LogActor")
   checkoutDraft            CheckoutDraft?
+  passwordResetTokens      PasswordResetToken[]
 
   @@index([role])
   @@index([status])
   @@map("users")
+}
+
+// Email password-recovery links. The raw token travels only in the email —
+// the DB stores its SHA-256, so a leaked dump can't be replayed as a link.
+model PasswordResetToken {
+  id         Int       @id @default(autoincrement())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 // ─── CATALOG / PLANS ───────────────────────────────────────────────────────

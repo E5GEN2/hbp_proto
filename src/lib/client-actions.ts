@@ -85,9 +85,15 @@ export async function saveProfileAction(input: ProfileSaveInput) {
   return { ok: true };
 }
 
-export async function changePasswordAction(newPassword: string) {
+export async function changePasswordAction(currentPassword: string, newPassword: string) {
   if (!newPassword || newPassword.length < 8) throw new Error('Password must be at least 8 characters');
   const clientId = await getClientUserId();
+  // Re-authenticate before changing: a left-open or hijacked session must not
+  // be able to take over the account by silently swapping the password (B-7).
+  const me = await prisma.user.findUnique({ where: { id: clientId } });
+  if (!me) throw new Error('Not signed in');
+  const ok = await bcrypt.compare(currentPassword ?? '', me.passwordHash);
+  if (!ok) throw new Error('Current password is incorrect');
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await prisma.user.update({ where: { id: clientId }, data: { passwordHash } });
   await prisma.log.create({

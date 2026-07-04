@@ -3,10 +3,14 @@
 // tierFeatures, durationLabel). Features are a duration-keyed template, NOT
 // derived from the admin description (which renders as marketing copy).
 
+// Feature copy = the locked 5G marketing template (plan-tiers.ts
+// PLAN_TIER_TEMPLATES, slots 0/1/2 by duration) — keep the two lists in sync.
+// Copied rather than imported: plan-tiers already imports durationLabel from
+// this module, and a two-way cycle isn't worth the dedupe.
 export const FEATURES_BY_DURATION: Record<number, string[]> = {
-  7: ['4G LTE mobile IPs', 'Unlimited bandwidth', '24h sticky sessions', 'Manual rotation'],
-  30: ['4G LTE mobile IPs', 'Unlimited bandwidth', 'Sticky 24h sessions', 'Auto-rotation available'],
-  90: ['4G LTE mobile IPs', 'Unlimited bandwidth', 'Sticky 24h sessions', 'Auto-rotation + URL rotation', 'Priority routing'],
+  7: ['5G mobile IPs', 'Unlimited bandwidth', 'Dedicated access', 'Auto‑rotation + URL rotation'],
+  30: ['5G mobile IPs', 'Unlimited bandwidth', 'Dedicated access', 'Auto‑rotation + URL rotation', 'Priority Telegram support'],
+  90: ['5G mobile IPs', 'Unlimited bandwidth', 'Dedicated access', 'Auto‑rotation + URL rotation', 'Priority Telegram support'],
 };
 
 export const tierFeatures = (d: number): string[] => FEATURES_BY_DURATION[d] || FEATURES_BY_DURATION[30];

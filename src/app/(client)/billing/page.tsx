@@ -169,7 +169,8 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                               </td>
                               <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{p.status.charAt(0) + p.status.slice(1).toLowerCase()}</span></td>
                               <td className="col-action">
-                                {p.invoice ? <a className="td-link" href="#">Download</a> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                                {/* PDF pipeline not built yet (audit B-8) — honest placeholder, no dead link */}
+                                {p.invoice ? <span style={{ color: 'var(--muted)' }} title="Invoice PDF downloads are coming soon">PDF soon</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
                               </td>
                             </tr>
                           );

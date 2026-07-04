@@ -137,6 +137,17 @@ export async function removeCatalogItemAction(id: number) {
   const actor = await getAdminActor();
   const item = await prisma.catalogItem.findUnique({ where: { id } });
   if (!item) throw new Error('Not found');
+  // Plans reference locations by denormalized region STRING (no FK), so
+  // deleting a location in use would strand its plans on a dead value and
+  // silently drop them from checkout (which only offers live locations).
+  if (item.kind === 'REGION') {
+    const inUse = await prisma.plan.count({
+      where: { region: item.value, active: true, deletedAt: null },
+    });
+    if (inUse > 0) {
+      throw new Error(`${inUse} active ${inUse === 1 ? 'plan uses' : 'plans use'} this location — reassign ${inUse === 1 ? 'it' : 'them'} first`);
+    }
+  }
   await prisma.catalogItem.delete({ where: { id } });
   await prisma.log.create({
     data: { actorId: actor.id, action: 'CATALOG.UPDATE', objectType: 'SYSTEM', objectId: `catalog.${item.kind}`, detail: `Removed "${item.value}"` },

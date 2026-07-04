@@ -135,6 +135,89 @@ export function MarkFaultyButton({ proxyId }: { proxyId: string }) {
   );
 }
 
+export function ReturnToPoolButton({ proxyId }: { proxyId: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  return (
+    <>
+      <button className="btn primary" onClick={() => setOpen(true)}>Return to pool</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title="Return proxy to pool"
+        entityLabel={`Proxy · ${proxyId}`}
+        message="The proxy becomes AVAILABLE for new assignments."
+        impact={[
+          'Proxy status → AVAILABLE',
+          'Credential / IP rotation markers stamped (next client never inherits live credentials)',
+        ]}
+        confirmLabel="Return to pool"
+        onConfirm={async () => {
+          await A.returnProxyToPoolAction(proxyId);
+          toast('Proxy returned to pool', proxyId, 'success');
+          router.refresh();
+        }}
+      />
+    </>
+  );
+}
+
+export function MarkHealthyButton({ proxyId }: { proxyId: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  return (
+    <>
+      <button className="btn primary" onClick={() => setOpen(true)}>Mark healthy</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title="Mark proxy healthy"
+        entityLabel={`Proxy · ${proxyId}`}
+        message="Clears the faulty state after the hardware issue is fixed."
+        impact={[
+          'Health → HEALTHY',
+          'Back to serving its order (ASSIGNED) if one is still attached, otherwise → AVAILABLE',
+          'Replacement-pending exception on the attached order clears',
+        ]}
+        confirmLabel="Mark healthy"
+        onConfirm={async () => {
+          await A.markProxyHealthyAction(proxyId);
+          toast('Proxy marked healthy', proxyId, 'success');
+          router.refresh();
+        }}
+      />
+    </>
+  );
+}
+
+export function MaintenanceButton({ proxyId, inMaintenance }: { proxyId: string; inMaintenance: boolean }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>{inMaintenance ? 'End maintenance' : 'Maintenance'}</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title={inMaintenance ? 'End maintenance' : 'Start maintenance'}
+        entityLabel={`Proxy · ${proxyId}`}
+        message={inMaintenance
+          ? 'The proxy resumes normal duty.'
+          : 'The proxy is taken out of rotation; any current assignment is preserved.'}
+        impact={inMaintenance
+          ? ['Status → ASSIGNED if an order is still attached, otherwise AVAILABLE']
+          : ['Status → MAINTENANCE', 'Open assignment (if any) stays attached', 'Not eligible for new assignments while in maintenance']}
+        confirmLabel={inMaintenance ? 'End maintenance' : 'Start maintenance'}
+        onConfirm={async () => {
+          await A.setProxyMaintenanceAction(proxyId, !inMaintenance);
+          toast(inMaintenance ? 'Maintenance ended' : 'Maintenance started', proxyId, inMaintenance ? 'success' : 'warning');
+          router.refresh();
+        }}
+      />
+    </>
+  );
+}
+
 export function ReleaseProxyButton({ proxyId }: { proxyId: string }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();

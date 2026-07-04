@@ -42,7 +42,9 @@ export function GraceRulesForm({ initial }: { initial: Grace }) {
 
   return (
     <div className="form-grid cols-2">
-      <div className="form-field full"><div className="subsection-title">Global defaults</div></div>
+      {/* Honest-state badge (audit B-4): values persist, but the lifecycle sweep
+          uses its own fixed windows — these knobs aren't consulted yet (Phase 2). */}
+      <div className="form-field full"><div className="subsection-title">Global defaults <span className="chip muted sm" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
       <div className="form-field"><div className="form-label">Default grace period (hours) <span className="req">*</span></div>{num('defaultGraceHours')}</div>
       <div className="form-field"><div className="form-label">Pre-renewal reminder (hours before expiry) <span className="req">*</span></div>{num('preRenewalReminderHours')}</div>
       <div className="form-field"><div className="form-label">Second reminder</div>{num('secondReminderHours')}</div>

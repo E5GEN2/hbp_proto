@@ -19,7 +19,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, renewOf,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscountPct = 0,
 }: {
   duration: number;
   qty: number;
@@ -29,7 +29,9 @@ export function CheckoutFlow({
   balance: number;
   plans: PlanSummary[];
   allowCard?: boolean;
+  allowCrypto?: boolean; // admin Payment Providers toggle (crypto)
   renewOf?: string; // renewal mode: paying extends this order — location/qty locked
+  renewalDiscountPct?: number; // >0 in renewal mode when the plan grants a discount (price already discounted)
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -134,6 +136,9 @@ export function CheckoutFlow({
                       <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val">{renewOf}</span></div>
                       <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
                       <div className="kv-row"><span className="kv-label">Proxies</span><span className="kv-val">{qty}</span></div>
+                      {renewalDiscountPct > 0 && (
+                        <div className="kv-row"><span className="kv-label">Renewal discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>−{renewalDiscountPct}% applied</span></div>
+                      )}
                       <div className="help-text" style={{ marginTop: 10 }}>
                         Same proxies and location — the new {label} term starts when the current one ends.
                       </div>
@@ -189,8 +194,8 @@ export function CheckoutFlow({
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Payment method</span></div>
               <div className="panel-body">
-                <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
-                  title="Crypto (USDT-TRC20, BTC, ETH)" caption={<>Order activates after on-chain confirmation.</>} />
+                {allowCrypto && <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
+                  title="Crypto (USDT-TRC20, BTC, ETH)" caption={<>Order activates after on-chain confirmation.</>} />}
                 <PayRow icon={<IconWallet />} selected={paymentMethod === 'balance'} disabled={!balanceOk} onClick={() => setPaymentMethod('balance')}
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
                 {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}

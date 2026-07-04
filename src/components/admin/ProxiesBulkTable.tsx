@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
-import { releaseProxyAction, markProxyFaultyAction } from '@/lib/ui-actions/admin-actions';
+import { releaseProxyAction, markProxyFaultyAction, returnProxyToPoolAction, markProxyHealthyAction } from '@/lib/ui-actions/admin-actions';
 
 type Row = {
   id: string;
@@ -39,6 +39,8 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
   const sel = proxies.filter(p => selected.has(p.id));
   const canRelease = sel.length > 0 && sel.every(p => ['ASSIGNED', 'FAULTY'].includes(p.status));
   const canFaulty = sel.length > 0 && sel.every(p => p.status !== 'FAULTY');
+  const canReturn = sel.length > 0 && sel.every(p => p.status === 'RELEASED');
+  const canHealthy = sel.length > 0 && sel.every(p => p.status === 'FAULTY');
 
   async function bulkRun(action: (id: string) => Promise<any>, label: string) {
     start(async () => {
@@ -55,6 +57,8 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
       <div className={`bulk-bar ${selected.size > 0 ? 'visible' : ''}`}>
         <span className="bulk-count">{selected.size} selected</span>
         <div className="bulk-actions">
+          {canReturn && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(returnProxyToPoolAction, 'Returned to pool')}>Return to pool</button>}
+          {canHealthy && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(markProxyHealthyAction, 'Marked healthy')}>Mark healthy</button>}
           {canRelease && <button className="btn sm" disabled={pending} onClick={() => setConfirm('release')}>Release</button>}
           {canFaulty && <button className="btn sm danger" disabled={pending} onClick={() => setConfirm('faulty')}>Mark faulty</button>}
           <button className="btn sm" onClick={clear}>Clear</button>

@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
-import { mockPaymentsAllowed, newOrdersFrozen } from '@/lib/runtime-flags';
+import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
+import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 
 const Schema = z.object({
@@ -26,6 +27,16 @@ export async function POST(req: Request) {
 
   if (paymentMethod === 'card' && !mockPaymentsAllowed()) {
     return NextResponse.json({ error: 'Card payments are not available yet — use balance or crypto.' }, { status: 400 });
+  }
+
+  // Admin provider toggles (Settings → Payment Providers) gate NEW charges,
+  // renewals included; balance is internal and always available (audit B-4).
+  const providers = await enabledProviders();
+  if (paymentMethod === 'card' && !providers.stripe) {
+    return NextResponse.json({ error: 'Card payments are currently disabled — use balance or crypto.' }, { status: 400 });
+  }
+  if (paymentMethod === 'crypto' && !providers.crypto) {
+    return NextResponse.json({ error: 'Crypto payments are currently disabled — use balance or card.' }, { status: 400 });
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -231,7 +242,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
     return NextResponse.json({ error: `A renewal payment (${pending.id}) is already awaiting confirmation.` }, { status: 409 });
   }
 
-  const total = Number(order.plan.price) * order.qty;
+  // Renewal discount (audit B-6) — same helper as the client UI and the
+  // one-click balance renewal, so all three surfaces agree to the cent.
+  const total = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });

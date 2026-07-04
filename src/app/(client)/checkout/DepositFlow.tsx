@@ -15,11 +15,12 @@ const IconBitcoin = () => <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"
 const IconCard = () => <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></svg>;
 const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3M14 20h3M20 14v7M17 17v4" /></svg>;
 
-export function DepositFlow({ presetAmount, returnTo, allowCard = true }: { presetAmount?: number; returnTo?: string; allowCard?: boolean }) {
+export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCrypto = true }: { presetAmount?: number; returnTo?: string; allowCard?: boolean; allowCrypto?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [amount, setAmount] = useState<number | ''>(presetAmount && PRESETS.includes(presetAmount) ? presetAmount : (presetAmount ?? 50));
   const [method, setMethod] = useState<'card' | 'crypto'>(allowCard ? 'card' : 'crypto');
+  const noMethods = !allowCard && !allowCrypto; // both providers off — top-ups paused
   const [step, setStep] = useState<'details' | 'payment' | 'processing' | 'success'>(presetAmount ? 'payment' : 'details');
   const [pending, start] = useTransition();
   const [paymentId, setPaymentId] = useState<string | null>(null);
@@ -85,12 +86,13 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true }: { pres
           <div className="panel-body">
             {allowCard && <PayRow icon={<IconCard />} selected={method === 'card'} onClick={() => setMethod('card')}
               title="Card · Visa •• 4242" caption="Mock card — instant top-up in this prototype." />}
-            <PayRow icon={<IconBitcoin />} selected={method === 'crypto'} onClick={() => setMethod('crypto')}
-              title="Crypto (USDT-TRC20, BTC, ETH)" caption="On-chain confirmation required." />
+            {allowCrypto && <PayRow icon={<IconBitcoin />} selected={method === 'crypto'} onClick={() => setMethod('crypto')}
+              title="Crypto (USDT-TRC20, BTC, ETH)" caption="On-chain confirmation required." />}
+            {noMethods && <div className="help-text">Top-ups are temporarily unavailable — payment providers are disabled. Please contact support.</div>}
           </div>
           <div className="panel-footer payment-actions">
             <button className="btn" onClick={() => setStep('details')}>← Back</button>
-            <button className="btn primary" disabled={pending} onClick={pay}>{pending ? 'Processing…' : `Pay ${money(amountNum)}`}</button>
+            <button className="btn primary" disabled={pending || noMethods} onClick={pay}>{pending ? 'Processing…' : `Pay ${money(amountNum)}`}</button>
           </div>
         </div>
       )}

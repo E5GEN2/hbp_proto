@@ -108,25 +108,7 @@ export async function POST(req: Request) {
   const now = new Date();
 
   await prisma.$transaction(async tx => {
-    // 1. Create payment first (always)
-    await tx.payment.create({
-      data: {
-        id: paymentId,
-        orderId,
-        clientId: userId,
-        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'NOWPayments' : 'CoinPayments') : 'Stripe',
-        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'Crypto' : 'USDT-TRC20') : 'Visa •• 4242',
-        gross: total,
-        // Fees only where a processor charges them — balance payments carry none
-        fees: paymentMethod === 'card' ? total * 0.03 : 0,
-        net: paymentMethod === 'card' ? total * 0.97 : total,
-        status: isInstant ? 'CONFIRMED' : 'AWAITING',
-        confirmedAt: isInstant ? now : null,
-        externalRef,
-      },
-    });
-
-    // 2. Try to assign proxies if auto-provision wanted
+    // 1. Try to assign proxies if auto-provision wanted
     let assignedIds: string[] = [];
     if (wantsAutoProvision) {
       const candidates = await tx.proxy.findMany({
@@ -143,7 +125,7 @@ export async function POST(req: Request) {
       assignedIds = candidates.slice(0, qty).map(c => c.id);
     }
 
-    // 3. Decide final order state based on what actually happened
+    // 2. Decide final order state based on what actually happened
     //    - Not instant (crypto/awaiting) → NEW
     //    - Instant + autoProvision OFF (plan-level) → PROVISIONING (manual fulfillment)
     //    - Instant + autoProvision ON + fully assigned → ACTIVE
@@ -164,7 +146,7 @@ export async function POST(req: Request) {
       ? `Pool exhausted — ${assignedIds.length}/${qty} proxies available at checkout`
       : null;
 
-    // 4. Create the order with the correct final state
+    // 3. Create the order with the correct final state
     await tx.order.create({
       data: {
         id: orderId,
@@ -185,6 +167,25 @@ export async function POST(req: Request) {
         credentialsChannel: null,
         exception: finalException,
         excInfo: finalExcInfo,
+      },
+    });
+
+    // 4. Create the payment AFTER the order — payments.orderId carries an
+    //    immediate (non-deferred) FK, so the parent row must exist first.
+    await tx.payment.create({
+      data: {
+        id: paymentId,
+        orderId,
+        clientId: userId,
+        provider: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'NOWPayments' : 'CoinPayments') : 'Stripe',
+        method: paymentMethod === 'balance' ? 'Balance' : paymentMethod === 'crypto' ? (npEnabled() ? 'Crypto' : 'USDT-TRC20') : 'Visa •• 4242',
+        gross: total,
+        // Fees only where a processor charges them — balance payments carry none
+        fees: paymentMethod === 'card' ? total * 0.03 : 0,
+        net: paymentMethod === 'card' ? total * 0.97 : total,
+        status: isInstant ? 'CONFIRMED' : 'AWAITING',
+        confirmedAt: isInstant ? now : null,
+        externalRef,
       },
     });
 

@@ -45,8 +45,8 @@ function ResetForm() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ token, password }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? 'Reset failed');
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(j.error ?? `Reset failed (HTTP ${r.status}).`);
       router.push('/login?reset=1');
     } catch (e: any) {
       setErr(e.message);

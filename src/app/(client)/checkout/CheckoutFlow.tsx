@@ -58,8 +58,10 @@ export function CheckoutFlow({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ planId: plan.id, qty, autoExtend, paymentMethod: method, ...(renewOf ? { renewOf } : {}) }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? 'Order failed');
+      // A crashed route returns non-JSON — surface the HTTP status instead of
+      // the parser's cryptic message (Safari: "string did not match…").
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(j.error ?? `Order failed (HTTP ${r.status}) — please try again or contact support.`);
       // Real crypto: hand over to the NOWPayments hosted invoice — settlement
       // comes back via webhook. (busy stays on while the browser navigates.)
       if (j.paymentUrl) {

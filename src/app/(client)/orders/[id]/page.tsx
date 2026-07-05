@@ -46,7 +46,9 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   if (order.activatedAt) events.push({ at: order.activatedAt, tone: 'violet', title: 'Provisioned', detail: `${order.assignments.length} mobile ${order.assignments.length === 1 ? 'proxy is' : 'proxies are'} live.` });
   else if (order.status === 'PROVISIONING') events.push({ at: order.updatedAt, tone: 'warning', title: 'Awaiting fulfillment', detail: 'Our team is preparing your proxies. Typical delivery within 24 hours.' });
   if (order.cancelledAt) events.push({ at: order.cancelledAt, tone: 'danger', title: 'Cancelled', detail: order.cancelledReason ?? 'No charge was made.' });
-  events.sort((a, b) => a.at.getTime() - b.at.getTime());
+  // Newest first — same convention as the dashboard feed and the admin
+  // Activity widget (EntityActivityWidget).
+  events.sort((a, b) => b.at.getTime() - a.at.getTime());
   const tlDot = (tone: string) => (tone && tone !== 'muted' ? tone : '');
 
   return (

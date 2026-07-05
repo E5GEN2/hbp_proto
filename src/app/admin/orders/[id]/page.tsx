@@ -34,9 +34,9 @@ const EXC_BANNER: Record<string, { title: string; tone: string; desc: string }> 
 const ATTENTION_PAY = new Set(['AWAITING', 'PENDING', 'FAILED', 'REFUNDED', 'MANUAL_REVIEW', 'REFUND_REQUESTED', 'REPLACEMENT']);
 const PROVIDER_AUTO = new Set(['stripe', 'coinbase', 'paypal']);
 
-type Step = { name: string; state: 'done' | 'current' | 'pending' | 'failed'; meta: string; mode: 'auto' | 'manual' };
-const STATE_CHIP: Record<Step['state'], string> = { done: 'active', current: 'new', pending: 'expired', failed: 'failed' };
-const STATE_LABEL: Record<Step['state'], string> = { done: 'Done', current: 'Current', pending: 'Pending', failed: 'Blocked' };
+type Step = { name: string; state: 'done' | 'current' | 'pending' | 'failed' | 'cancelled'; meta: string; mode: 'auto' | 'manual' };
+const STATE_CHIP: Record<Step['state'], string> = { done: 'active', current: 'new', pending: 'expired', failed: 'failed', cancelled: 'expired' };
+const STATE_LABEL: Record<Step['state'], string> = { done: 'Done', current: 'Current', pending: 'Pending', failed: 'Blocked', cancelled: 'Cancelled' };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
@@ -130,9 +130,20 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     steps.push({ name: 'Activation', state: 'pending', meta: 'Awaiting proxy', mode: fulfilMode });
   }
 
+  // Cancelled orders: the pipeline is history, not a to-do. Freeze every
+  // unfinished step (done steps stay as the paper trail) so nothing reads as
+  // work awaiting an admin.
+  const orderCancelled = order.status === 'CANCELLED';
+  if (orderCancelled) {
+    for (const s of steps) {
+      if (s.state !== 'done') { s.state = 'cancelled'; s.meta = 'Order cancelled'; }
+    }
+  }
+
   // Panel-level provisioning status chip
   let provClass: string, provLabel: string;
-  if (steps.some(s => s.state === 'failed')) { provClass = 'failed'; provLabel = 'Needs attention'; }
+  if (orderCancelled) { provClass = 'expired'; provLabel = 'Cancelled'; }
+  else if (steps.some(s => s.state === 'failed')) { provClass = 'failed'; provLabel = 'Needs attention'; }
   else if (steps.every(s => s.state === 'done')) { provClass = 'active'; provLabel = 'Completed'; }
   else if (manualMode) { provClass = 'pending'; provLabel = 'Manual required'; }
   else if (!paid) { provClass = 'expired'; provLabel = 'Pending'; }
@@ -142,7 +153,9 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   // Next-action hint
   let nextTone = '', nextLabel = '—';
   const failedNonPayment = steps.some(s => s.state === 'failed' && !(manualMode && s.name === 'Payment'));
-  if (failedNonPayment) {
+  if (orderCancelled) {
+    nextLabel = 'None — order cancelled';
+  } else if (failedNonPayment) {
     nextTone = 'failed';
     if (order.exception === 'PAID_NOT_PROVISIONED') nextLabel = 'Assign proxy manually — pool empty';
     else if (order.exception === 'REPLACEMENT_PENDING') nextLabel = 'Replace proxy';

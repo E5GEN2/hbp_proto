@@ -57,6 +57,13 @@ export default async function ClientDashboard() {
   const events: Ev[] = [];
   for (const o of orders) {
     const planLbl = `Mobile ${o.plan.durationDays}d ${o.plan.carrier}`;
+    // Terminal cancel note first — the placed/paid history stays below it.
+    if (o.status === 'CANCELLED') {
+      const reason = o.cancelledReason ? ` — ${o.cancelledReason.charAt(0).toLowerCase()}${o.cancelledReason.slice(1)}` : '';
+      events.push({ at: o.cancelledAt ?? o.createdAt, dot: 'muted',
+        title: <>Order <span className="td-link">{o.id}</span> cancelled</>,
+        detail: `${planLbl} · ${money(Number(o.amount))}${reason}.` });
+    }
     if (PAID.includes(o.paymentStatus)) {
       if (o.activatedAt) {
         events.push({ at: o.activatedAt, dot: 'violet',
@@ -74,6 +81,12 @@ export default async function ClientDashboard() {
       events.push({ at: o.createdAt, dot: 'danger',
         title: <>Payment failed on <span className="td-link">{o.id}</span></>,
         detail: `${planLbl} · ${money(Number(o.amount))} — retry from Billing.` });
+    } else if (o.paymentStatus === 'CANCELLED') {
+      // Placement entry for an order cancelled before payment — no
+      // "awaiting payment" tail, the cancel note above closes the story.
+      events.push({ at: o.createdAt, dot: 'muted',
+        title: <>Order <span className="td-link">{o.id}</span> placed</>,
+        detail: `${planLbl} · ${money(Number(o.amount))}.` });
     }
   }
   for (const p of refundedPayments) {

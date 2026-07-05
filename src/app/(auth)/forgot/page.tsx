@@ -22,8 +22,8 @@ function ForgotForm() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? 'Request failed');
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(j.error ?? `Request failed (HTTP ${r.status}).`);
       setSent(true);
     } catch (e: any) {
       setErr(e.message);

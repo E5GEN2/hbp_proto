@@ -56,6 +56,15 @@ export async function npCreateInvoice(input: {
   return { invoiceUrl: String(j.invoice_url), invoiceId: String(j.id) };
 }
 
+// Hosted invoice page for a stored invoice id (payments.externalRef) — the
+// link stays valid until the invoice expires, so "Complete payment" can send
+// the client back without any API call.
+export function npInvoiceUrl(invoiceId: string) {
+  return process.env.NOWPAYMENTS_SANDBOX === 'true'
+    ? `https://sandbox.nowpayments.io/payment/?iid=${invoiceId}`
+    : `https://nowpayments.io/payment/?iid=${invoiceId}`;
+}
+
 // IPN authenticity: HMAC-SHA512 over the JSON body re-serialized with keys
 // sorted (NOWPayments' documented recipe), compared against x-nowpayments-sig.
 export function npVerifySignature(rawBody: string, sig: string | null): boolean {

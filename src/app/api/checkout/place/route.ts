@@ -62,6 +62,20 @@ export async function POST(req: Request) {
   const plan = await prisma.plan.findUnique({ where: { id: planId } });
   if (!plan || !plan.active || plan.deletedAt) return NextResponse.json({ error: 'Plan unavailable' }, { status: 400 });
 
+  // One unpaid self-serve order per plan: a stale tab or back-button retry
+  // must not stack duplicates. The client resolves it on the completion page
+  // (/checkout?resume=…) — pay the existing invoice or cancel the order.
+  const unpaid = await prisma.order.findFirst({
+    where: { clientId: userId, planId, status: 'NEW', paymentStatus: 'AWAITING' },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (unpaid) {
+    return NextResponse.json({
+      error: `You already have an unpaid order (${unpaid.id}) for this plan — complete its payment or cancel it first.`,
+      orderId: unpaid.id,
+    }, { status: 409 });
+  }
+
   const unitPrice = Number(plan.price);
   const total = unitPrice * qty;
 

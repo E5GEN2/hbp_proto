@@ -8,8 +8,10 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
 import { renewalUnitPrice } from '@/lib/renewal';
+import { npInvoiceUrl } from '@/lib/nowpayments';
 import { CheckoutFlow } from './CheckoutFlow';
 import { DepositFlow } from './DepositFlow';
+import { CompletePaymentActions } from './CompletePaymentActions';
 
 type OrderWithPlan = Prisma.OrderGetPayload<{ include: { plan: true } }>;
 
@@ -43,10 +45,13 @@ export default async function CheckoutPage({ searchParams }: {
     );
   }
 
-  // Resume branch — hydrate from existing pending order
-  let resumeOrder: OrderWithPlan | null = null;
+  // Resume branch — the order and its payment ALREADY EXIST, so this must
+  // never re-enter the wizard (that placed a duplicate order). Instead it is
+  // a completion interstitial: pay on the stored processor invoice or cancel.
   if (searchParams.resume) {
-    resumeOrder = await prisma.order.findUnique({ where: { id: searchParams.resume }, include: { plan: true } });
+    const resumeOrder: OrderWithPlan | null = await prisma.order.findUnique({
+      where: { id: searchParams.resume }, include: { plan: true },
+    });
     if (!resumeOrder || resumeOrder.clientId !== session!.user.id) {
       notFound();
     }
@@ -65,12 +70,50 @@ export default async function CheckoutPage({ searchParams }: {
         </>
       );
     }
+
+    const awaiting = await prisma.payment.findFirst({
+      where: { orderId: resumeOrder.id, status: 'AWAITING' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const payUrl = awaiting?.provider === 'NOWPayments' && awaiting.externalRef
+      ? npInvoiceUrl(awaiting.externalRef)
+      : null;
+
+    return (
+      <>
+        <ClientTopbar
+          breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: 'Complete payment' }]}
+          balance={Number(me.balance)}
+        />
+        <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+          <div className="checkout-processing">
+            <div className="panel checkout-processing-card">
+              <div className="processing-title">Complete your payment</div>
+              <div className="processing-amount">{money(Number(resumeOrder.amount))}</div>
+              <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 20px' }}>
+                <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val mono">{resumeOrder.id}</span></div>
+                <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{resumeOrder.plan.durationDays} days · Mobile</span></div>
+                <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{resumeOrder.region}</span></div>
+                <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{resumeOrder.qty}</span></div>
+              </div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.55, color: 'var(--muted)', maxWidth: 420 }}>
+                {payUrl
+                  ? 'Awaiting crypto payment. Finish on the NOWPayments page — the order activates automatically once the transaction is confirmed.'
+                  : <>This order is awaiting a payment arranged outside the portal. If you&rsquo;re unsure how to pay, message <a href="https://t.me/US5Gwetrust" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.</>}
+              </div>
+              <CompletePaymentActions orderId={resumeOrder.id} payUrl={payUrl} />
+              <Link href={`/orders/${resumeOrder.id}`} className="btn ghost">← Back to order</Link>
+            </div>
+          </div>
+        </main>
+      </>
+    );
   }
 
   // Renewal branch — terms come from the ORIGINAL order (its plan may even be
   // retired from the public catalog); the server enforces the same rule.
   let renewalOrder: OrderWithPlan | null = null;
-  if (!resumeOrder && searchParams.renewOf) {
+  if (searchParams.renewOf) {
     renewalOrder = await prisma.order.findUnique({ where: { id: searchParams.renewOf }, include: { plan: true } });
     if (!renewalOrder || renewalOrder.clientId !== session!.user.id) {
       notFound();
@@ -93,12 +136,10 @@ export default async function CheckoutPage({ searchParams }: {
     }
   }
 
-  const duration = resumeOrder ? resumeOrder.plan.durationDays
-    : renewalOrder ? renewalOrder.plan.durationDays
-    : parseInt(searchParams.duration ?? '30', 10);
-  const presetQty = resumeOrder ? resumeOrder.qty : renewalOrder ? renewalOrder.qty : parseInt(searchParams.qty ?? '1', 10);
-  const presetLocation = resumeOrder ? resumeOrder.region : renewalOrder ? renewalOrder.region : searchParams.location;
-  const presetAutoExtend = resumeOrder ? resumeOrder.autoRenew : renewalOrder ? renewalOrder.autoRenew : searchParams.autoExtend !== '0';
+  const duration = renewalOrder ? renewalOrder.plan.durationDays : parseInt(searchParams.duration ?? '30', 10);
+  const presetQty = renewalOrder ? renewalOrder.qty : parseInt(searchParams.qty ?? '1', 10);
+  const presetLocation = renewalOrder ? renewalOrder.region : searchParams.location;
+  const presetAutoExtend = renewalOrder ? renewalOrder.autoRenew : searchParams.autoExtend !== '0';
 
   let planSummaries: { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; description: string; available: number }[];
   if (renewalOrder) {
@@ -167,15 +208,11 @@ export default async function CheckoutPage({ searchParams }: {
   }
 
   // Hint banner copy
-  const headerHint = resumeOrder
-    ? `Resuming order ${resumeOrder.id} — pick up where you left off.`
-    : renewalOrder
+  const headerHint = renewalOrder
     ? `Renewing ${renewalOrder.id} — paying extends this order's term; your proxies stay the same.`
     : null;
 
-  const crumbs = resumeOrder
-    ? [{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: 'Checkout' }]
-    : renewalOrder
+  const crumbs = renewalOrder
     ? [{ label: 'Orders', href: '/orders' }, { label: `Order ${renewalOrder.id}`, href: `/orders/${renewalOrder.id}` }, { label: 'Renew' }]
     : [{ label: 'Catalog', href: '/catalog' }, { label: 'Checkout' }];
 

@@ -247,7 +247,7 @@ function OrderCard({
     actions = (
       <>
         <button className="btn primary" onClick={e => { stop(e); onContinue(); }}>
-          Continue checkout
+          Complete payment
         </button>
         <button className="btn ghost" onClick={e => { stop(e); onCancel(); }} disabled={busy}>
           Cancel

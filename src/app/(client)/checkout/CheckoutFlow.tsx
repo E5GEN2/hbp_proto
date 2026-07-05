@@ -61,11 +61,19 @@ export function CheckoutFlow({
       // A crashed route returns non-JSON — surface the HTTP status instead of
       // the parser's cryptic message (Safari: "string did not match…").
       const j = await r.json().catch(() => ({} as any));
+      // 409 = an unpaid order for this plan already exists — send the client
+      // to its completion page (pay or cancel) instead of erroring out.
+      if (r.status === 409 && j.orderId) {
+        toast('Unpaid order found', `${j.orderId} — complete or cancel it first`, 'info');
+        router.replace(`/checkout?resume=${j.orderId}`);
+        return;
+      }
       if (!r.ok) throw new Error(j.error ?? `Order failed (HTTP ${r.status}) — please try again or contact support.`);
       // Real crypto: hand over to the NOWPayments hosted invoice — settlement
-      // comes back via webhook. (busy stays on while the browser navigates.)
+      // comes back via webhook. replace() drops the wizard from history, so
+      // the browser Back button doesn't strand the client on a stale form.
       if (j.paymentUrl) {
-        window.location.assign(j.paymentUrl);
+        window.location.replace(j.paymentUrl);
         return;
       }
       setOrderId(j.orderId);

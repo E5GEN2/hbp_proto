@@ -9,7 +9,7 @@ import * as CA from '@/lib/ui-actions/client-actions';
 //   active, expiring ≤7d → Renew now + Turn off/on auto-renew
 //   active               → Turn on/off auto-renew
 //   expired              → Renew
-//   new + pending        → Continue checkout + Cancel order
+//   new + pending        → Complete payment + Cancel order
 export function ClientOrderDetailActions({
   orderId, status, paymentStatus, autoRenew, expiringActive,
 }: {
@@ -75,7 +75,7 @@ export function ClientOrderDetailActions({
       {status === 'EXPIRED' && <button className="btn primary" onClick={doRenew} disabled={pending}>{pending ? '…' : 'Renew'}</button>}
       {isPending && (
         <>
-          <button className="btn primary" onClick={() => router.push(`/checkout?resume=${orderId}`)}>Continue checkout</button>
+          <button className="btn primary" onClick={() => router.push(`/checkout?resume=${orderId}`)}>Complete payment</button>
           <button className="btn ghost" onClick={() => setConfirmCancel(true)} disabled={pending}>Cancel order</button>
         </>
       )}

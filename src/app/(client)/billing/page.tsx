@@ -6,6 +6,7 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { Stage15Pill } from '@/components/ui/Stage15Badge';
 import { PaymentMethodsPanel } from '@/components/client/PaymentMethods';
+import { npInvoiceUrl } from '@/lib/nowpayments';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -169,8 +170,10 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                               </td>
                               <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{p.status.charAt(0) + p.status.slice(1).toLowerCase()}</span></td>
                               <td className="col-action">
-                                {/* PDF pipeline not built yet (audit B-8) — honest placeholder, no dead link */}
-                                {p.invoice ? <span style={{ color: 'var(--muted)' }} title="Invoice PDF downloads are coming soon">PDF soon</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                                {p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.externalRef
+                                  ? <a className="td-link" href={npInvoiceUrl(p.externalRef)}>Pay now</a>
+                                  /* PDF pipeline not built yet (audit B-8) — honest placeholder, no dead link */
+                                  : p.invoice ? <span style={{ color: 'var(--muted)' }} title="Invoice PDF downloads are coming soon">PDF soon</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
                               </td>
                             </tr>
                           );

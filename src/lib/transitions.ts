@@ -240,10 +240,19 @@ export async function cancelOrder({
         cancelledReason: reason,
         autoRenew: false,
         renewalBucket: null,
-        // If paid, raise refund-pending so finance can close the loop
+        // If paid, raise refund-pending so finance can close the loop.
+        // If not, the charge dies with the order — snapshot/feed must not
+        // keep showing "Awaiting" on a cancelled order.
         exception: wasPaid ? 'REFUND_PENDING' : ord.exception,
+        ...(wasPaid ? {} : { paymentStatus: 'CANCELLED' as const }),
       },
     });
+    if (!wasPaid) {
+      await tx.payment.updateMany({
+        where: { orderId, status: { in: ['AWAITING', 'PENDING'] } },
+        data: { status: 'CANCELLED' },
+      });
+    }
 
     await notify(tx, ord.clientId,
       `Order ${ord.id} was cancelled · ${reason}`,
@@ -1157,7 +1166,9 @@ export async function clientCancelNewOrder({ orderId, clientId }: { orderId: str
     if (o.status !== 'NEW') throw new Error('Only pending orders can be cancelled by the client. Active orders run until expiry.');
     await tx.order.update({
       where: { id: orderId },
-      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Cancelled by client before payment' },
+      // paymentStatus flips too — the order snapshot and dashboard feed read
+      // it, and a cancelled order must not keep looking "Awaiting".
+      data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Cancelled by client before payment' },
     });
     await tx.payment.updateMany({
       where: { orderId, status: { in: ['AWAITING', 'PENDING'] } },

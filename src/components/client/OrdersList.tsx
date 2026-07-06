@@ -81,7 +81,7 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
         return;
       }
       const exp = r && 'newExpiry' in r ? r.newExpiry : null;
-      toast('Order renewed', exp ? `New expiry: ${new Date(exp).toLocaleDateString()}` : '', 'success');
+      toast('Order renewed', exp ? `New expiry: ${fmtDate(new Date(exp))}` : '', 'success');
       router.refresh();
     } catch (e: any) {
       toast('Renewal failed', e.message, 'danger');

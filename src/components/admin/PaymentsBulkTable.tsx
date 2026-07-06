@@ -95,7 +95,7 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
             ) : payments.map(p => (
               <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk">
-                  <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} style={{ accentColor: 'var(--accent)' }} />
+                  <span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} />
                 </td>
                 <td className="col-id"><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></td>
                 <td className="col-id">{p.orderId ? <Link href={`/admin/orders/${p.orderId}`} className="td-link">{p.orderId}</Link> : <span className="muted">—</span>}</td>

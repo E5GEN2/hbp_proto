@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { fmtDate } from '@/lib/date';
 import * as CA from '@/lib/ui-actions/client-actions';
 
 // Canon order-detail header actions — vary by status:
@@ -36,7 +37,7 @@ export function ClientOrderDetailActions({
           return;
         }
         const exp = r && 'newExpiry' in r ? r.newExpiry : null;
-        toast('Order renewed', exp ? `New expiry: ${new Date(exp).toLocaleDateString()}` : '', 'success');
+        toast('Order renewed', exp ? `New expiry: ${fmtDate(new Date(exp))}` : '', 'success');
         router.refresh();
       } catch (e: any) { toast('Renewal failed', e.message, 'danger'); }
     });

@@ -77,7 +77,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <col style={{ width: FLEX(3) }} />
             <col style={{ width: FLEX(2) }} />
             <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(4) }} />
+            <col style={{ width: 110 }} />{/* Status — fixed anchor so the chip never clips (audit D-7) */}
           </colgroup>
           <thead><tr>
             <th className="col-chk"></th>
@@ -98,7 +98,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
               const maint = p.status === 'MAINTENANCE';
               return (
                 <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
-                  <td className="col-chk"><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} style={{ accentColor: 'var(--accent)' }} /></td>
+                  <td className="col-chk"><span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} /></td>
                   <td className="col-id"><Link href={`/admin/proxies/${p.id}`} className="td-link">{p.id}</Link></td>
                   <td className="col-id">{p.currentOrderId ? <Link href={`/admin/orders/${p.currentOrderId}`} className="td-link">{p.currentOrderId}</Link> : <span className="muted">—</span>}</td>
                   <td className="col-text muted">{p.carrier} · {p.region}</td>

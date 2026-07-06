@@ -71,7 +71,7 @@ export function AssignProxyModal({
               : candidates.map(p => (
                 <tr key={p.id} onClick={() => toggle(p.id)} style={{ cursor: 'pointer' }}>
                   <td className="col-chk">
-                    <input type="checkbox" readOnly checked={selected.has(p.id)} disabled={!selected.has(p.id) && selected.size >= qtyNeeded} style={{ accentColor: 'var(--accent)' }} />
+                    <span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} style={!selected.has(p.id) && selected.size >= qtyNeeded ? { opacity: .35 } : undefined} />
                   </td>
                   <td className="col-id"><span className="td-link">{p.id}</span></td>
                   <td className="col-text">{p.carrier} · {p.region}</td>

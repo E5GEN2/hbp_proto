@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { PlanShowcase } from '@/components/client/PlanShowcase';
 import { money } from '@/lib/money';
-import { daysLeft } from '@/lib/date';
+import { daysLeft, fmtAdminStamp } from '@/lib/date';
 
 const PAID = ['PAID', 'CONFIRMED', 'FREE'];
 
@@ -16,11 +16,7 @@ function statusLabel(s: string) {
 function statusClass(s: string) {
   return s.toLowerCase().replace(/_/g, '-');
 }
-function tlStamp(d: Date) {
-  const day = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${day} · ${time}`;
-}
+
 
 export default async function ClientDashboard() {
   const session = await getServerSession(authOptions);
@@ -184,7 +180,7 @@ export default async function ClientDashboard() {
                       <div className="tl-item" key={i}>
                         <span className={`tl-dot ${e.dot}`} />
                         <div className="tl-body">
-                          <span className="tl-stamp">{tlStamp(e.at)}</span>
+                          <span className="tl-stamp">{fmtAdminStamp(e.at)}</span>
                           <span className="tl-title">{e.title}</span>
                           <span className="tl-detail">{e.detail}</span>
                         </div>

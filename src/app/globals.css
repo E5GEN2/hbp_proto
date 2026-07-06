@@ -1930,6 +1930,9 @@ table.dt { table-layout: fixed; }
 .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
 .form-actions-row { grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 6px; }
 
+/* Canon utility (prototype.html:2170) — was missing here, so bare .muted
+   captions inherited whatever ancestor color (audit D-4 near-invisible). */
+.muted { color: var(--muted); }
 .hstack { display: flex; align-items: center; gap: 8px; }
 .hstack.between { justify-content: space-between; }
 .vstack { display: flex; flex-direction: column; gap: 4px; }

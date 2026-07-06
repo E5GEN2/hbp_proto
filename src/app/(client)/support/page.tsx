@@ -14,7 +14,7 @@ export default async function SupportPage() {
         <div className="panel" style={{ padding: 32, textAlign: 'center' }}>
           <span className="chip accent" style={{ marginBottom: 12 }}>v2 preview</span>
           <h2 style={{ marginTop: 0, color: 'var(--text)' }}>Support tickets — coming in v2</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, lineHeight: 1.6, maxWidth: 480, margin: '0 auto' }}>
+          <p className="t-body" style={{ maxWidth: 480, margin: '0 auto' }}>
             Ticket-based support ships in v2 (see <code>ROADMAP.md</code> in the handoff repo). For now,
             reach our team directly via Telegram and we&rsquo;ll get back within 24 hours.
           </p>

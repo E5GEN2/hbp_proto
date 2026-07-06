@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { fmtAdminStamp } from '@/lib/date';
 
 type Notif = { id: string; title: string; kind: string; link: string | null; createdAt: string };
 
@@ -74,11 +75,11 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
             zIndex: 50,
           }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 12, fontWeight: 650, color: 'var(--text)' }}>Notifications</div>
-              <button onClick={() => { setOpen(false); router.refresh(); }} style={{ fontSize: 11, color: 'var(--muted)' }}>Refresh page</button>
+              <div className="panel-title">Notifications</div>
+              <button className="panel-action" onClick={() => { setOpen(false); router.refresh(); }}>Refresh page</button>
             </div>
             {notifs.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>No notifications yet.</div>
+              <div className="t-note" style={{ padding: 24, textAlign: 'center' }}>No notifications yet.</div>
             ) : (
               <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
                 {notifs.map(n => {
@@ -92,8 +93,8 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
                           n.kind === 'DANGER' ? 'var(--danger)' : 'var(--info)',
                       }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{n.title}</div>
-                        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>{new Date(n.createdAt).toLocaleString()}</div>
+                        <div className="t-strong">{n.title}</div>
+                        <div className="tl-meta" style={{ marginTop: 2 }}>{fmtAdminStamp(new Date(n.createdAt))}</div>
                       </div>
                     </div>
                   );

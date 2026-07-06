@@ -191,13 +191,13 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   border-radius: var(--radius-md);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
-.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); color: var(--text); }
 .btn.primary { background: var(--cta); border-color: var(--cta); color: white; }
 .btn.primary:hover { background: var(--cta-hover); border-color: var(--cta-hover); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: white; }
@@ -211,7 +211,7 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 .form-input, .form-select, .form-textarea {
   width: 100%;
   padding: 7px 10px;
-  font: 400 13px var(--font-sans);
+  font: 400 12.5px var(--font-sans);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -227,9 +227,10 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 .form-textarea { min-height: 80px; resize: vertical; }
 .form-label {
   display: block;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--muted);
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-disabled);
   margin-bottom: 6px;
 }
 
@@ -278,7 +279,7 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   transition: color 0.12s, border-color 0.12s;
 }
 .tab:hover { color: var(--text-secondary); }
-.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 .tab-count {
   display: inline-flex;
   align-items: center;
@@ -288,8 +289,8 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   padding: 0 5px;
   background: var(--surface-2);
   border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
+  font: 600 10.5px/1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 .tab.active .tab-count { background: var(--accent-dim); color: var(--accent); }
@@ -375,7 +376,7 @@ table.dt { table-layout: fixed; }
 }
 .table tbody td:first-child, table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
 .table tbody td:last-child,  table.dt tbody td:last-child  { padding-right: var(--table-edge-cap); }
-.table td a, .td-link { color: var(--accent-text); font-weight: 500; }
+.table td a, .td-link { color: var(--accent-text); font-weight: 500; font-variant-numeric: tabular-nums; }
 .table td a:hover, .td-link:hover { color: var(--accent-hover); text-decoration: underline; }
 
 /* Column type utilities */
@@ -947,7 +948,7 @@ table.dt { table-layout: fixed; }
 .empty-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-secondary);
   margin-bottom: 6px;
 }
 .empty-desc {
@@ -1751,6 +1752,20 @@ table.dt { table-layout: fixed; }
 .theme-admin .chip.expired, .theme-admin .chip.cancelled, .theme-admin .chip.released, .theme-admin .chip.maintenance, .theme-admin .chip.churned { color: var(--muted); background: var(--surface-2); }
 .theme-admin .chip.violet, .theme-admin .chip.renewal-not-extended, .theme-admin .chip.pending-renewal, .theme-admin .chip.renewal-faulty-proxy { color: var(--violet); background: var(--violet-dim); }
 
+/* --- Shared-primitive typography restores --------------------------------
+   The client typography pass tuned .btn/.form-label/.tab-count toward the
+   CLIENT canon (client-panel.html); the admin canon differs (prototype.html:
+   .btn 500 12px, .form-label sentence-case text-secondary, .tab-count 650
+   10px sans) — restore the canon-admin values here. */
+.theme-admin .btn { font-size: 12px; font-weight: 500; }
+.theme-admin .form-label {
+  font: 500 11px var(--font-sans);
+  letter-spacing: .02em;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+.theme-admin .tab .tab-count { font: 650 10px var(--font-sans); }
+
 /* --- detail-header / kv canon-admin overrides ------------------------- */
 .detail-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .theme-admin .detail-header { gap: 20px; }
@@ -1969,6 +1984,14 @@ table.dt { table-layout: fixed; }
 /* Canon utility (prototype.html:2170) — was missing here, so bare .muted
    captions inherited whatever ancestor color (audit D-4 near-invisible). */
 .muted { color: var(--muted); }
+
+/* ===== Typography role utilities =====
+   The canon text tiers (tl-title / tl-detail / body cell) as standalone
+   classes for one-off copy in components — modal bodies, helper notes,
+   popover rows. Use these instead of inline fontSize styles. */
+.t-strong { font: 600 13.5px/1.4 var(--font-sans); color: var(--text); }
+.t-body   { font: 400 13px/1.55 var(--font-sans); color: var(--text-secondary); }
+.t-note   { font: 400 12.5px/1.55 var(--font-sans); color: var(--muted); }
 .hstack { display: flex; align-items: center; gap: 8px; }
 .hstack.between { justify-content: space-between; }
 .vstack { display: flex; flex-direction: column; gap: 4px; }

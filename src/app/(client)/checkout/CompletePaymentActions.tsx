@@ -43,7 +43,7 @@ export function CompletePaymentActions({ orderId, payUrl }: { orderId: string; p
           <button className="btn danger" onClick={doCancel} disabled={pending}>{pending ? '…' : 'Cancel order'}</button>
         </>}
       >
-        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+        <div className="t-body">
           This will cancel <span className="mono">{orderId}</span>. Payment hasn&rsquo;t cleared, so nothing has been charged.
         </div>
       </Modal>

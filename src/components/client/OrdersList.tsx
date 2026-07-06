@@ -160,7 +160,7 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
           </>
         }
       >
-        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+        <div className="t-body">
           This will cancel <span className="mono">{cancelTarget}</span>. Payment hasn&rsquo;t cleared, so nothing has been charged.
         </div>
       </Modal>

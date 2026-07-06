@@ -70,7 +70,7 @@ export function WhitelistPanel({
           <button className="btn primary" onClick={add} disabled={pending || !ip}>{pending ? '…' : 'Add IP'}</button>
         </>}
       >
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
+        <div className="t-note" style={{ marginBottom: 10 }}>
           When whitelisting is enforced at the gateway, only the IPs you list here will be able to use this proxy.
         </div>
         <label className="form-label">IPv4 address</label>

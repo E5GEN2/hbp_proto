@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { signalStructural } from '@/lib/nav-history';
+import { MobileNavBackdrop, useMobileNav } from '@/components/ui/MobileNav';
 
 // Canon nav icons (client-panel.html ICONS) — stroke style inherited via .nav-item svg
 const ICONS: Record<string, JSX.Element> = {
@@ -28,24 +29,30 @@ const NAV = [
 
 export function ClientSidebar({ user }: { user: { name: string; email: string; tier?: string } }) {
   const pathname = usePathname();
+  const { open, setOpen } = useMobileNav();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
   const initials = user.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+  // Nav click closes the mobile drawer immediately (route-change effect is the
+  // fallback — it never fires when the link targets the current page).
+  const onNav = () => { signalStructural(); setOpen(false); };
 
   return (
-    <aside className="sidebar">
+    <>
+    <MobileNavBackdrop />
+    <aside className={`sidebar${open ? ' mobile-open' : ''}`}>
       <div className="sidebar-logo">
         <span className="sidebar-logo-dot" />
         <span>Proxy</span>
       </div>
       <nav className="nav">
         {NAV.map(n => (
-          <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`} onClick={signalStructural}>
+          <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`} onClick={onNav}>
             <NavIcon name={n.icon} />
             <span>{n.label}</span>
           </Link>
         ))}
         <div className="nav-divider dashed" />
-        <Link href="/settings" className={`nav-item ${isActive('/settings') ? 'active' : ''}`} onClick={signalStructural}>
+        <Link href="/settings" className={`nav-item ${isActive('/settings') ? 'active' : ''}`} onClick={onNav}>
           <NavIcon name="settings" />
           <span>My Settings</span>
         </Link>
@@ -61,5 +68,6 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
         </button>
       </div>
     </aside>
+    </>
   );
 }

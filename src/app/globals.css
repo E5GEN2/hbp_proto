@@ -1183,6 +1183,14 @@ table.dt { table-layout: fixed; }
   background: var(--danger);
   border: 1.5px solid var(--surface);
 }
+
+/* ===== Mobile nav (C-6) — burger + drawer backdrop, client shell only =====
+   Canon has no ≤768px navigation, so this layer is free design: the burger
+   sits in the topbar and slides the canon sidebar in as an overlay drawer.
+   Everything here is inert above the 768px breakpoint (see §responsive). */
+.icon-btn.nav-burger { display: none; flex-shrink: 0; }
+.sidebar-backdrop { display: none; position: fixed; inset: 0; z-index: 60; background: rgba(5, 8, 13, .55); }
+.theme-client .topbar-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .page-title {
   font: 600 14px/1 var(--font-sans);
   color: var(--text);
@@ -1653,45 +1661,73 @@ table.dt { table-layout: fixed; }
   text-transform: uppercase; white-space: nowrap; vertical-align: 2px;
 }
 
-/* ===== Responsive — canon: client-panel.html §responsive ===== */
+/* ===== Responsive — canon: client-panel.html §responsive =====
+   Scoped to .theme-client (which also wraps the auth/error shells): the admin
+   portal is a desktop tool — per the HANDOFF spec its shell keeps a fixed
+   ≥1280px canvas and the viewport pans horizontally instead of crushing
+   columns, so no admin rule may respond to viewport width. */
+.theme-admin { min-width: 1280px; }
+
 @media (max-width: 1024px) {
-  .grid-detail,
-  .billing-grid,
-  .dash-2col-2-1,
-  .card-2col   { grid-template-columns: 1fr; }
-  .kpi-strip,
-  .plan-cards  { grid-template-columns: repeat(2, 1fr); }
+  .theme-client .grid-detail,
+  .theme-client .billing-grid,
+  .theme-client .dash-2col-2-1,
+  .theme-client .card-2col   { grid-template-columns: 1fr; }
+  .theme-client .kpi-strip,
+  .theme-client .plan-cards  { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 768px) {
-  .sidebar { display: none; }
-  .topbar { padding: 0 16px; }
-  .backlink-slot { padding: 6px 16px 0; }
-  .page { padding: 16px; }
+  /* C-6: the canon sidebar becomes an off-canvas drawer — the topbar burger
+     opens it, backdrop click / Escape / nav click close it (MobileNav.tsx). */
+  .theme-client .sidebar {
+    position: fixed; top: 0; left: 0;
+    height: 100dvh;
+    z-index: 61;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+  }
+  .theme-client .sidebar.mobile-open { transform: translateX(0); box-shadow: 12px 0 40px rgba(0, 0, 0, .45); }
+  .theme-client .sidebar-backdrop { display: block; }
+  .theme-client .icon-btn.nav-burger { display: flex; }
+
+  .theme-client .topbar { padding: 0 16px; }
+  .theme-client .backlink-slot { padding: 6px 16px 0; }
+  .theme-client .page { padding: 16px; }
 
   /* Telegram CTA squeezes to an icon disc bottom-right (no bottom bar here). */
-  .telegram-cta { padding: 0; width: 48px; height: 48px; justify-content: center; bottom: 16px; right: 16px; }
-  .telegram-cta-label { display: none; }
-  .kpi-strip,
-  .plan-cards,
-  .orders-grid,
-  .methods-grid,
-  .form-grid-3,
-  .form-grid-2,
-  .settings-form-grid,
-  .settings-form-grid.cols-3 { grid-template-columns: 1fr; }
+  .theme-client .telegram-cta { padding: 0; width: 48px; height: 48px; justify-content: center; bottom: 16px; right: 16px; }
+  .theme-client .telegram-cta-label { display: none; }
+  .theme-client .kpi-strip,
+  .theme-client .plan-cards,
+  .theme-client .orders-grid,
+  .theme-client .methods-grid,
+  .theme-client .form-grid-3,
+  .theme-client .form-grid-2,
+  .theme-client .settings-form-grid,
+  .theme-client .settings-form-grid.cols-3 { grid-template-columns: 1fr; }
 
   /* Prevent iOS Safari zoom on form focus */
-  .form-input, .form-select, .form-textarea { font-size: 16px; }
+  .theme-client .form-input, .theme-client .form-select, .theme-client .form-textarea { font-size: 16px; }
 
   /* Touch targets */
-  .btn { min-height: 44px; padding: 10px 14px; }
-  .btn.primary, .btn.danger { min-height: 48px; }
-  .btn.sm { min-height: 36px; padding: 6px 10px; }
+  .theme-client .btn { min-height: 44px; padding: 10px 14px; }
+  .theme-client .btn.primary, .theme-client .btn.danger { min-height: 48px; }
+  .theme-client .btn.sm { min-height: 36px; padding: 6px 10px; }
+  /* …except the compact balance CTA inside the topbar chip — the 44px
+     touch-target floor made it wrap to two lines and burst the 32px chip. */
+  .theme-client .topbar-balance-cta { min-height: 0; padding: 0 10px; white-space: nowrap; }
+
+  /* Long breadcrumbs clip instead of colliding with the topbar actions. */
+  .theme-client .page-title { overflow: hidden; white-space: nowrap; }
 
   /* Fixed-layout .dt tables keep a readable min-width and scroll horizontally
      inside the panel rather than collapsing their columns. */
   .theme-client .panel > .table-wrap > table.dt { min-width: 560px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-client .sidebar { transition: none; }
 }
 
 /* ===================================================================

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions, isAdminRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientSidebar } from '@/components/client/Sidebar';
+import { MobileNavProvider } from '@/components/ui/MobileNav';
 
 // All client pages need session + DB at request time
 export const dynamic = 'force-dynamic';
@@ -20,10 +21,12 @@ export default async function ClientLayout({ children }: { children: React.React
 
   return (
     <div className="theme-client" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
-      <ClientSidebar user={{ name: me.name, email: me.email, tier: me.tier }} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {children}
-      </div>
+      <MobileNavProvider>
+        <ClientSidebar user={{ name: me.name, email: me.email, tier: me.tier }} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          {children}
+        </div>
+      </MobileNavProvider>
     </div>
   );
 }

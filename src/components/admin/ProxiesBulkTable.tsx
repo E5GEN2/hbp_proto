@@ -84,10 +84,10 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <th className="col-id">Proxy ID</th>
             <th className="col-id">Assigned to</th>
             <th className="col-text">Carrier · Region</th>
-            <th className="col-text">Pool</th>
-            <th className="col-text">Credentials</th>
+            <th className="col-text">Pool<span className="help-tip" data-tip="A named group of proxies a plan can draw from. Pools encode carrier + region + any segregation rules (e.g. clean IPs, premium tier).">i</span></th>
+            <th className="col-text">Credentials<span className="help-tip" data-tip="Host:port pair the customer connects to. Includes the proxy's public IP and exposed port.">i</span></th>
             <th className="col-text">Hardware ID</th>
-            <th className="col-num">Data 30D</th>
+            <th className="col-num">Data 30D<span className="help-tip" data-tip="Aggregate egress traffic on this proxy over the last 30 days, in GB.">i</span></th>
             <th className="col-num">Uptime 30d</th>
             <th className="col-status">Status</th>
           </tr></thead>
@@ -101,10 +101,10 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
                   <td className="col-chk"><span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} /></td>
                   <td className="col-id"><Link href={`/admin/proxies/${p.id}`} className="td-link">{p.id}</Link></td>
                   <td className="col-id">{p.currentOrderId ? <Link href={`/admin/orders/${p.currentOrderId}`} className="td-link">{p.currentOrderId}</Link> : <span className="muted">—</span>}</td>
-                  <td className="col-text muted">{p.carrier} · {p.region}</td>
-                  <td className="col-text muted">{p.pool}</td>
-                  <td className="col-text td-mono">{p.ip}:{p.port}</td>
-                  <td className="col-text td-mono">{p.modem}</td>
+                  <td className="col-text muted"><span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span></td>
+                  <td className="col-text muted"><span className="cell-tip" data-tip={p.pool}>{p.pool}</span></td>
+                  <td className="col-text td-mono"><span className="cell-tip" data-tip={`${p.ip}:${p.port}`}>{p.ip}:{p.port}</span></td>
+                  <td className="col-text td-mono"><span className="cell-tip" data-tip={p.modem}>{p.modem}</span></td>
                   <td className="col-num">{maint ? '—' : `${(p.trafficUsedMB / 1024).toFixed(1)} GB`}</td>
                   <td className="col-num">{maint ? '—' : `${p.uptime}%`}</td>
                   <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{cap(p.status)}</span></td>

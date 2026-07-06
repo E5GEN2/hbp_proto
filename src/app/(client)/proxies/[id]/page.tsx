@@ -10,8 +10,7 @@ import { WhitelistPanel } from '@/components/client/WhitelistPanel';
 import { RotationUrlPanel } from '@/components/client/RotationUrlPanel';
 import { ProxyLabelEdit } from '@/components/client/ProxyLabelEdit';
 import { AutoRotationPicker } from '@/components/client/AutoRotationPicker';
-import { Stage15Pill } from '@/components/ui/Stage15Badge';
-import { fmtDate, daysLeft, fmtRel } from '@/lib/date';
+import { fmtAdminStamp, daysLeft, fmtRel } from '@/lib/date';
 
 const cap = (s: string) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '');
 
@@ -72,9 +71,9 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
                   <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val"><Link href={`/orders/${myAssignment.order.id}`} className="mono td-link">{myAssignment.order.id}</Link></span></div>
                   <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{myAssignment.order.plan.name}</span></div>
                   <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
-                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val mono">{fmtDate(myAssignment.order.expiresAt)}{d != null && d > 0 ? ` · ${d}d left` : ''}</span></div>
+                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val mono">{fmtAdminStamp(myAssignment.order.expiresAt)}{d != null && d > 0 ? ` · ${d}d left` : ''}</span></div>
                   <div className="kv-row" style={{ alignItems: 'center' }}>
-                    <span className="kv-label">Auto rotation <Stage15Pill /></span>
+                    <span className="kv-label">Auto rotation</span>
                     <span className="kv-val"><AutoRotationPicker proxyId={proxy.id} current={proxy.autoRotateMin} /></span>
                   </div>
                   <div className="kv-row"><span className="kv-label">Last rotated</span><span className="kv-val mono">{proxy.lastRotated ? fmtRel(proxy.lastRotated) : 'Never'}</span></div>

@@ -75,8 +75,8 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
               <tr><td colSpan={8} style={{ padding: '18px 20px', textAlign: 'center', color: 'var(--muted)' }}>{orders.length === 0 ? 'No orders yet.' : 'No orders match this filter.'}</td></tr>
             ) : rows.map(o => (
               <tr key={o.id}>
-                <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
-                <td className="col-text muted">{o.planName}</td>
+                <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
+                <td className="col-text muted"><span className="cell-tip" data-tip={o.planName}>{o.planName}</span></td>
                 <td className="col-id">
                   {o.proxies.length === 0 ? <span className="muted">—</span>
                     : o.proxies.length === 1 ? <Link href={`/admin/proxies/${o.proxies[0]}`} className="td-link">{o.proxies[0]}</Link>
@@ -89,7 +89,7 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
                     ? <Link href={`/admin/payments/${o.paymentId}`} className="td-link"><span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''}`}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span></Link>
                     : <span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''}`}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span>}
                 </td>
-                <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'} sm`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
+                <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'}`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
                 <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
               </tr>
             ))}

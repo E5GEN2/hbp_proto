@@ -139,7 +139,7 @@ function AddPaymentMethodModal({ open, onClose }: { open: boolean; onClose: () =
       <div className="t-note" style={{ marginBottom: 12 }}>
         Mock card — production would use Stripe Elements. No actual numbers are sent anywhere.
       </div>
-      <div className="methods-grid">
+      <div className="form-grid-2">
         <div style={{ gridColumn: '1 / -1' }}>
           <label className="form-label">Brand</label>
           <select className="form-select" value={brand} onChange={e => setBrand(e.target.value)}>

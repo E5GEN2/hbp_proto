@@ -97,10 +97,10 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
                 <td className="col-chk">
                   <span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} />
                 </td>
-                <td className="col-id"><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></td>
-                <td className="col-id">{p.orderId ? <Link href={`/admin/orders/${p.orderId}`} className="td-link">{p.orderId}</Link> : <span className="muted">—</span>}</td>
-                <td className="col-id">{p.clientId ? <Link href={`/admin/clients/${p.clientId}`} className="client-link">{p.clientId}</Link> : <span className="muted">—</span>}</td>
-                <td className="col-text muted">{p.provider} · {p.method}</td>
+                <td className="col-id"><span className="cell-tip" data-tip={p.id}><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></span></td>
+                <td className="col-id">{p.orderId ? <span className="cell-tip" data-tip={p.orderId}><Link href={`/admin/orders/${p.orderId}`} className="td-link">{p.orderId}</Link></span> : <span className="muted">—</span>}</td>
+                <td className="col-id">{p.clientId ? <span className="cell-tip" data-tip={p.clientId}><Link href={`/admin/clients/${p.clientId}`} className="client-link">{p.clientId}</Link></span> : <span className="muted">—</span>}</td>
+                <td className="col-text muted"><span className="cell-tip" data-tip={`${p.provider} · ${p.method}`}>{p.provider} · {p.method}</span></td>
                 <td className="col-money">{money(p.gross)}</td>
                 <td className="col-status"><span className={`chip ${p.statusChip}`}>{p.statusLabel}</span></td>
                 <td className="col-date">{fmtAdminStamp(p.createdAt)}</td>

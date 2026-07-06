@@ -109,7 +109,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
-            { kind: 'search', name: 'q', placeholder: 'Search by order id, client name/email…' },
+            { kind: 'search', name: 'q' },
             { kind: 'select', name: 'carrier', label: 'Carrier: all', options: carriers, size: 'sm' },
             { kind: 'select', name: 'region', label: 'Region: all', options: regions, size: 'md' },
           ]}

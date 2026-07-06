@@ -79,7 +79,7 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
           </select>
         </Field>
         {form.risk !== 'NONE' && (
-          <Field label="Risk note" required span={2}>
+          <Field label="Risk note" required span={2} tip="Stored as a CLIENT.NOTE_ADD entry in the audit log after creation, so future support reps can read context.">
             <textarea className="form-textarea" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2} />
           </Field>
         )}
@@ -98,10 +98,10 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 10 }}>{children}</div>;
 }
-function Field({ label, required, span, children }: { label: string; required?: boolean; span?: number; children: React.ReactNode }) {
+function Field({ label, required, span, tip, children }: { label: string; required?: boolean; span?: number; tip?: string; children: React.ReactNode }) {
   return (
     <div style={span ? { gridColumn: `span ${span}` } : undefined}>
-      <label className="form-label">{label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}</label>
+      <label className="form-label">{label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}{tip && <span className="help-tip" data-tip={tip}>i</span>}</label>
       {children}
     </div>
   );

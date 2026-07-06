@@ -284,7 +284,7 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
                     </Link>
                   </td>
                   <td className="col-text muted">
-                    {p.carrier} · {p.region}
+                    <span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span>
                   </td>
                   <td className="col-text muted center">{fmtAutoRotate(p.autoRotateMin)}</td>
                   <td className="col-text muted center">{p.health === 'offline' ? '—' : `${Math.round(p.uptime ?? 0)}%`}</td>

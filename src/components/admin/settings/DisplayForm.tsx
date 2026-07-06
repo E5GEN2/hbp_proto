@@ -24,7 +24,7 @@ export function DisplayForm({ initial }: { initial: { timeFormat: 'UTC' | 'GMT' 
     <div className="form-grid cols-2">
       <div className="form-field full"><div className="subsection-title">Time</div></div>
       <div className="form-field">
-        <div className="form-label">Time format</div>
+        <div className="form-label">Time format<span className="help-tip" data-tip="Label suffix for the sidebar clock. UTC and GMT share zero offset; label preference only.">i</span></div>
         <select className="form-select" defaultValue={initial.timeFormat} disabled={pending} onChange={e => set(e.target.value)}>
           <option value="UTC">UTC — Coordinated Universal Time</option>
           <option value="GMT">GMT — Greenwich Mean Time</option>

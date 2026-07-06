@@ -4,23 +4,9 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
-import { Stage15Pill } from '@/components/ui/Stage15Badge';
+import { fmtAdminStamp } from '@/lib/date';
 import { PaymentMethodsPanel } from '@/components/client/PaymentMethods';
 import { npInvoiceUrl } from '@/lib/nowpayments';
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-// Compact datetime for the Transactions table — drops the year when it matches
-// "now" (most rows do) and uses 24h time so the date cell lives in ~120px.
-// Mirrors canon `fmtTxDate`; presentation-only, no shared helper touched.
-function fmtTxDate(d: Date) {
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  const day = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const yr = sameYear ? '' : ` '${String(d.getFullYear()).slice(2)}`;
-  return `${MONTHS[d.getMonth()]} ${day}${yr}, ${hh}:${mm}`;
-}
 
 // Type-column primary label. Mirrors canon `paymentDescription`.
 function txDescription(p: { status: string; orderId: string | null; method: string }) {
@@ -92,7 +78,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
               {/* Balance hero — wide stat tile above the Transactions panel */}
               <div className="balance-card">
                 <div className="balance-card-left">
-                  <div className="panel-title">Account balance <Stage15Pill /></div>
+                  <div className="panel-title">Account balance</div>
                   <div className="balance-card-value">{money(balance)}</div>
                   <div className="balance-card-help">Use your balance to pay for new orders and renewals.</div>
                 </div>
@@ -107,7 +93,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
               {/* Transactions */}
               <div className="panel">
                 <div className="panel-header">
-                  <span className="panel-title">Transactions <Stage15Pill>Invoice v1.5</Stage15Pill></span>
+                  <span className="panel-title">Transactions</span>
                 </div>
                 <div className="tabs">
                   {tabDefs.map(t => (
@@ -158,10 +144,10 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                             <tr key={p.id}>
                               <td className="col-id mono">{p.id}</td>
                               <td className={`col-num right mono ${refunded ? 'positive' : ''}`}>{signed}</td>
-                              <td className="col-date mono">{fmtTxDate(p.createdAt)}</td>
+                              <td className="col-date mono">{fmtAdminStamp(p.createdAt)}</td>
                               <td className="col-text">
-                                <div className="tx-type">{desc}</div>
-                                {method && <div className="tx-method">{method}</div>}
+                                <div className="tx-type cell-tip" data-tip={desc}>{desc}</div>
+                                {method && <div className="tx-method cell-tip" data-tip={method}>{method}</div>}
                               </td>
                               <td className="col-id">
                                 {p.order

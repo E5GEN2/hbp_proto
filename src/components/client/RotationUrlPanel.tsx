@@ -1,6 +1,5 @@
 'use client';
 import { useToast } from '@/components/ui/Toast';
-import { Stage15Pill } from '@/components/ui/Stage15Badge';
 
 export function RotationUrlPanel({ rotateToken }: { rotateToken: string | null; proxyId?: string }) {
   const toast = useToast();
@@ -19,7 +18,7 @@ export function RotationUrlPanel({ rotateToken }: { rotateToken: string | null; 
   return (
     <div className="panel">
       <div className="panel-header">
-        <span className="panel-title">Rotation URL <Stage15Pill /></span>
+        <span className="panel-title">Rotation URL</span>
       </div>
       <div className="panel-body">
         <div className="creds-row">

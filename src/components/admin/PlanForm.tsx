@@ -73,7 +73,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     });
   }
 
-  const Sel = (k: keyof PlanInput, label: string, opts: CatalogOption[], required = false) => {
+  const Sel = (k: keyof PlanInput, label: string, opts: CatalogOption[], required = false, tip?: string) => {
     // A plan can hold a value that was since removed from the catalog (values
     // are denormalized strings). A controlled <select> with no matching
     // <option> LOOKS like the first option while the state still holds the
@@ -82,7 +82,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     const stale = cur !== '' && !opts.some(o => o.value === cur);
     return (
       <div className="form-field">
-        <div className="form-label">{label}{required && <span className="req"> *</span>}</div>
+        <div className="form-label">{label}{required && <span className="req"> *</span>}{tip && <span className="help-tip" data-tip={tip}>i</span>}</div>
         <select className="form-select" value={cur} onChange={e => set(k, e.target.value as any)} required={required}>
           {stale && <option value={cur} disabled>{cur} (removed from catalog)</option>}
           {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
@@ -91,11 +91,11 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     );
   };
 
-  const Toggle = (k: 'active' | 'autoProvision' | 'autoRenewDefault' | 'renewalAllowed', label: string) => (
+  const Toggle = (k: 'active' | 'autoProvision' | 'autoRenewDefault' | 'renewalAllowed', label: string, tip?: string) => (
     <div className="toggle-row">
       <label onClick={() => set(k, !form[k] as any)}>
         <span className={`toggle-v2 ${form[k] ? 'on' : ''}`} />
-        <span className="toggle-label">{label}</span>
+        <span className="toggle-label">{label}{tip && <span className="help-tip" data-tip={tip}>i</span>}</span>
       </label>
     </div>
   );
@@ -115,12 +115,12 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
             </div>
             {mode === 'edit' && (
               <div className="form-field">
-                <div className="form-label">Internal SKU</div>
+                <div className="form-label">Internal SKU<span className="help-tip" data-tip="Auto-generated using the SKU rule configured in Settings. Default rule includes Duration; optional components may include Carrier and Region. Never shown to clients.">i</span></div>
                 <input className="form-input" value={sku ?? '—'} disabled />
               </div>
             )}
             <div className="form-field">
-              <div className="form-label">Visibility <span className="req">*</span></div>
+              <div className="form-label">Visibility <span className="req">*</span><span className="help-tip" data-tip="Public appears in client checkout. Internal is admin-only and not shown to clients.">i</span></div>
               <select className="form-select" value={form.visibility} onChange={e => set('visibility', e.target.value as any)}>
                 <option value="PUBLIC">Public</option>
                 <option value="INTERNAL">Internal</option>
@@ -128,7 +128,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
             </div>
           </div>
           <div className="identity-desc">
-            <div className="form-label">Description</div>
+            <div className="form-label">Description<span className="help-tip" data-tip="Plain text. Shown at client-portal checkout and on the public website's plan card. Keep it 1–2 lines.">i</span></div>
             <textarea className="form-textarea" value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="Shown at client-portal checkout and on the public plan card. Keep it 1–2 lines." />
           </div>
         </div>
@@ -139,26 +139,26 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
         <div className="commercial-grid">
           {Sel('durationDays', 'Duration', catalog.durations, true)}
           <div className="form-field">
-            <div className="form-label">Price <span className="req">*</span></div>
+            <div className="form-label">Price <span className="req">*</span><span className="help-tip" data-tip="Per-plan price in the selected Currency. Each plan carries its own price — there is no flat fallback.">i</span></div>
             <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} onChange={e => set('price', parseFloat(e.target.value || '0'))} />
           </div>
           {Sel('currency', 'Currency', catalog.currencies, true)}
           <div className="form-field">
-            <div className="form-label">Renewal discount (%)</div>
+            <div className="form-label">Renewal discount (%)<span className="help-tip" data-tip="Applied to every renewal payment for this plan. 0% = full price.">i</span></div>
             <input className="form-input" type="number" min={0} max={100} step={1} value={form.renewalDiscountPct} onChange={e => set('renewalDiscountPct', parseInt(e.target.value || '0', 10))} />
           </div>
         </div>
       </div>
 
       <div className="panel-section">
-        <div className="panel-title">Infrastructure</div>
+        <div className="panel-title">Infrastructure<span className="help-tip" data-tip="Technical settings. Snapshotted onto each order at purchase time — they don't retroactively change orders that were already sold.">i</span></div>
         <div className="infra-grid">
           {Sel('carrier', 'Carrier', catalog.carriers, true)}
-          {Sel('region', 'Region / Location', catalog.regions, true)}
-          {Sel('pool', 'Proxy pool', catalog.pools, true)}
-          {Sel('protocols', 'Protocols', catalog.protocols)}
-          {Sel('rotation', 'Rotation policy', catalog.rotations)}
-          {Sel('traffic', 'Traffic policy', catalog.traffic)}
+          {Sel('region', 'Region / Location', catalog.regions, true, 'Country, region, state, or city — whichever level the plan targets. Drives which Proxy pools are eligible.')}
+          {Sel('pool', 'Proxy pool', catalog.pools, true, 'Named pool this plan draws from when auto-assigning. Pool format: {carrier} | {region}[ | {city}].')}
+          {Sel('protocols', 'Protocols', catalog.protocols, false, 'Wire protocols the proxy will accept.')}
+          {Sel('rotation', 'Rotation policy', catalog.rotations, false, 'Whether the IP stays sticky for the full order duration or rotates per request / on a schedule.')}
+          {Sel('traffic', 'Traffic policy', catalog.traffic, false, 'Bandwidth cap. Unlimited = no accounting. A cap throttles or blocks once threshold is hit.')}
         </div>
       </div>
 
@@ -167,18 +167,18 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
         <div className="lifecycle-grid">
           <div className="lifecycle-col">
             {Toggle('active', 'Active (sellable in client catalog)')}
-            {Toggle('autoProvision', 'Auto-provision on payment confirm')}
-            {Toggle('autoRenewDefault', 'Auto-renew default')}
-            {Toggle('renewalAllowed', 'Renewal allowed')}
+            {Toggle('autoProvision', 'Auto-provision on payment confirm', 'Controls fulfilment automation AFTER payment confirmation. If ON, the system may assign a proxy from the pool and send credentials automatically. If OFF, an admin assigns the proxy and sends credentials manually. Does NOT control whether payment itself is automatic — payment confirmation may be manual (invoice / crypto) or automatic (Stripe webhook) regardless of this setting.')}
+            {Toggle('autoRenewDefault', 'Auto-renew default', 'Default state on new orders. Activation requires a saved card or sufficient portal balance.')}
+            {Toggle('renewalAllowed', 'Renewal allowed', 'If OFF, the plan can still be sold but cannot be renewed. Used when retiring a plan while honoring existing orders.')}
           </div>
           <div className="lifecycle-col">
             <div className="lifecycle-fields">
               <div className="form-field">
-                <div className="form-label">Pre-renewal reminder (hours)</div>
+                <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="When to send the first renewal reminder, in hours before expiry. Additional reminders are scheduled in Settings → Grace Rules.">i</span></div>
                 <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => set('preRenewalReminderHours', parseInt(e.target.value || '0', 10))} />
               </div>
               <div className="form-field">
-                <div className="form-label">Grace period (hours)</div>
+                <div className="form-label">Grace period (hours)<span className="help-tip" data-tip="Time after expiry before the proxy is released back to pool. Set 0 to release the moment the order expires.">i</span></div>
                 <input className="form-input" type="number" min={0} max={720} step={1} value={form.gracePeriodHours} onChange={e => set('gracePeriodHours', parseInt(e.target.value || '0', 10))} />
               </div>
             </div>
@@ -223,15 +223,15 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           </div>
           <aside className="form-aside">
             <div className="panel">
-              <div className="panel-header"><span className="panel-title">Selling Capacity</span></div>
+              <div className="panel-header"><span className="panel-title">Selling Capacity<span className="help-tip" data-tip="What the client portal is allowed to sell for this plan. Set manually — independent of the physical pool size. The Capacity State below is a derived condition, separate from the plan's primary Status.">i</span></span></div>
               <div className="panel-section">
                 <div className="form-grid">
                   <div className="form-field">
-                    <div className="form-label">Available quota <span className="req">*</span></div>
+                    <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales.">i</span></div>
                     <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => set('availableQuota', parseInt(e.target.value || '0', 10))} />
                   </div>
                   <div className="form-field">
-                    <div className="form-label">Low-capacity threshold (%)</div>
+                    <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override for the global default in Settings → Notifications → 'Plan capacity > X% full'. Leave blank to inherit (85%).">i</span></div>
                     <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="inherits 15%" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
                   </div>
                 </div>

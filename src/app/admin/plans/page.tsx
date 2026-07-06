@@ -65,7 +65,7 @@ export default async function AdminPlansPage({ searchParams }: { searchParams: R
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
-            { kind: 'search', name: 'q', placeholder: 'Search by plan id, name, pool…' },
+            { kind: 'search', name: 'q' },
             { kind: 'select', name: 'carrier', label: 'Carrier: all', size: 'sm', options: carriers },
             { kind: 'select', name: 'region', label: 'Region: all', size: 'md', options: regions },
             { kind: 'select', name: 'duration', label: 'Duration: all', size: 'sm', options: [

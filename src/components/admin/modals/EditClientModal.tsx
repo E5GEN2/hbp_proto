@@ -98,7 +98,7 @@ export function EditClientModal({
             {regions.map(r => <option key={r}>{r}</option>)}
           </select>
         </Field>
-        <Field label="Pre-renewal reminder (hours)">
+        <Field label="Pre-renewal reminder (hours)" tip="Hours before expiry to send the renewal reminder. Default inherited from the global Settings → Notifications value.">
           <input className="form-input" type="number" min={0} max={720} value={form.preRenewalReminderHours} onChange={e => setForm({ ...form, preRenewalReminderHours: parseInt(e.target.value || '0', 10) })} />
         </Field>
         <div />
@@ -109,7 +109,7 @@ export function EditClientModal({
         <Toggle label="Email — renewal reminders"   value={form.emailRenewal}    onChange={v => setForm({ ...form, emailRenewal: v })} />
         <Toggle label="Email — service incidents"   value={form.emailIncidents}  onChange={v => setForm({ ...form, emailIncidents: v })} />
         <Toggle label="Email — product updates"     value={form.emailMarketing}  onChange={v => setForm({ ...form, emailMarketing: v })} />
-        <Toggle label="Telegram — all notifications" value={form.telegramAll}    onChange={v => setForm({ ...form, telegramAll: v })} disabled={!form.telegram} hint={!form.telegram ? 'Add telegram handle first' : undefined} />
+        <Toggle label="Telegram — all notifications" value={form.telegramAll}    onChange={v => setForm({ ...form, telegramAll: v })} disabled={!form.telegram} hint={!form.telegram ? 'Auto-disabled if Telegram handle is empty. Re-enable it after adding a Telegram handle.' : undefined} />
       </Grid>
 
       {err && <div style={{ padding: 10, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12 }}>{err}</div>}
@@ -123,10 +123,10 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function Grid({ cols, children }: { cols: number; children: React.ReactNode }) {
   return <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 12, marginBottom: 18 }}>{children}</div>;
 }
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, tip, children }: { label: string; required?: boolean; tip?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="form-label">{label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}</label>
+      <label className="form-label">{label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}{tip && <span className="help-tip" data-tip={tip}>i</span>}</label>
       {children}
     </div>
   );

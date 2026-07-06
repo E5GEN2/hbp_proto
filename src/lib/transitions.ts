@@ -153,7 +153,11 @@ export async function refundPayment({
       include: { order: true, client: true },
     });
     if (!pay) throw new Error('Payment not found');
-    if (pay.status !== 'CONFIRMED' && pay.status !== 'PAID') throw new Error(`Cannot refund from status ${pay.status}`);
+    // CONFIRMED/PAID = admin-initiated refund; REFUND_REQUESTED = executing a
+    // client's refund request (the flag clientRequestRefund raised).
+    if (!['CONFIRMED', 'PAID', 'REFUND_REQUESTED'].includes(pay.status)) {
+      throw new Error(`Cannot refund from status ${pay.status}`);
+    }
 
     const refundAmount = amount ?? Number(pay.gross);
     const now = new Date();
@@ -1164,7 +1168,7 @@ export async function clientRequestRefund({
 
     await tx.payment.update({
       where: { id: paymentId },
-      data: { status: 'REFUND_REQUESTED' as any },
+      data: { status: 'REFUND_REQUESTED' },
     });
     if (pay.order) {
       await tx.order.update({

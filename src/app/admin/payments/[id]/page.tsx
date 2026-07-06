@@ -12,7 +12,7 @@ import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
 
 const CONFIRMABLE = ['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'];
-const REFUNDABLE = ['CONFIRMED', 'PAID'];
+const REFUNDABLE = ['CONFIRMED', 'PAID', 'REFUND_REQUESTED']; // last = client's request awaiting execution
 
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
   const p = await prisma.payment.findUnique({

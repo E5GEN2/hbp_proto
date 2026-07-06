@@ -36,7 +36,7 @@ export function fmtRel(d: Date | null | undefined) {
   if (h < 24) return `${h}h ago`;
   const dd = Math.floor(h / 24);
   if (dd < 30) return `${dd}d ago`;
-  return fmtDate(d);
+  return fmtAdminStamp(d);
 }
 
 export function daysLeft(expires: Date | null | undefined) {

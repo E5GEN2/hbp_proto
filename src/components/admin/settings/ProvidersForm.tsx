@@ -99,7 +99,7 @@ function ProviderCard({ name, desc, provider, cfg, fields, impact, cols, activeL
           <span className="muted">{desc}</span>
         </div>
         <div className="hstack">
-          <span className={`chip ${cfg.enabled ? (activeLabel === 'Active' ? 'active' : 'paid') : 'muted'} sm`}>{cfg.enabled ? activeLabel : 'Disabled'}</span>
+          <span className={`chip ${cfg.enabled ? (activeLabel === 'Active' ? 'active' : 'paid') : 'muted'}`}>{cfg.enabled ? activeLabel : 'Disabled'}</span>
           <span className={`toggle-v2 ${cfg.enabled ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={flip} />
         </div>
       </div>

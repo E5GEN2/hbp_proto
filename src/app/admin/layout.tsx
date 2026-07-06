@@ -4,6 +4,7 @@ import { authOptions, isAdminRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { AdminSidebar } from '@/components/admin/Sidebar';
 import { AdminOrderOptionsProvider } from '@/components/admin/shell/NewOrderContext';
+import { TipFloater } from '@/components/ui/TipFloater';
 
 // All admin pages need the DB at request time, never at build time
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="theme-admin" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
+      <TipFloater />
       <AdminSidebar user={me} badges={badges} />
       <AdminOrderOptionsProvider value={{ clients: clientOpts, plans: planOpts }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

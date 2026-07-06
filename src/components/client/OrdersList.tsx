@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
-import { fmtDate } from '@/lib/date';
+import { fmtAdminStamp } from '@/lib/date';
 import { money } from '@/lib/money';
 import * as CA from '@/lib/ui-actions/client-actions';
 
@@ -81,7 +81,7 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
         return;
       }
       const exp = r && 'newExpiry' in r ? r.newExpiry : null;
-      toast('Order renewed', exp ? `New expiry: ${fmtDate(new Date(exp))}` : '', 'success');
+      toast('Order renewed', exp ? `New expiry: ${fmtAdminStamp(new Date(exp))}` : '', 'success');
       router.refresh();
     } catch (e: any) {
       toast('Renewal failed', e.message, 'danger');
@@ -196,23 +196,23 @@ function OrderCard({
   const dates: ReactNode =
     o.status === 'PROVISIONING' ? (
       <>
-        <strong>Placed</strong> {fmtDate(new Date(o.createdAt))} · <span className="order-card-days warning">Awaiting fulfillment</span>
+        <strong>Placed</strong> {fmtAdminStamp(new Date(o.createdAt))} · <span className="order-card-days warning">Awaiting fulfillment</span>
       </>
     ) : o.status === 'CANCELLED' ? (
       <>
-        <strong>Cancelled</strong> {fmtDate(new Date(o.cancelledAt ?? o.createdAt))}
+        <strong>Cancelled</strong> {fmtAdminStamp(new Date(o.cancelledAt ?? o.createdAt))}
       </>
     ) : o.activatedAt ? (
       <>
-        <strong>Activated</strong> {fmtDate(new Date(o.activatedAt))} · <strong>Expires</strong> {fmtDate(o.expiresAt ? new Date(o.expiresAt) : null)}
+        <strong>Activated</strong> {fmtAdminStamp(new Date(o.activatedAt))} · <strong>Expires</strong> {fmtAdminStamp(o.expiresAt ? new Date(o.expiresAt) : null)}
       </>
     ) : o.expiresAt ? (
       <>
-        <strong>Expires</strong> {fmtDate(new Date(o.expiresAt))}
+        <strong>Expires</strong> {fmtAdminStamp(new Date(o.expiresAt))}
       </>
     ) : (
       <>
-        <strong>Placed</strong> {fmtDate(new Date(o.createdAt))}
+        <strong>Placed</strong> {fmtAdminStamp(new Date(o.createdAt))}
       </>
     );
 

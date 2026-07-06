@@ -60,8 +60,10 @@ export function FilterBar({
                 <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
                 <path d="m10 10 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
+              {/* Canon search fields ship with an EMPTY placeholder (prototype.html
+                  placeholder="") — the magnifier icon is the affordance. */}
               <input
-                placeholder={f.placeholder ?? 'Search…'}
+                placeholder={f.placeholder ?? ''}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />

@@ -70,7 +70,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
-            { kind: 'search', name: 'q', placeholder: 'Search by payment, order, client…' },
+            { kind: 'search', name: 'q' },
             { kind: 'select', name: 'provider', label: 'Provider: all', size: 'sm', options: [
               { value: 'Stripe', label: 'Stripe' },
               { value: 'NOWPayments', label: 'NOWPayments' },

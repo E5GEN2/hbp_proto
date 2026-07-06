@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { toggleNotificationRuleAction } from '@/lib/ui-actions/settings-actions';
-import { fmtDate } from '@/lib/date';
+import { fmtAdminStamp } from '@/lib/date';
 
 const CLIENT_RULES = [
   { key: 'order-created',         label: 'Order created → Email receipt' },
@@ -63,10 +63,10 @@ export function NotificationsForm({ initial, templates }: {
         <div className="form-grid cols-2">
           {/* Honest-state badges (audit B-4): rule toggles persist, but no email/
               Telegram pipeline exists yet — nothing is actually sent (Phase 2). */}
-          <div className="form-field full"><div className="subsection-title">Client notifications <span className="chip muted sm" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
+          <div className="form-field full"><div className="subsection-title">Client notifications <span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
           {CLIENT_RULES.map(row)}
 
-          <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Admin alerts (Telegram + Email) <span className="chip muted sm" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
+          <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Admin alerts (Telegram + Email) <span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
           {ADMIN_RULES.map(row)}
 
           <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Delivery channels</div></div>
@@ -78,7 +78,7 @@ export function NotificationsForm({ initial, templates }: {
 
       <div className="panel-section">
         <div className="panel-title-row">
-          <span className="panel-title">Reusable templates · {templates.length}</span>
+          <span className="panel-title">Reusable templates · {templates.length}<span className="help-tip" data-tip="Pre-written messages an admin can pick from the Send-reminder modal. Group by channel (Email / Telegram). Body supports placeholders like {{client.name}}.">i</span></span>
         </div>
         {templates.length === 0 ? (
           <div className="empty"><div className="empty-desc">No templates yet.</div></div>
@@ -93,7 +93,7 @@ export function NotificationsForm({ initial, templates }: {
                     <span className="tpl-row-meta">{t.id} · {t.trigger.toLowerCase().replace(/_/g, '-')}</span>
                   </div>
                   <span className={`tpl-row-channel ${ch === 'telegram' ? 'telegram' : 'email'}`}>{ch}</span>
-                  <span className="tpl-row-meta">{fmtDate(t.updatedAt)}</span>
+                  <span className="tpl-row-meta">{fmtAdminStamp(t.updatedAt)}</span>
                 </div>
               );
             })}

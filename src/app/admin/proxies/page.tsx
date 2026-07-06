@@ -71,7 +71,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
-            { kind: 'search', name: 'q', placeholder: 'Search by proxy id, modem, IP, order…' },
+            { kind: 'search', name: 'q' },
             { kind: 'select', name: 'carrier', label: 'Carrier: all', size: 'sm', options: carriers.map(c => ({ value: c, label: c })) },
             { kind: 'select', name: 'region', label: 'Region: all', size: 'md', options: regions.map(r => ({ value: r, label: r })) },
             { kind: 'select', name: 'pool', label: 'Pool: all', size: 'lg', options: pools.map(p => ({ value: p, label: p })) },

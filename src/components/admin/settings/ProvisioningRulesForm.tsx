@@ -82,8 +82,8 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
           <thead><tr>
             <th className="col-text">Carrier · Region</th>
             <th className="col-text">Default pool</th>
-            <th className="col-text">Fallback chain</th>
-            <th className="col-text">Auto-assign</th>
+            <th className="col-text">Fallback chain<span className="help-tip" data-tip="Ordered list of pools tried when the default pool is at allocation capacity. Empty = no automatic fallback; provisioning falls into manual queue.">i</span></th>
+            <th className="col-text">Auto-assign<span className="help-tip" data-tip="ON = system silently picks the default pool at checkout. OFF = client-portal checkout shows a pool dropdown so the client picks.">i</span></th>
             <th className="col-text">Notes</th>
             <th className="col-action"></th>
           </tr></thead>
@@ -95,7 +95,7 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
                 <td className="col-text td-primary">{r.carrier} · {r.region}</td>
                 <td className="col-text">{r.defaultPool}</td>
                 <td className="col-text muted">{r.fallbackPools.length > 0 ? r.fallbackPools.join(' → ') : '—'}</td>
-                <td className="col-text"><span className={`chip ${r.autoAssign ? 'active' : 'muted'} sm`}>{r.autoAssign ? 'ON' : 'OFF · manual picker'}</span></td>
+                <td className="col-text"><span className={`chip ${r.autoAssign ? 'active' : 'muted'}`}>{r.autoAssign ? 'ON' : 'OFF · manual picker'}</span></td>
                 <td className="col-text muted">{r.notes || '—'}</td>
                 <td className="col-action">
                   <span className="hstack" style={{ justifyContent: 'flex-end' }}>

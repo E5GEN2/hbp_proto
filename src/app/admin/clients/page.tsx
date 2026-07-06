@@ -83,7 +83,7 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
-            { kind: 'search', name: 'q', placeholder: 'Search by ID, name, email, telegram…' },
+            { kind: 'search', name: 'q' },
             { kind: 'select', name: 'tier', label: 'Tier: all', size: 'sm', options: [
               { value: 'STANDARD', label: 'Standard' }, { value: 'PRO', label: 'Pro' }, { value: 'VIP', label: 'VIP' },
             ]},
@@ -121,10 +121,10 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
               <thead><tr>
                 <th className="col-text">Client</th>
                 <th className="col-id">Client ID</th>
-                <th className="col-num">Orders</th>
-                <th className="col-money">LTV</th>
-                <th className="col-status">Status</th>
-                <th className="col-status">Risk</th>
+                <th className="col-num">Orders<span className="help-tip" data-tip="Active orders / total orders.">i</span></th>
+                <th className="col-money">LTV<span className="help-tip" data-tip="Lifetime value — sum of all confirmed payments, before refunds.">i</span></th>
+                <th className="col-status">Status<span className="help-tip" data-tip="Primary client lifecycle status: Active / Churned / Blocked. Distinct from Risk.">i</span></th>
+                <th className="col-status">Risk<span className="help-tip" data-tip="Risk is a manual ops/support flag — a contextual state, separate from client Status. Clean clients show as —. Review means manual attention. Flagged means serious concern such as chargeback, abuse, fraud pattern, or policy issue.">i</span></th>
                 <th className="col-text">Last event</th>
               </tr></thead>
               <tbody>
@@ -146,14 +146,14 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
                           <div className={`avatar client-avatar ${status}`}>{initials(c.name)}</div>
                           <div className="client-cell-body">
                             <div className="client-cell-name">
-                              <Link href={`/admin/clients/${c.id}`} className="client-name-link">{c.name}</Link>
+                              <Link href={`/admin/clients/${c.id}`} className="client-name-link cell-tip" data-tip={c.name}>{c.name}</Link>
                               {c.tier !== 'STANDARD' && <span className="client-tier">{c.tier === 'VIP' ? 'VIP' : 'Pro'}</span>}
                             </div>
-                            <div className="client-cell-contact">{c.email}{c.telegram && c.telegram !== '—' && <><span className="sep">·</span>{c.telegram}</>}</div>
+                            <div className="client-cell-contact cell-tip" data-tip={`${c.email}${c.telegram && c.telegram !== '—' ? ` · ${c.telegram}` : ''}`}>{c.email}{c.telegram && c.telegram !== '—' && <><span className="sep">·</span>{c.telegram}</>}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="col-id"><Link href={`/admin/clients/${c.id}`} className="client-link">{c.id}</Link></td>
+                      <td className="col-id"><span className="cell-tip" data-tip={c.id}><Link href={`/admin/clients/${c.id}`} className="client-link">{c.id}</Link></span></td>
                       <td className="col-num">{activeOrders}<span className="muted"> / {c._count.orders}</span></td>
                       <td className="col-money">{money(ltv)}</td>
                       <td className="col-status"><span className={`chip ${status}`}>{cap(status)}</span></td>
@@ -163,7 +163,7 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
                           : <span className="chip flag">Flagged</span>}
                       </td>
                       {ev
-                        ? <td className="col-text"><span className="td-mono">{fmtAdminStamp(ev.date)}</span> <span className="muted">· {ev.label}</span></td>
+                        ? <td className="col-text"><span className="cell-tip" data-tip={`${fmtAdminStamp(ev.date)} · ${ev.label}`}><span className="td-mono">{fmtAdminStamp(ev.date)}</span> <span className="muted">· {ev.label}</span></span></td>
                         : <td className="col-text muted">—</td>}
                     </tr>
                   );

@@ -171,20 +171,20 @@ export function RenewalsBulkTable({ rows, view }: { rows: RenewalRow[]; view: st
                 <td className="col-chk">
                   <span className={`chk ${selected.has(o.id) ? 'checked' : ''}`} onClick={() => toggle(o.id)} />
                 </td>
-                <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
-                <td className="col-id">{o.clientId ? <Link href={`/admin/clients/${o.clientId}`} className="client-link">{o.clientId}</Link> : '—'}</td>
+                <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
+                <td className="col-id">{o.clientId ? <span className="cell-tip" data-tip={o.clientId}><Link href={`/admin/clients/${o.clientId}`} className="client-link">{o.clientId}</Link></span> : '—'}</td>
                 <td className="col-id">
                   {o.status === 'PENDING_RENEWAL'
                     ? <span className="muted">—</span>
                     : o.proxyId
-                      ? <Link href={`/admin/proxies/${o.proxyId}`} className="td-link">{o.proxyId}</Link>
-                      : <span className="chip released sm">Released</span>}
+                      ? <span className="cell-tip" data-tip={o.proxyId}><Link href={`/admin/proxies/${o.proxyId}`} className="td-link">{o.proxyId}</Link></span>
+                      : <span className="chip released">Released</span>}
                 </td>
-                <td className="col-text muted">{o.planName}</td>
+                <td className="col-text muted"><span className="cell-tip" data-tip={o.planName}>{o.planName}</span></td>
                 <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>
                 <td className={`col-date ${o.lastReminderAt ? '' : 'muted'}`}>{o.lastReminderAt ? fmtAdminStamp(o.lastReminderAt) : '—'}</td>
                 <td className="col-status">{statusChip(o)}</td>
-                <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'} sm`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
+                <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'}`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
               </tr>
             ))}
           </tbody>

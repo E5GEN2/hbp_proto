@@ -166,14 +166,14 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
                         </span>
                       </td>
                       <td className="col-status"><span className={`role-chip ${roleSlug}`}>{roleLabel}</span></td>
-                      <td className="col-status"><span className={`chip ${chipCls} sm`}>{l.action}</span></td>
+                      <td className="col-status"><span className={`chip ${chipCls}`}>{l.action}</span></td>
                       <td className="col-id">
                         {path && l.objectId
                           ? <Link href={`/admin/${path}/${l.objectId}`} className="td-link">{l.objectId}</Link>
                           : l.objectId ? <span>{l.objectId}</span> : <span className="muted">—</span>}
                       </td>
                       <td className="col-date">{fmtAdminStamp(l.at)}</td>
-                      <td className="col-text muted">{renderDetail(l.detail)}</td>
+                      <td className="col-text muted"><span className="cell-tip" data-tip={l.detail}>{renderDetail(l.detail)}</span></td>
                     </tr>
                   );
                 })}

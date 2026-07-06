@@ -113,10 +113,10 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
                 <td className="col-chk">
                   <span className={`chk ${selected.has(o.id) ? 'checked' : ''}`} onClick={() => toggle(o.id)} />
                 </td>
-                <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
-                <td className="col-id"><Link href={`/admin/clients/${o.clientId}`} className="td-link">{o.clientId}</Link></td>
-                <td className="col-text">{o.planName}</td>
-                <td className="col-text">{o.planCarrier} · {o.region}</td>
+                <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
+                <td className="col-id"><span className="cell-tip" data-tip={o.clientId}><Link href={`/admin/clients/${o.clientId}`} className="td-link">{o.clientId}</Link></span></td>
+                <td className="col-text"><span className="cell-tip" data-tip={o.planName}>{o.planName}</span></td>
+                <td className="col-text"><span className="cell-tip" data-tip={`${o.planCarrier} · ${o.region}`}>{o.planCarrier} · {o.region}</span></td>
                 <td className="col-money">{money(o.amount)}</td>
                 <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
                 <td className="col-status">

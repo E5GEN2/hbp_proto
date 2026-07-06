@@ -3,7 +3,6 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { Stage15Pill } from '@/components/ui/Stage15Badge';
 import { addWhitelistIpAction, removeWhitelistIpAction } from '@/lib/ui-actions/proxy-actions';
 
 export function WhitelistPanel({
@@ -42,7 +41,7 @@ export function WhitelistPanel({
     <div className="panel">
       <div className="panel-header">
         <span className="panel-title">
-          Whitelist <span className="mono" style={{ marginLeft: 6, color: 'var(--muted)' }}>{entries.length}/5</span> <Stage15Pill />
+          Whitelist <span className="mono" style={{ marginLeft: 6, color: 'var(--muted)' }}>{entries.length}/5</span>
         </span>
         {!full && <button className="panel-action" onClick={() => setOpen(true)}>+ Add IP</button>}
       </div>

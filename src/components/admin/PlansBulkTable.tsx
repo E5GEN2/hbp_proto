@@ -80,14 +80,14 @@ export function PlansBulkTable({ plans }: { plans: Row[] }) {
             <th className="col-chk"></th>
             <th className="col-text">Plan</th>
             <th className="col-text">Carrier · Region</th>
-            <th className="col-text">Pool</th>
+            <th className="col-text">Pool<span className="help-tip" data-tip="Named proxy group this plan draws from. One pool can feed multiple plans.">i</span></th>
             <th className="col-duration">Duration</th>
             <th className="col-money">Price</th>
-            <th className="col-num">Quota</th>
-            <th className="col-num">Allocated</th>
-            <th className="col-num">Available</th>
-            <th className="col-status">Status</th>
-            <th className="col-status">Capacity State</th>
+            <th className="col-num">Quota<span className="help-tip" data-tip="Configured maximum for this plan. Hard ceiling; set manually.">i</span></th>
+            <th className="col-num">Allocated<span className="help-tip" data-tip="Capacity currently occupied by orders or assignments not yet released.">i</span></th>
+            <th className="col-num">Available<span className="help-tip" data-tip="What the client portal shows as sellable right now. Quota − Allocated. Zero = plan hides from checkout.">i</span></th>
+            <th className="col-status">Status<span className="help-tip" data-tip="Primary plan lifecycle status: Active (sellable) or Disabled (hidden from checkout). One per plan.">i</span></th>
+            <th className="col-status">Capacity State<span className="help-tip" data-tip="Derived selling condition — one label per plan, priority: Sold out → Blocked by grace → Waiting release → Low availability → Available. Contextual, separate from primary Status.">i</span></th>
           </tr></thead>
           <tbody>
             {plans.length === 0 ? (
@@ -95,9 +95,9 @@ export function PlansBulkTable({ plans }: { plans: Row[] }) {
             ) : plans.map(p => (
               <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk"><span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} /></td>
-                <td className="col-text"><Link href={`/admin/plans/${p.id}`} className="td-link">{p.name}</Link></td>
-                <td className="col-text muted">{p.carrier} · {p.region}</td>
-                <td className="col-text muted">{p.pool}</td>
+                <td className="col-text"><span className="cell-tip" data-tip={p.name}><Link href={`/admin/plans/${p.id}`} className="td-link">{p.name}</Link></span></td>
+                <td className="col-text muted"><span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span></td>
+                <td className="col-text muted"><span className="cell-tip" data-tip={p.pool}>{p.pool}</span></td>
                 <td className="col-duration">{p.durationDays} days</td>
                 <td className="col-money">{money(p.price)}</td>
                 <td className="col-num">{p.quota}</td>

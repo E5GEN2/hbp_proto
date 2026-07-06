@@ -174,7 +174,7 @@ export default async function AdminDashboardPage() {
             {/* Selling Capacity by Plan */}
             <div className="panel">
               <div className="panel-header">
-                <span className="panel-title">Selling Capacity by Plan<span className="help-tip" title="One Capacity State label per plan: Available (default) · Low availability · Blocked by grace · Waiting release · Sold out.">i</span></span>
+                <span className="panel-title">Selling Capacity by Plan<span className="help-tip" data-tip="One Capacity State label per plan. Default is Available; the priority order for non-default states is Sold out → Blocked by grace → Waiting release → Low availability. Capacity State is contextual — separate from a plan's primary Status.">i</span></span>
                 <Link className="panel-action" href="/admin/plans">Manage plans →</Link>
               </div>
               <div className="table-wrap">
@@ -189,10 +189,10 @@ export default async function AdminDashboardPage() {
                   <thead>
                     <tr>
                       <th className="col-text">Plan</th>
-                      <th className="col-num">Quota<span className="help-tip" title="Total capacity this plan is configured to sell.">i</span></th>
-                      <th className="col-num">Allocated<span className="help-tip" title="Capacity occupied by live orders, including grace and unreleased assignments.">i</span></th>
-                      <th className="col-num">Available<span className="help-tip" title="Quota − Allocated. What the client portal shows as sellable. If 0, hidden from checkout.">i</span></th>
-                      <th className="col-status">Capacity State</th>
+                      <th className="col-num">Quota<span className="help-tip" data-tip="Total capacity this plan is configured to sell. Set manually on the plan. The hard ceiling.">i</span></th>
+                      <th className="col-num">Allocated<span className="help-tip" data-tip="Capacity occupied by live orders. Includes orders in grace and unreleased assignments.">i</span></th>
+                      <th className="col-num">Available<span className="help-tip" data-tip="What the client portal shows as sellable right now. Quota − Allocated. If 0, the plan is hidden from checkout.">i</span></th>
+                      <th className="col-status">Capacity State<span className="help-tip" data-tip="Derived selling condition based on Available quota, allocated orders, grace blocks, and release timing. One label per plan: Available (default) · Low availability · Blocked by grace · Waiting release · Sold out. At most one per plan. Separate from the plan's primary Status (Active / Disabled).">i</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -240,7 +240,7 @@ export default async function AdminDashboardPage() {
             {/* Exceptions */}
             <div className="panel">
               <div className="panel-header">
-                <span className="panel-title">Exceptions<span className="help-tip" title="Orders stuck between lifecycle steps and needing admin attention. Click a row to open Orders filtered to that exception.">i</span></span>
+                <span className="panel-title">Exceptions<span className="help-tip" data-tip="Operational conditions requiring admin attention — orders stuck between lifecycle steps. Separate from each order's primary Status. Click any row to open them inside the Orders page, filtered to that exception type.">i</span></span>
                 <Link className="panel-action" href="/admin/orders?view=exceptions">Resolve →</Link>
               </div>
               <Link className="issue-row" href="/admin/orders?view=exceptions">
@@ -263,7 +263,7 @@ export default async function AdminDashboardPage() {
             {/* Proxy Health */}
             <div className="panel">
               <div className="panel-header">
-                <span className="panel-title">Proxy Health<span className="help-tip" title="Proxies needing attention. Click a row to open Proxies filtered to that issue.">i</span></span>
+                <span className="panel-title">Proxy Health<span className="help-tip" data-tip="Proxies needing attention. Click any row to open them inside the Proxies page, filtered to that issue type.">i</span></span>
                 <Link className="panel-action" href="/admin/proxies">Review →</Link>
               </div>
               <Link className="issue-row" href="/admin/proxies?health=faulty">

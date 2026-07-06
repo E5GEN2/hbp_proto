@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { ClientOrderDetailActions } from '@/components/client/OrderDetailActions';
 import { money } from '@/lib/money';
-import { fmtDate, daysLeft, fmtAdminStamp } from '@/lib/date';
+import { daysLeft, fmtAdminStamp } from '@/lib/date';
 
 
 
@@ -84,7 +84,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
                   <div className="kv-row">
                     <span className="kv-label">Payment</span>
                     <span className="kv-val">
-                      {lastPay ? <><span className="muted">{lastPay.method} · {fmtDate(lastPay.createdAt)}</span> <span style={{ marginLeft: 8 }}><span className={`chip ${isPaid ? 'paid' : order.paymentStatus.toLowerCase()}`}>{isPaid ? 'Paid' : order.paymentStatus.charAt(0) + order.paymentStatus.slice(1).toLowerCase()}</span></span></> : <span className="chip muted">—</span>}
+                      {lastPay ? <><span className="muted">{lastPay.method} · {fmtAdminStamp(lastPay.createdAt)}</span> <span style={{ marginLeft: 8 }}><span className={`chip ${isPaid ? 'paid' : order.paymentStatus.toLowerCase()}`}>{isPaid ? 'Paid' : order.paymentStatus.charAt(0) + order.paymentStatus.slice(1).toLowerCase()}</span></span></> : <span className="chip muted">—</span>}
                     </span>
                   </div>
                 </div>
@@ -129,11 +129,11 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">Lifecycle</span></div>
                 <div className="panel-body">
-                  <div className="kv-row"><span className="kv-label">Created</span><span className="kv-val">{fmtDate(order.createdAt)}</span></div>
-                  <div className="kv-row"><span className="kv-label">Activated</span><span className="kv-val">{order.activatedAt ? fmtDate(order.activatedAt) : '—'}</span></div>
-                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{order.expiresAt ? fmtDate(order.expiresAt) : '—'}</span></div>
+                  <div className="kv-row"><span className="kv-label">Created</span><span className="kv-val">{fmtAdminStamp(order.createdAt)}</span></div>
+                  <div className="kv-row"><span className="kv-label">Activated</span><span className="kv-val">{order.activatedAt ? fmtAdminStamp(order.activatedAt) : '—'}</span></div>
+                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{order.expiresAt ? fmtAdminStamp(order.expiresAt) : '—'}</span></div>
                   <div className="kv-row"><span className="kv-label">Auto-renew</span><span className="kv-val"><span className={`chip ${order.autoRenew ? 'active' : 'muted'}`}>{order.autoRenew ? 'On' : 'Off'}</span></span></div>
-                  {order.cancelledAt && <div className="kv-row"><span className="kv-label">Cancelled</span><span className="kv-val">{fmtDate(order.cancelledAt)}</span></div>}
+                  {order.cancelledAt && <div className="kv-row"><span className="kv-label">Cancelled</span><span className="kv-val">{fmtAdminStamp(order.cancelledAt)}</span></div>}
                 </div>
               </div>
             </div>

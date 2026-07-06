@@ -111,7 +111,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
             ) : orders.map(o => (
               <tr key={o.id} style={selected.has(o.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk">
-                  <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} style={{ accentColor: 'var(--accent)' }} />
+                  <span className={`chk ${selected.has(o.id) ? 'checked' : ''}`} onClick={() => toggle(o.id)} />
                 </td>
                 <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
                 <td className="col-id"><Link href={`/admin/clients/${o.clientId}`} className="td-link">{o.clientId}</Link></td>

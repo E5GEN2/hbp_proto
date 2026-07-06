@@ -6,13 +6,9 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { ClientOrderDetailActions } from '@/components/client/OrderDetailActions';
 import { money } from '@/lib/money';
-import { fmtDate, daysLeft } from '@/lib/date';
+import { fmtDate, daysLeft, fmtAdminStamp } from '@/lib/date';
 
-function tlStamp(d: Date) {
-  const day = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${day} · ${time}`;
-}
+
 
 export default async function ClientOrderDetail({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -102,7 +98,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
                       <div className="tl-item" key={i}>
                         <span className={`tl-dot ${tlDot(e.tone)}`} />
                         <div className="tl-body">
-                          <span className="tl-stamp">{tlStamp(e.at)}</span>
+                          <span className="tl-stamp">{fmtAdminStamp(e.at)}</span>
                           <span className="tl-title">{e.title}</span>
                           {e.detail && <span className="tl-detail">{e.detail}</span>}
                         </div>

@@ -94,17 +94,20 @@ export function PlansBulkTable({ plans }: { plans: Row[] }) {
               <tr><td colSpan={11}><div className="empty"><div className="empty-desc">No plans match these filters.</div></div></td></tr>
             ) : plans.map(p => (
               <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
-                <td className="col-chk"><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} style={{ accentColor: 'var(--accent)' }} /></td>
+                <td className="col-chk"><span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} /></td>
                 <td className="col-text"><Link href={`/admin/plans/${p.id}`} className="td-link">{p.name}</Link></td>
                 <td className="col-text muted">{p.carrier} · {p.region}</td>
                 <td className="col-text muted">{p.pool}</td>
-                <td className="col-duration">{p.durationDays}d</td>
+                <td className="col-duration">{p.durationDays} days</td>
                 <td className="col-money">{money(p.price)}</td>
                 <td className="col-num">{p.quota}</td>
                 <td className="col-num">{p.allocated}</td>
                 <td className="col-num">{p.available}</td>
                 <td className="col-status"><span className={`chip ${p.active ? 'active' : 'expired'}`}>{p.active ? 'Active' : 'Disabled'}</span></td>
-                <td className="col-status"><span className={`cap-label ${p.capacityState}`}>{STATE_LABEL[p.capacityState]}</span></td>
+                <td className="col-status">{p.capacityState === 'available'
+                  /* canon: chip only for special states, dash for normal (D-8) */
+                  ? <span className="muted">—</span>
+                  : <span className={`cap-label ${p.capacityState}`}>{STATE_LABEL[p.capacityState]}</span>}</td>
               </tr>
             ))}
           </tbody>

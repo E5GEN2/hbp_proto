@@ -47,7 +47,7 @@ export function AnnouncementForm({ initial }: { initial: Announcement }) {
             style={{ cursor: pending ? 'wait' : 'pointer' }}
             onClick={() => setS({ ...s, enabled: !s.enabled })}
           />
-          <span>Show promo in the site nav</span>
+          <span style={{ color: 'var(--text)' }}>Show promo in the site nav</span>
         </label>
       </div>
       <div className="form-field">

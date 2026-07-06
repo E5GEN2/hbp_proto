@@ -26,7 +26,11 @@ function bust() {
   revalidatePath('/proxies');
   revalidatePath('/billing');
   revalidatePath('/settings');
-  revalidatePath('/admin', 'layout');
+  // NOTE deliberately no '/admin' revalidation: these are CLIENT-only actions,
+  // the Router Cache is per-browser (a client invalidating admin routes buys
+  // nothing), and admin pages are fully dynamic anyway. Each revalidatePath
+  // adds in-band work to the action response — the renew-redirect measured
+  // ~12s with six of them.
 }
 
 export const clientCancelOrderAction = guarded(async function clientCancelOrderAction(orderId: string) {
@@ -60,7 +64,10 @@ export const clientRequestReplacementAction = guarded(async function clientReque
 export const clientRenewOrderAction = guarded(async function clientRenewOrderAction(orderId: string) {
   const clientId = await getClientUserId();
   const r = await T.clientRenewOrder({ orderId, clientId });
-  bust();
+  // The insufficient-balance branch only computes a checkout redirect — no DB
+  // write happened, so skip revalidation entirely: the client is navigating
+  // away and every busted path made them wait for it (~12s, audit follow-up).
+  if (!('redirect' in r && r.redirect)) bust();
   return r;
 });
 

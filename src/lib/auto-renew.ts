@@ -1,0 +1,137 @@
+// Auto-renew charge execution (Phase 3, user sign-off 2026-07-06).
+//
+// Waterfall per product spec: client balance first; any remainder goes to the
+// card on file. No real card processor is integrated yet — the card leg is
+// chargeable only while ALLOW_MOCK_PAYMENTS permits (same rule as the manual
+// card checkout); once Stripe lands, this is the slot it plugs into. If
+// neither source covers the price, the sweep moves the order into the plan's
+// grace window (or expires it) — see sweep.ts.
+
+import { prisma } from './prisma';
+import { nextPaymentId, nextInvoiceId } from './id';
+import { renewalUnitPrice } from './renewal';
+import { mockPaymentsAllowed } from './runtime-flags';
+import { fmtDate } from './date';
+import type { Prisma } from '@prisma/client';
+
+export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
+
+export type AutoRenewOutcome =
+  | { renewed: true; newExpiry: Date; via: string }
+  | { renewed: false; reason: string };
+
+class AutoRenewFail extends Error {}
+
+function notifId() {
+  return `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRenewOutcome> {
+  if (!order.plan.renewalAllowed) return { renewed: false, reason: 'renewals are disabled for this plan' };
+
+  // A renewal payment the client already started (e.g. crypto awaiting
+  // confirmation) must not be stacked with an automatic charge.
+  const pending = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' } });
+  if (pending) return { renewed: false, reason: `renewal payment ${pending.id} already awaiting confirmation` };
+
+  const price = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  const paymentId = await nextPaymentId();
+  const now = new Date();
+  const base = order.expiresAt && order.expiresAt > now ? order.expiresAt : now;
+  const newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
+  let via = 'balance';
+
+  try {
+    await prisma.$transaction(async tx => {
+      const me = await tx.user.findUnique({ where: { id: order.clientId } });
+      if (!me) throw new AutoRenewFail('client account not found');
+
+      const balance = Number(me.balance);
+      const balancePart = Math.round(Math.min(balance, price) * 100) / 100;
+      const cardPart = Math.round((price - balancePart) * 100) / 100;
+
+      let cardLabel: string | null = null;
+      if (cardPart > 0) {
+        const card = await tx.paymentMethod.findFirst({
+          where: { userId: order.clientId, kind: 'CARD' },
+          orderBy: [{ isDefault: 'desc' }, { addedAt: 'desc' }],
+        });
+        if (!card) {
+          throw new AutoRenewFail(`insufficient balance ($${balance.toFixed(2)} of $${price.toFixed(2)}) and no card on file`);
+        }
+        if (!mockPaymentsAllowed()) {
+          throw new AutoRenewFail(`insufficient balance ($${balance.toFixed(2)} of $${price.toFixed(2)}) — card charging is not available yet`);
+        }
+        cardLabel = `card •• ${card.last4 ?? '????'}`;
+      }
+
+      via = cardPart > 0
+        ? (balancePart > 0 ? `balance $${balancePart.toFixed(2)} + ${cardLabel} $${cardPart.toFixed(2)}` : `${cardLabel}`)
+        : 'balance';
+
+      const fees = cardPart > 0 ? Math.round(cardPart * 3) / 100 : 0;
+      await tx.payment.create({
+        data: {
+          id: paymentId,
+          orderId: order.id,
+          clientId: order.clientId,
+          provider: cardPart > 0 ? 'Stripe' : 'Balance',
+          method: `Auto-renew · ${via}`,
+          gross: price,
+          fees,
+          net: price - fees,
+          status: 'CONFIRMED',
+          confirmedAt: now,
+          source: 'auto-renew',
+        },
+      });
+
+      if (balancePart > 0) {
+        const newBal = Math.round((balance - balancePart) * 100) / 100;
+        await tx.user.update({ where: { id: order.clientId }, data: { balance: newBal } });
+        await tx.balanceLedgerEntry.create({
+          data: {
+            userId: order.clientId, op: 'ORDER_DEBIT', amount: -balancePart, balanceAfter: newBal,
+            refOrderId: order.id, refPaymentId: paymentId, note: `Auto-renew of ${order.id}`,
+          },
+        });
+      }
+
+      const invoiceId = await nextInvoiceId(tx);
+      await tx.invoice.create({
+        data: { id: invoiceId, paymentId, orderId: order.id, clientId: order.clientId, amount: price },
+      });
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          expiresAt: newExpiry,
+          status: 'ACTIVE',
+          renewalBucket: 'RENEWED',
+          lastReminderAt: null,
+          autoRenewLastAttemptAt: null,
+          exception: order.exception === 'RENEWAL_NOT_EXTENDED' ? null : order.exception,
+        },
+      });
+
+      await tx.log.create({
+        data: {
+          actorId: null, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
+          detail: `Auto-renewed by sweep · ${via} · $${price.toFixed(2)} · new expiry ${newExpiry.toISOString().slice(0, 10)}`,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          id: notifId(), userId: order.clientId,
+          title: `Order ${order.id} auto-renewed — new expiry ${fmtDate(newExpiry)}`,
+          kind: 'SUCCESS', link: `/orders/${order.id}`,
+        },
+      });
+    });
+  } catch (e) {
+    if (e instanceof AutoRenewFail) return { renewed: false, reason: e.message };
+    throw e;
+  }
+
+  return { renewed: true, newExpiry, via };
+}

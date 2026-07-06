@@ -260,6 +260,7 @@ model Order {
   renewalAddProxyIds                 String[]            @default([])
   renewalBucket                      RenewalBucket?
   lastReminderAt                     DateTime?
+  autoRenewLastAttemptAt             DateTime?           // last auto-renew charge attempt (sweep retry cadence)
 
   credentialsSentAt                  DateTime?
   credentialsChannel                 CredentialsChannel?

@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from './prisma';
 
@@ -18,8 +17,18 @@ import { prisma } from './prisma';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+// Web Crypto (globalThis.crypto) — available in Node 20 AND the edge bundle
+// webpack builds for instrumentation.ts; the 'crypto' Node builtin is not.
 function randomDigits(len: number) {
-  return crypto.randomInt(0, 10 ** len).toString().padStart(len, '0');
+  const max = 10 ** len;
+  const limit = Math.floor(0x1_0000_0000 / max) * max; // rejection sampling: keep uniform
+  const buf = new Uint32Array(1);
+  let x: number;
+  do {
+    globalThis.crypto.getRandomValues(buf);
+    x = buf[0];
+  } while (x >= limit);
+  return (x % max).toString().padStart(len, '0');
 }
 
 async function uniqueRandomId(prefix: string, exists: (id: string) => Promise<boolean>) {

@@ -147,6 +147,44 @@ export function orderRenewedEmail(orderId: string, newExpiry: string) {
   };
 }
 
+export function autoRenewedEmail(orderId: string, newExpiry: string, via: string) {
+  return {
+    subject: `Order ${orderId} auto-renewed`,
+    html: shell(
+      'Order auto-renewed',
+      p(`Your order <strong>${orderId}</strong> was renewed automatically (${via}). It now runs until <strong>${newExpiry}</strong>.`) +
+      cta('View order', appUrl(`/orders/${orderId}`)),
+    ),
+    text: `Order ${orderId} auto-renewed (${via}) — new expiry ${newExpiry}. ${appUrl(`/orders/${orderId}`)}`,
+  };
+}
+
+export function autoRenewFailedGraceEmail(orderId: string, graceEnd: string, reason: string) {
+  return {
+    subject: `Action needed — auto-renew failed for ${orderId}`,
+    html: shell(
+      'Auto-renew failed',
+      p(`We couldn’t renew order <strong>${orderId}</strong> automatically: ${reason}.`) +
+      p(`Your proxies <strong>keep working until ${graceEnd}</strong>. Top up your balance and we’ll retry, or renew manually from the order page.`) +
+      cta('Renew now', appUrl(`/orders/${orderId}`)),
+    ),
+    text: `Auto-renew failed for ${orderId}: ${reason}. Proxies keep working until ${graceEnd} — top up your balance or renew manually: ${appUrl(`/orders/${orderId}`)}`,
+  };
+}
+
+export function autoRenewFailedExpiredEmail(orderId: string) {
+  return {
+    subject: `Order ${orderId} expired — auto-renew could not complete`,
+    html: shell(
+      'Order expired',
+      p(`We couldn’t renew order <strong>${orderId}</strong> automatically and its term has ended.`) +
+      p('You can renew it manually from the order page — your configuration is preserved.') +
+      cta('Renew order', appUrl(`/orders/${orderId}`)),
+    ),
+    text: `Order ${orderId} expired — auto-renew could not complete. Renew manually: ${appUrl(`/orders/${orderId}`)}`,
+  };
+}
+
 export function depositConfirmedEmail(amount: string, newBalance: string) {
   return {
     subject: 'Balance top-up confirmed',

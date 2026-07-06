@@ -9,6 +9,7 @@ import { authOptions } from './auth';
 import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import { npEnabled, npCreateInvoice } from './nowpayments';
+import { nextPaymentId, nextInvoiceId } from './id';
 import { appUrl } from './app-url';
 import * as T from './transitions';
 
@@ -132,20 +133,8 @@ export const depositAction = guarded(async function depositAction({ amount, meth
   const me = await prisma.user.findUnique({ where: { id: clientId } });
   if (!me) throw new Error('Not found');
 
-  const rows = await prisma.payment.findMany({ where: { id: { startsWith: 'PAY-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  const payId = `PAY-${String(max + 1).padStart(5, '0')}`;
-  const invRows = await prisma.invoice.findMany({ where: { id: { startsWith: 'INV-' } }, select: { id: true } });
-  let invMax = 0;
-  for (const r of invRows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) invMax = Math.max(invMax, parseInt(m[1], 10));
-  }
-  const invId = `INV-${String(invMax + 1).padStart(5, '0')}`;
+  const payId = await nextPaymentId();
+  const invId = await nextInvoiceId();
 
   const isInstant = method === 'card';
   const now = new Date();

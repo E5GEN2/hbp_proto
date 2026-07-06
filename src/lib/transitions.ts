@@ -9,7 +9,7 @@
  */
 
 import { prisma } from './prisma';
-import { nextInvoiceId } from './id';
+import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyId, nextAssignmentId } from './id';
 import { renewalUnitPrice } from './renewal';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
@@ -17,15 +17,12 @@ import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStat
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string; name?: string };
 
-// In-tx ID generators that see pending writes (avoid collisions in batched ops).
+// Batched assignment ids — sequence-backed (see lib/id.ts), atomic under
+// concurrency; the old table-scan max+1 raced (audit B-5).
 async function newAssignmentIds(tx: Tx, count: number): Promise<string[]> {
-  const rows = await tx.assignment.findMany({ where: { id: { startsWith: 'ASN-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return Array.from({ length: count }, (_, i) => `ASN-${String(max + 1 + i).padStart(5, '0')}`);
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) ids.push(await nextAssignmentId(tx));
+  return ids;
 }
 
 async function notify(tx: Tx, userId: string, title: string, kind: NotificationKind = 'INFO', link?: string) {
@@ -825,15 +822,7 @@ export type NewClientInput = {
   acquisition?: string | null;
 };
 
-async function nextUserIdInTx(tx: Tx) {
-  const rows = await tx.user.findMany({ where: { id: { startsWith: 'USR-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `USR-${String(max + 1).padStart(5, '0')}`;
-}
+const nextUserIdInTx = (tx: Tx) => nextUserId(tx);
 
 export async function createClient({ input, actor }: { input: NewClientInput; actor: Actor }) {
   return prisma.$transaction(async tx => {
@@ -922,33 +911,12 @@ export type NewOrderInput = {
   autoRenew?: boolean;
 };
 
-async function nextOrderIdInTx(tx: Tx) {
-  const rows = await tx.order.findMany({ where: { id: { startsWith: 'ORD-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `ORD-${String(max + 1).padStart(5, '0')}`;
-}
-async function nextPaymentIdInTx(tx: Tx) {
-  const rows = await tx.payment.findMany({ where: { id: { startsWith: 'PAY-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `PAY-${String(max + 1).padStart(5, '0')}`;
-}
-async function nextInvoiceIdInTx(tx: Tx) {
-  const rows = await tx.invoice.findMany({ where: { id: { startsWith: 'INV-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `INV-${String(max + 1).padStart(5, '0')}`;
-}
+// ORD-/PAY- are random by product rule (2026-07-06) — uniqueness-checked
+// against the base table, PK is the hard guard. INV- stays sequential via
+// its sequence.
+const nextOrderIdInTx = (_tx: Tx) => nextOrderId();
+const nextPaymentIdInTx = (_tx: Tx) => nextPaymentId();
+const nextInvoiceIdInTx = (tx: Tx) => nextInvoiceId(tx);
 
 export async function createOrderByAdmin({ input, actor }: { input: NewOrderInput; actor: Actor }) {
   return prisma.$transaction(async tx => {
@@ -1095,15 +1063,7 @@ export type RegisterProxyInput = {
   password: string;
 };
 
-async function nextProxyIdInTx(tx: Tx) {
-  const rows = await tx.proxy.findMany({ where: { id: { startsWith: 'PXY-' } }, select: { id: true } });
-  let max = 0;
-  for (const r of rows) {
-    const m = /(\d+)/.exec(r.id);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `PXY-${String(max + 1).padStart(5, '0')}`;
-}
+const nextProxyIdInTx = (tx: Tx) => nextProxyId(tx);
 
 export async function registerProxy({ input, actor }: { input: RegisterProxyInput; actor: Actor }) {
   return prisma.$transaction(async tx => {

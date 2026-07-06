@@ -121,7 +121,19 @@ export async function POST(req: Request) {
 
   const now = new Date();
 
+  try {
   await prisma.$transaction(async tx => {
+    // 0. Authoritative capacity re-check INSIDE the transaction (audit B-5) —
+    //    the pre-check above ran before the (slow) processor call, so a
+    //    concurrent order could have taken the last seats in between.
+    const allocNow = await tx.order.aggregate({
+      _sum: { qty: true },
+      where: { planId, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+    });
+    if (plan.availableQuota - (allocNow._sum.qty ?? 0) < qty) {
+      throw new Error('CAPACITY_EXHAUSTED');
+    }
+
     // 1. Try to assign proxies if auto-provision wanted
     let assignedIds: string[] = [];
     if (wantsAutoProvision) {
@@ -256,6 +268,12 @@ export async function POST(req: Request) {
       },
     });
   });
+  } catch (e: any) {
+    if (e?.message === 'CAPACITY_EXHAUSTED') {
+      return NextResponse.json({ error: 'Capacity unavailable for requested quantity' }, { status: 400 });
+    }
+    throw e;
+  }
 
   return NextResponse.json({ ok: true, orderId, ...(paymentUrl ? { paymentUrl } : {}) });
 }

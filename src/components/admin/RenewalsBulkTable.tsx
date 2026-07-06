@@ -26,7 +26,7 @@ export type RenewalRow = {
 
 // Canon .dt anchor scheme: L = 64px chk + 164px Order ID = 228px fixed (--anchor-l);
 // no right anchor — seven middle cols share the slack by --w weights (--col-total: 26).
-const FLEX = (w: number) => `calc((100% - 228px) * ${w} / 26)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 26)`;
 
 // Single-row Extend label varies by tab (semantics differ, backend is the same
 // extendOrder flow): Extend (expiring) · Revive (grace/expired) · Resolve (paid

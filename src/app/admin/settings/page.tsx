@@ -140,9 +140,9 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
                     <table className="dt">
                       <colgroup>
                         <col style={{ width: 220 }} />
-                        <col style={{ width: 'calc((100% - 220px) * 4 / 9)' }} />
-                        <col style={{ width: 'calc((100% - 220px) * 3 / 9)' }} />
-                        <col style={{ width: 'calc((100% - 220px) * 2 / 9)' }} />
+                        <col style={{ width: 'calc(100% * 4 / 9)' }} />
+                        <col style={{ width: 'calc(100% * 3 / 9)' }} />
+                        <col style={{ width: 'calc(100% * 2 / 9)' }} />
                       </colgroup>
                       <thead><tr>
                         <th className="col-id">Admin</th>

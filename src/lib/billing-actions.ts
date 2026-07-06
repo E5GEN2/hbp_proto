@@ -56,9 +56,10 @@ export const setDefaultPaymentMethodAction = guarded(async function setDefaultPa
   const userId = await getClientUserId();
   const pm = await prisma.paymentMethod.findUnique({ where: { id: pmId } });
   if (!pm || pm.userId !== userId) throw new Error('Forbidden');
-  if (pm.kind === 'BALANCE') throw new Error('Balance is not a default-settable method');
+  // Canon (client-panel.html): every method — Balance included — carries
+  // «Set as default»; default only preselects the method at checkout.
   await prisma.$transaction([
-    prisma.paymentMethod.updateMany({ where: { userId, kind: { not: 'BALANCE' } }, data: { isDefault: false } }),
+    prisma.paymentMethod.updateMany({ where: { userId }, data: { isDefault: false } }),
     prisma.paymentMethod.update({ where: { id: pmId }, data: { isDefault: true } }),
   ]);
   revalidatePath('/billing');

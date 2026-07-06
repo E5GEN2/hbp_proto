@@ -19,7 +19,7 @@ const PAY_EVENT: Record<string, string> = {
 
 // Canon Clients .dt anchor scheme: 360px Client + 164px Client ID + 240px Last
 // event = 764px fixed; middle cols share the slack by --w weights (col-total 9).
-const FLEX = (w: number) => `calc((100% - 764px) * ${w} / 9)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 9)`;
 
 export default async function AdminClientsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const view = searchParams.status ?? 'all';
@@ -121,10 +121,10 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
               <thead><tr>
                 <th className="col-text">Client</th>
                 <th className="col-id">Client ID</th>
-                <th className="col-num">Orders<span className="help-tip" data-tip="Active orders / total orders.">i</span></th>
-                <th className="col-money">LTV<span className="help-tip" data-tip="Lifetime value — sum of all confirmed payments, before refunds.">i</span></th>
-                <th className="col-status">Status<span className="help-tip" data-tip="Primary client lifecycle status: Active / Churned / Blocked. Distinct from Risk.">i</span></th>
-                <th className="col-status">Risk<span className="help-tip" data-tip="Risk is a manual ops/support flag — a contextual state, separate from client Status. Clean clients show as —. Review means manual attention. Flagged means serious concern such as chargeback, abuse, fraud pattern, or policy issue.">i</span></th>
+                <th className="col-num"><span className="th-label">Orders<span className="help-tip" data-tip="Active orders / total orders.">i</span></span></th>
+                <th className="col-money"><span className="th-label">LTV<span className="help-tip" data-tip="Lifetime value — sum of all confirmed payments, before refunds.">i</span></span></th>
+                <th className="col-status"><span className="th-label">Status<span className="help-tip" data-tip="Primary client lifecycle status: Active / Churned / Blocked. Distinct from Risk.">i</span></span></th>
+                <th className="col-status"><span className="th-label">Risk<span className="help-tip" data-tip="Risk is a manual ops/support flag — a contextual state, separate from client Status. Clean clients show as —. Review means manual attention. Flagged means serious concern such as chargeback, abuse, fraud pattern, or policy issue.">i</span></span></th>
                 <th className="col-text">Last event</th>
               </tr></thead>
               <tbody>

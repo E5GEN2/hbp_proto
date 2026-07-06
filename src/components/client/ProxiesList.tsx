@@ -27,7 +27,7 @@ const PAGE_SIZE = 10;
 /* Flexible .dt column width = applyDtAnchors() done in pure CSS:
    usable = 100% − anchor-l (64px chk + 164px Proxy ID = 228px); each col gets
    usable * --w / --col-total (19). table-layout:fixed honours the calc widths. */
-const FLEX = (w: number) => `calc((100% - 228px) * ${w} / 19)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 19)`;
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 const fmtAutoRotate = (m: number) => (m ? `${m} min` : '—');

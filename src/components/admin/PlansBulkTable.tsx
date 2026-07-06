@@ -23,7 +23,7 @@ type Row = {
 
 const STATE_LABEL: Record<Row['capacityState'], string> = { 'sold-out': 'Sold out', low: 'Low availability', available: 'Available' };
 // Canon Plans .dt: 64 chk + 168 Plan + 168 Capacity State = 400 fixed; --col-total 22.
-const FLEX = (w: number) => `calc((100% - 400px) * ${w} / 22)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 22)`;
 
 export function PlansBulkTable({ plans }: { plans: Row[] }) {
   const router = useRouter();
@@ -80,14 +80,14 @@ export function PlansBulkTable({ plans }: { plans: Row[] }) {
             <th className="col-chk"></th>
             <th className="col-text">Plan</th>
             <th className="col-text">Carrier · Region</th>
-            <th className="col-text">Pool<span className="help-tip" data-tip="Named proxy group this plan draws from. One pool can feed multiple plans.">i</span></th>
+            <th className="col-text"><span className="th-label">Pool<span className="help-tip" data-tip="Named proxy group this plan draws from. One pool can feed multiple plans.">i</span></span></th>
             <th className="col-duration">Duration</th>
             <th className="col-money">Price</th>
-            <th className="col-num">Quota<span className="help-tip" data-tip="Configured maximum for this plan. Hard ceiling; set manually.">i</span></th>
-            <th className="col-num">Allocated<span className="help-tip" data-tip="Capacity currently occupied by orders or assignments not yet released.">i</span></th>
-            <th className="col-num">Available<span className="help-tip" data-tip="What the client portal shows as sellable right now. Quota − Allocated. Zero = plan hides from checkout.">i</span></th>
-            <th className="col-status">Status<span className="help-tip" data-tip="Primary plan lifecycle status: Active (sellable) or Disabled (hidden from checkout). One per plan.">i</span></th>
-            <th className="col-status">Capacity State<span className="help-tip" data-tip="Derived selling condition — one label per plan, priority: Sold out → Blocked by grace → Waiting release → Low availability → Available. Contextual, separate from primary Status.">i</span></th>
+            <th className="col-num"><span className="th-label">Quota<span className="help-tip" data-tip="Configured maximum for this plan. Hard ceiling; set manually.">i</span></span></th>
+            <th className="col-num"><span className="th-label">Allocated<span className="help-tip" data-tip="Capacity currently occupied by orders or assignments not yet released.">i</span></span></th>
+            <th className="col-num"><span className="th-label">Available<span className="help-tip" data-tip="What the client portal shows as sellable right now. Quota − Allocated. Zero = plan hides from checkout.">i</span></span></th>
+            <th className="col-status"><span className="th-label">Status<span className="help-tip" data-tip="Primary plan lifecycle status: Active (sellable) or Disabled (hidden from checkout). One per plan.">i</span></span></th>
+            <th className="col-status"><span className="th-label">Capacity State<span className="help-tip" data-tip="Derived selling condition — one label per plan, priority: Sold out → Blocked by grace → Waiting release → Low availability → Available. Contextual, separate from primary Status.">i</span></span></th>
           </tr></thead>
           <tbody>
             {plans.length === 0 ? (

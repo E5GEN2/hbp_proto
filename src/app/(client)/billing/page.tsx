@@ -126,7 +126,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                       <thead>
                         <tr>
                           <th className="col-id">Payment ID</th>
-                          <th className="col-num right">Amount</th>
+                          <th className="col-num">Amount</th>
                           <th className="col-date">Date</th>
                           <th className="col-text">Type</th>
                           <th className="col-id">Order ID</th>
@@ -143,7 +143,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                           return (
                             <tr key={p.id}>
                               <td className="col-id mono">{p.id}</td>
-                              <td className={`col-num right mono ${refunded ? 'positive' : ''}`}>{signed}</td>
+                              <td className={`col-num mono ${refunded ? 'positive' : ''}`}>{signed}</td>
                               <td className="col-date mono">{fmtAdminStamp(p.createdAt)}</td>
                               <td className="col-text">
                                 <div className="tx-type cell-tip" data-tip={desc}>{desc}</div>

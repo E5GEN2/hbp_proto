@@ -67,8 +67,10 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <AdminTopbar crumbs={[{ label: 'Proxies' }]} action={<ProxiesToolbar carriers={carriers} regions={regions} pools={pools} />} />
+      <AdminTopbar crumbs={[{ label: 'Proxies' }]} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        {/* Canon (prototype.html proxies): «+ Register proxy» is the primary
+            at the RIGHT END of the filter bar, not a topbar action. */}
         <FilterBar
           filters={[
             { kind: 'search', name: 'q' },
@@ -76,6 +78,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
             { kind: 'select', name: 'region', label: 'Region: all', size: 'md', options: regions.map(r => ({ value: r, label: r })) },
             { kind: 'select', name: 'pool', label: 'Pool: all', size: 'lg', options: pools.map(p => ({ value: p, label: p })) },
           ]}
+          action={<ProxiesToolbar carriers={carriers} regions={regions} pools={pools} />}
         />
 
         <div className="panel">

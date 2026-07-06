@@ -17,7 +17,7 @@ const REFUNDABLE = ['CONFIRMED', 'PAID'];
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
   const p = await prisma.payment.findUnique({
     where: { id: params.id },
-    include: { client: true, order: { include: { plan: true } } },
+    include: { client: true, order: { include: { plan: true } }, invoice: true },
   });
   if (!p) notFound();
 
@@ -35,15 +35,19 @@ export default async function PaymentDetail({ params }: { params: { id: string }
   const netAfterRefunds = Math.max(0, net - refunded);
 
   // Header actions — real wired actions only, canon grouping/order.
-  // (Resend receipt / Download invoice are unwired Stage-1.5 stubs in the
-  // prototype, so they're intentionally omitted on the live portal.)
+  // (Resend receipt stays an unwired Stage-1.5 stub, so it's omitted.
+  //  Download invoice is REAL now — audit B-8, admin-only PDF.)
   const noteBtn = <AddNoteToolbar key="note" objectType="PAYMENT" objectId={p.id} label="Add note" />;
   const markPaidBtn = <MarkPaidButton key="paid" paymentId={p.id} paymentLabel={`${p.provider} · ${money(gross)}`} />;
   const refundBtn = <RefundButton key="refund" paymentId={p.id} amount={gross} />;
+  const invoiceBtn = p.invoice
+    ? <a key="invoice" className="btn" href={`/api/admin/invoices/${p.invoice.id}/pdf`}>Download invoice</a>
+    : null;
   let actions: ReactNode[];
   if (REFUNDABLE.includes(p.status)) actions = [noteBtn, refundBtn];
   else if (CONFIRMABLE.includes(p.status)) actions = [markPaidBtn, noteBtn];
   else actions = [noteBtn];
+  if (invoiceBtn) actions = [invoiceBtn, ...actions];
 
   const c = p.client;
   const tierBadge = c.tier === 'VIP' ? <span className="client-tier">VIP</span>

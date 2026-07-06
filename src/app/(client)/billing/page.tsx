@@ -170,10 +170,11 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                               </td>
                               <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{p.status.charAt(0) + p.status.slice(1).toLowerCase()}</span></td>
                               <td className="col-action">
+                                {/* No client-facing invoices at launch (decision 2026-07-06) —
+                                    PDFs live in the admin panel only. */}
                                 {p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.externalRef
                                   ? <a className="td-link" href={npInvoiceUrl(p.externalRef)}>Pay now</a>
-                                  /* PDF pipeline not built yet (audit B-8) — honest placeholder, no dead link */
-                                  : p.invoice ? <span style={{ color: 'var(--muted)' }} title="Invoice PDF downloads are coming soon">PDF soon</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                                  : <span style={{ color: 'var(--muted)' }}>—</span>}
                               </td>
                             </tr>
                           );

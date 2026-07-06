@@ -96,7 +96,7 @@ export default async function CheckoutPage({ searchParams }: {
                 <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{resumeOrder.region}</span></div>
                 <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{resumeOrder.qty}</span></div>
               </div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.55, color: 'var(--muted)', maxWidth: 420 }}>
+              <div className="t-note" style={{ maxWidth: 420 }}>
                 {payUrl
                   ? 'Awaiting crypto payment. Finish on the NOWPayments page — the order activates automatically once the transaction is confirmed.'
                   : <>This order is awaiting a payment arranged outside the portal. If you&rsquo;re unsure how to pay, message <a href="https://t.me/US5Gwetrust" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.</>}
@@ -221,10 +221,10 @@ export default async function CheckoutPage({ searchParams }: {
       <ClientTopbar breadcrumb={crumbs} balance={Number(me.balance)} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         {headerHint && (
-          <div style={{
+          <div className="t-note" style={{
             maxWidth: 1280, margin: '0 auto 16px', padding: '10px 14px',
             background: 'var(--info-dim)', color: 'var(--info)',
-            borderRadius: 'var(--radius-md)', fontSize: 12.5,
+            borderRadius: 'var(--radius-md)',
           }}>{headerHint}</div>
         )}
         <CheckoutFlow

@@ -78,7 +78,7 @@ export function ClientProxyHeaderActions({
           <button className="btn primary" onClick={submit} disabled={pending}>{pending ? '…' : 'Submit request'}</button>
         </>}
       >
-        <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+        <div className="t-body" style={{ marginBottom: 12 }}>
           We&rsquo;ll swap this proxy for a healthy one from the same pool. The replacement keeps your order active and shows up here automatically.
         </div>
         <label className="form-label">What went wrong?</label>

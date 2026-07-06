@@ -216,7 +216,7 @@ export function CheckoutFlow({
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
                 {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
                   title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />}
-                {err && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 10 }}>{err}</div>}
+                {err && <div className="t-note" style={{ color: 'var(--danger)', marginTop: 10 }}>{err}</div>}
               </div>
               <div className="panel-footer payment-actions">
                 <button className="btn" onClick={() => setStep('details')}>← Edit order</button>
@@ -252,7 +252,7 @@ export function CheckoutFlow({
               <button className="btn primary" disabled={busy} onClick={confirmCrypto}>{busy ? 'Confirming…' : "I've sent the payment"}</button>
               <button className="btn ghost" onClick={() => setStep('payment')}>← Back to payment method</button>
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Production uses webhook confirmations.</div>
+            <div className="t-note">Production uses webhook confirmations.</div>
           </div>
         </div>
       )}

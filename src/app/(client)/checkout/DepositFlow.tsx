@@ -117,7 +117,7 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
                 <div className="creds-actions"><button className="btn" onClick={copyWallet}>Copy</button></div>
               </div>
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Crypto deposits await on-chain confirmation. Once confirmed, your balance updates automatically.</div>
+            <div className="t-note">Crypto deposits await on-chain confirmation. Once confirmed, your balance updates automatically.</div>
             <Link href={returnTo ?? '/billing'} className="btn ghost">Back to {returnTo ? 'checkout' : 'billing'}</Link>
           </div>
         </div>

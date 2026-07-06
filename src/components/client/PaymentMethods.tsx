@@ -136,7 +136,7 @@ function AddPaymentMethodModal({ open, onClose }: { open: boolean; onClose: () =
         <button className="btn primary" onClick={submit} disabled={pending || !number || !exp}>{pending ? '…' : 'Add card'}</button>
       </>}
     >
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.6 }}>
+      <div className="t-note" style={{ marginBottom: 12 }}>
         Mock card — production would use Stripe Elements. No actual numbers are sent anywhere.
       </div>
       <div className="methods-grid">
@@ -159,7 +159,7 @@ function AddPaymentMethodModal({ open, onClose }: { open: boolean; onClose: () =
           <input className="form-input mono" value={cvc} onChange={e => setCvc(e.target.value)} placeholder="123" />
         </div>
         <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
-          <span style={{ fontSize: 12.5, color: 'var(--text)' }}>Set as default</span>
+          <span className="t-body">Set as default</span>
           <span className={`toggle ${setDefault ? 'on' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setSetDefault(v => !v)} />
         </div>
       </div>

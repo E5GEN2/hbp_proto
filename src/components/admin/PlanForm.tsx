@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import * as A from '@/lib/ui-actions/admin-actions';
 import type { PlanInput } from '@/lib/transitions';
+import { FormSelect, type FormSelectOption } from './FormSelect';
 
 type CatalogOption = { value: string };
 
@@ -122,14 +123,13 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     // always carry a default (Currency).
     const cur = String(form[k] ?? '');
     const stale = cur !== '' && !opts.some(o => o.value === cur);
+    const options: FormSelectOption[] = stale
+      ? [{ value: cur, label: `${cur} (removed from catalog)`, disabled: true }, ...opts]
+      : opts;
     return (
       <div className="form-field">
         <div className="form-label">{label}{required && <span className="req"> *</span>}{tip && <span className="help-tip" data-tip={tip}>i</span>}</div>
-        <select className="form-select" value={cur} onChange={e => set(k, e.target.value)} required={required}>
-          {blank && <option value="">Choose…</option>}
-          {stale && <option value={cur} disabled>{cur} (removed from catalog)</option>}
-          {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
-        </select>
+        <FormSelect value={cur} onChange={v => set(k, v)} options={options} placeholder={blank ? 'Choose…' : null} />
       </div>
     );
   };
@@ -149,11 +149,13 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
 
   // Canon plan-create shows 3 switches (a fresh plan is published/active by
   // default, so no Active toggle). Edit keeps the Active switch.
+  // Create switches carry no help-tips (product ask 2026-07-07 — tips live
+  // only on dropdown fields there); edit keeps the explanatory tips.
   const toggles = isCreate
     ? [
-        Toggle('autoRenewDefault', 'Auto-renew default', AUTO_RENEW_TIP),
-        Toggle('autoProvision', 'Auto-provision on payment confirm', AUTO_PROVISION_TIP),
-        Toggle('renewalAllowed', 'Renewal allowed', RENEWAL_ALLOWED_TIP),
+        Toggle('autoRenewDefault', 'Auto-renew default'),
+        Toggle('autoProvision', 'Auto-provision on payment confirm'),
+        Toggle('renewalAllowed', 'Renewal allowed'),
       ]
     : [
         Toggle('active', 'Active (sellable in client catalog)'),
@@ -186,11 +188,12 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
             )}
             <div className="form-field">
               <div className="form-label">Visibility <span className="req">*</span><span className="help-tip" data-tip="Public appears in client checkout. Internal is admin-only and not shown to clients.">i</span></div>
-              <select className="form-select" value={form.visibility} onChange={e => set('visibility', e.target.value)}>
-                {isCreate && <option value="">Choose…</option>}
-                <option value="PUBLIC">Public</option>
-                <option value="INTERNAL">Internal</option>
-              </select>
+              <FormSelect
+                value={String(form.visibility ?? '')}
+                onChange={v => set('visibility', v)}
+                options={[{ value: 'PUBLIC', label: 'Public' }, { value: 'INTERNAL', label: 'Internal' }]}
+                placeholder={isCreate ? 'Choose…' : null}
+              />
             </div>
           </div>
           <div className="identity-desc">
@@ -223,7 +226,10 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
                 <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} placeholder="e.g. 50" onChange={e => setNum('availableQuota', e.target.value)} />
               </div>
               <div className="form-field">
-                <div className="form-label">Low-capacity threshold (%)</div>
+                {/* The one non-dropdown field that keeps its tip (explicit
+                    product ask 2026-07-07) — "inherit" semantics aren't
+                    self-evident from the placeholder alone. */}
+                <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override of the global default in Settings → Notifications. Leave blank to inherit the global value (85%).">i</span></div>
                 <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="Inherit global" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
               </div>
             </>

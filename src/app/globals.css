@@ -143,6 +143,12 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 }
 .panel-title::before {
   content: "";
+  /* Canon declares inline-block + middle explicitly: inside a flex
+     .panel-header the marker is blockified anyway, but under the block
+     `.panel-section .panel-title` context an undeclared display degrades
+     to `inline` — width/height stop applying and the halo smears into a
+     vertical glow bar instead of the 5px dot. */
+  display: inline-block; vertical-align: middle;
   width: 5px; height: 5px;
   border-radius: 50%;
   background: var(--accent);
@@ -2247,7 +2253,11 @@ thead th .th-label > .help-tip {
 .req { color: var(--danger); font-weight: 700; }
 .panel-section { padding: 18px 22px 22px; }
 .panel-section + .panel-section { border-top: 1px solid var(--border-subtle); }
-.panel-section .panel-title { display: block; margin-bottom: 14px; }
+/* line-height 1.5 = canon: `.panel-title` there never sets line-height, so
+   section labels inherit the body 1.5 (16.5px box); the base rule above pins
+   /1 which shrank section headings to an 11px box. Scoped to the section-label
+   idiom so flex panel-headers keep their current geometry. */
+.panel-section .panel-title { display: block; margin-bottom: 14px; line-height: 1.5; }
 .panel-section .form-grid { padding: 0; gap: 12px 14px; }
 .panel-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .panel-title-row .panel-title { margin-bottom: 0; }

@@ -87,6 +87,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
     <>
       <AdminTopbar crumbs={[{ label: 'Settings' }]} />
       <main style={{ padding: 24, overflowY: 'auto' }}>
+        <div className="detail-page-shell">
         <div className="panel">
           <div className="tabs" id="settingsTabs">
             {TABS.map(t => (
@@ -286,6 +287,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
               </div>
             )}
           </div>
+        </div>
         </div>
       </main>
     </>

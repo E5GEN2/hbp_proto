@@ -217,6 +217,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
         { label: `Order ${order.id}` },
       ]} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div className="detail-page-shell">
         {bannerCopy && (
           <div className={`exc-banner ${bannerTone}`} style={{ marginBottom: 16 }}>
             <svg className="exc-banner-icon" width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -372,6 +373,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
               ]}
             />
           </div>
+        </div>
         </div>
       </main>
     </>

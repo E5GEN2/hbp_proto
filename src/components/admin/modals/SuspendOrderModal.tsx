@@ -15,12 +15,13 @@ export function SuspendOrderModal({
       open={open} onClose={onClose}
       title="Suspend order"
       entityLabel={`Order · ${orderId}`}
-      message="The order pauses but proxies stay reserved. Auto-renew is captured for restoration on resume."
+      message="The order pauses but proxies stay reserved. Auto-renew is captured for restoration on resume. You MUST rotate the proxy credentials on the upstream immediately — the client may have already copied them."
       impact={[
         'Order status → SUSPENDED',
         'Active proxies stay assigned (not released)',
-        'Credentials revoked from client view',
+        'Credentials hidden from client view',
         'Auto-renew turned off; restored when you resume',
+        '⚠ Manual action required: rotate password + regenerate the IP-rotation link on the upstream now (not automated)',
       ]}
       requireReason
       confirmLabel="Suspend"

@@ -9,7 +9,11 @@ export default async function ClientProxiesPage() {
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });
   const assignments = await prisma.assignment.findMany({
-    where: { order: { clientId: userId }, releasedAt: null },
+    // A SUSPENDED order withdraws client access — its proxy credentials must
+    // not appear anywhere in the portal (product decision 2026-07-07). Covers
+    // both suspend paths (single-order Suspend + block-with-suspend) via
+    // order.status, so it holds even where assignment.suspendedAt isn't stamped.
+    where: { order: { clientId: userId, status: { not: 'SUSPENDED' } }, releasedAt: null },
     include: { proxy: true, order: true },
   });
 

@@ -36,10 +36,10 @@ export default async function ClientDashboard() {
       orderBy: { expiresAt: 'asc' },
       include: { plan: true },
     }),
-    prisma.assignment.count({ where: { order: { clientId: userId }, releasedAt: null } }),
+    prisma.assignment.count({ where: { order: { clientId: userId, status: { not: 'SUSPENDED' } }, releasedAt: null } }),
     prisma.payment.findMany({ where: { clientId: userId, status: 'REFUNDED' }, orderBy: { createdAt: 'desc' }, take: 10 }),
     prisma.assignment.findMany({
-      where: { order: { clientId: userId }, releasedAt: null, proxy: { health: { not: 'HEALTHY' } } },
+      where: { order: { clientId: userId, status: { not: 'SUSPENDED' } }, releasedAt: null, proxy: { health: { not: 'HEALTHY' } } },
       include: { proxy: true },
       take: 10,
     }),

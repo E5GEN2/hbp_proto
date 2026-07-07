@@ -233,6 +233,22 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
           </div>
         )}
 
+        {/* Standing obligation while suspended: creds are hidden from the
+            client, but the proxy is still bound and the client may have copied
+            the credentials. Auto-rotation isn't wired (no upstream integration)
+            — the admin must rotate password + IP-rotation link by hand. */}
+        {isSuspended && (
+          <div className="exc-banner danger" style={{ marginBottom: 16 }}>
+            <svg className="exc-banner-icon" width="18" height="18" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1 1 14h14L8 1zM8 6v4M8 12v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <div className="exc-banner-body">
+              <div className="exc-banner-title">Manual action required · rotate proxy credentials</div>
+              <div className="exc-banner-desc">Credentials are hidden from the client, but the proxy is still assigned and the client may have already copied them. Rotate the password and regenerate the IP-rotation link on the upstream now — this is not automated.</div>
+            </div>
+          </div>
+        )}
+
         {/* Header — order identity + status chips + actions */}
         <div className="detail-header">
           <div className="detail-header-left">

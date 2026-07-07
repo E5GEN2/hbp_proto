@@ -294,7 +294,10 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
     });
 
     await notify(tx, ord.clientId, `Order ${orderId} suspended by operator · ${reason}`, 'WARNING', `/orders/${orderId}`);
-    await log(tx, actor.id, 'ORDER.SUSPEND', 'ORDER', orderId, `Suspended · ${reason}`);
+    // Client creds are hidden on suspend, but the proxy stays bound and the
+    // client may have copied them — record the standing manual-rotation duty
+    // (no upstream auto-rotation). Surfaced on the admin order page + modal.
+    await log(tx, actor.id, 'ORDER.SUSPEND', 'ORDER', orderId, `Suspended · ${reason} · creds hidden from client — ROTATE proxy password + IP-rotation link on the upstream manually`);
     return { ok: true };
   });
 }

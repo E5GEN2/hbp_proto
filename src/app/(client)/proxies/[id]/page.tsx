@@ -19,7 +19,9 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
   const proxy = await prisma.proxy.findUnique({
     where: { id: params.id },
     include: {
-      assignments: { where: { releasedAt: null }, include: { order: { include: { plan: true, client: true } } }, take: 1 },
+      // Exclude SUSPENDED orders — a suspended proxy is hidden from the client
+      // (creds withdrawn); direct URL access then 404s via the guard below.
+      assignments: { where: { releasedAt: null, order: { status: { not: 'SUSPENDED' } } }, include: { order: { include: { plan: true, client: true } } }, take: 1 },
       whitelist: { orderBy: { addedAt: 'asc' } },
     },
   });

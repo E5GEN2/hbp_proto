@@ -682,18 +682,38 @@ export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: str
 // set is capped — it maps 1:1 to the (≤3) plan cards on marketing + the portal.
 export const MAX_ACTIVE_PUBLIC_PLANS = 3;
 
-// Throws if the active+public set is already full. `excludePlanId` omits the plan
-// being changed (it's the one transitioning in) so re-saving an already-counted
-// plan never trips the cap. Pass null for creates.
-async function assertActivePublicCapAvailable(tx: Tx, excludePlanId: string | null) {
-  const count = await tx.plan.count({
+// The client sees ONE card per duration (location variants collapse —
+// see plan-tiers.collapseLiveByDuration), so the cap counts DISTINCT
+// DURATIONS, not plan rows: a same-duration sibling in another location
+// joins the existing card and does not consume a slot. `excludePlanId`
+// omits the plan being changed so re-saving never trips the cap.
+async function assertActivePublicCapAvailable(tx: Tx, excludePlanId: string | null, durationDays: number) {
+  const rows = await tx.plan.findMany({
     where: {
       active: true, visibility: 'PUBLIC', deletedAt: null,
       ...(excludePlanId ? { id: { not: excludePlanId } } : {}),
     },
+    select: { durationDays: true },
   });
-  if (count >= MAX_ACTIVE_PUBLIC_PLANS) {
-    throw new Error(`Limit reached: only ${MAX_ACTIVE_PUBLIC_PLANS} plans can be active and public at once. Disable or hide another plan first.`);
+  const durations = new Set(rows.map(r => r.durationDays));
+  if (!durations.has(durationDays) && durations.size >= MAX_ACTIVE_PUBLIC_PLANS) {
+    throw new Error(`Limit reached: only ${MAX_ACTIVE_PUBLIC_PLANS} durations can be active and public at once (one client card per duration). Disable another duration first.`);
+  }
+}
+
+// One active+public plan per (duration, location): a duplicate would be
+// unreachable in checkout — its Location select resolves the plan as
+// plans.find(p => p.region === location), first match wins.
+async function assertDurationRegionUnique(tx: Tx, durationDays: number, region: string, excludePlanId: string | null) {
+  const dup = await tx.plan.findFirst({
+    where: {
+      active: true, visibility: 'PUBLIC', deletedAt: null, durationDays, region,
+      ...(excludePlanId ? { id: { not: excludePlanId } } : {}),
+    },
+    select: { id: true, name: true },
+  });
+  if (dup) {
+    throw new Error(`${dup.id} ("${dup.name}") already sells the ${durationDays}-day plan in ${region} — one active plan per duration + location. Edit that plan, pick another location, or disable it first.`);
   }
 }
 
@@ -704,8 +724,12 @@ export async function togglePlanActive({
     const plan = await tx.plan.findUnique({ where: { id: planId } });
     if (!plan) throw new Error('Plan not found');
     if (plan.active === active) return { ok: true, noop: true };
-    // Enabling a public plan consumes one of the 3 active+public slots.
-    if (active && plan.visibility === 'PUBLIC') await assertActivePublicCapAvailable(tx, planId);
+    // Enabling a public plan: a NEW duration consumes one of the 3 card
+    // slots; a same-duration sibling must not collide on location.
+    if (active && plan.visibility === 'PUBLIC') {
+      await assertActivePublicCapAvailable(tx, planId, plan.durationDays);
+      await assertDurationRegionUnique(tx, plan.durationDays, plan.region, planId);
+    }
     await tx.plan.update({ where: { id: planId }, data: { active } });
     await log(tx, actor.id, 'PLAN.UPDATE', 'PLAN', planId, `${active ? 'Enabled' : 'Disabled'}${reason ? ' · ' + reason : ''} — ${active ? 'visible in client catalog' : 'hidden from client catalog'}`);
     return { ok: true };
@@ -754,7 +778,10 @@ export async function createPlan({ input, actor }: { input: PlanInput; actor: Ac
     if (input.price < 0 || input.price > 99999) throw new Error('Price must be between 0 and 99999');
     if (input.availableQuota < 0 || input.availableQuota > 9999) throw new Error('Quota must be between 0 and 9999');
     if (input.durationDays <= 0) throw new Error('Duration must be > 0');
-    if (input.active && input.visibility === 'PUBLIC') await assertActivePublicCapAvailable(tx, null);
+    if (input.active && input.visibility === 'PUBLIC') {
+      await assertActivePublicCapAvailable(tx, null, input.durationDays);
+      await assertDurationRegionUnique(tx, input.durationDays, input.region, null);
+    }
 
     const id = await nextPlanId(tx, input.carrier, input.durationDays);
     const sku = id.replace('PLAN-', 'SKU-');
@@ -814,13 +841,18 @@ export async function updatePlan({ planId, input, actor }: { planId: string; inp
     }
     if (Object.keys(data).length === 0) return { ok: true, noop: true };
 
-    // Guard the cap when this edit moves the plan INTO the active+public set
-    // (turning active on and/or switching visibility to public).
+    // Guard the card invariants whenever the RESULTING plan is active+public
+    // and this edit changes its membership, duration or location: cap =
+    // 3 distinct durations; (duration, location) unique within the set.
     const willActive = data.active ?? before.active;
     const willVisibility = data.visibility ?? before.visibility;
+    const willDuration = data.durationDays ?? before.durationDays;
+    const willRegion = data.region ?? before.region;
     const wasActivePublic = before.active && before.visibility === 'PUBLIC';
-    if (!wasActivePublic && willActive && willVisibility === 'PUBLIC') {
-      await assertActivePublicCapAvailable(tx, planId);
+    if (willActive && willVisibility === 'PUBLIC'
+        && (!wasActivePublic || data.durationDays !== undefined || data.region !== undefined)) {
+      await assertActivePublicCapAvailable(tx, planId, willDuration);
+      await assertDurationRegionUnique(tx, willDuration, willRegion, planId);
     }
 
     await tx.plan.update({ where: { id: planId }, data });

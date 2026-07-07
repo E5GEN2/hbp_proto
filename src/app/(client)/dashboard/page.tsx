@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { PlanShowcase } from '@/components/client/PlanShowcase';
+import { collapseLiveByDuration } from '@/lib/plan-tiers';
 import { money } from '@/lib/money';
 import { daysLeft, fmtAdminStamp } from '@/lib/date';
 
@@ -210,9 +211,10 @@ async function EmptyPlans() {
     where: { active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { durationDays: 'asc' },
   });
-  // Same cards as the marketing site + catalog — only price + duration are live.
-  const lite = plans
+  // Same cards as the marketing site + catalog — one card per duration
+  // (location variants collapse; Location is chosen inside checkout).
+  const lite = collapseLiveByDuration(plans
     .filter(p => p.capacityState !== 'SOLD_OUT')
-    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) }));
+    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) })));
   return <PlanShowcase plans={lite} hrefFor={d => `/checkout?duration=${d}`} />;
 }

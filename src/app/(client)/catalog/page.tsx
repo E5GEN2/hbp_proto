@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { PlanShowcase } from '@/components/client/PlanShowcase';
+import { collapseLiveByDuration } from '@/lib/plan-tiers';
 
 export default async function CatalogPage() {
   const session = await getServerSession(authOptions);
@@ -11,10 +12,11 @@ export default async function CatalogPage() {
     where: { active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { durationDays: 'asc' },
   });
-  // Only price + duration are dynamic; each active+public plan is one card (cap 3).
-  const sellable = plans
+  // One card per DURATION (same-duration location variants collapse; the
+  // Location choice lives inside checkout). Cap 3 durations.
+  const sellable = collapseLiveByDuration(plans
     .filter(p => p.capacityState !== 'SOLD_OUT')
-    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) }));
+    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) })));
 
   return (
     <>

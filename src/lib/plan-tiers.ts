@@ -3,7 +3,8 @@
 //
 // Rule (locked with the user): only PRICE and DURATION are dynamic — everything
 // else on a card (eyebrow, feature list, ribbon, button style) is a fixed template
-// applied BY POSITION to the (≤3) active+public plans sorted by duration:
+// applied BY POSITION to the (≤3) DISTINCT DURATIONS sorted ascending (same-
+// duration location variants collapse into one card via collapseLiveByDuration):
 //   slot 0 → Starter, slot 1 → Best value / Most popular (gold), slot 2 → Pro.
 // The 3-card cap is enforced upstream (MAX_ACTIVE_PUBLIC_PLANS in transitions).
 
@@ -58,6 +59,21 @@ export const PLAN_TIER_TEMPLATES: PlanTierTemplate[] = [
 ];
 
 export type LivePlanLite = { durationDays: number; price: number };
+
+// One client-facing card per DURATION. Same-duration plans (location variants
+// — e.g. New York vs Texas) collapse into a single card; the Location choice
+// lives inside checkout, which reprices per selected location. The card shows
+// the cheapest location's price. Every showcase (marketing, catalog,
+// dashboard) must pass its live plans through this before building cards —
+// otherwise duplicates break the by-position tier templates above.
+export function collapseLiveByDuration(live: LivePlanLite[]): LivePlanLite[] {
+  const byDur = new Map<number, LivePlanLite>();
+  for (const p of live) {
+    const cur = byDur.get(p.durationDays);
+    if (!cur || p.price < cur.price) byDur.set(p.durationDays, p);
+  }
+  return [...byDur.values()].sort((a, b) => a.durationDays - b.durationDays);
+}
 
 const CHECK =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 12 10 18 20 6"></polyline></svg>';

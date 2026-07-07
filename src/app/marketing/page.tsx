@@ -1,7 +1,7 @@
 import './marketing.css';
 import type { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
-import { buildPlanCardsHtml } from '@/lib/plan-tiers';
+import { buildPlanCardsHtml, collapseLiveByDuration } from '@/lib/plan-tiers';
 import { getAnnouncement, renderPromoHtml } from '@/lib/announcement';
 import { renderMarketingBody } from './_body';
 import { MarketingView } from './MarketingView';
@@ -21,17 +21,18 @@ const buyHref = (days: number) =>
   `/login?return=${encodeURIComponent(`/checkout?duration=${days}&qty=1&autoExtend=1&ref=site`)}`;
 
 export default async function MarketingPage() {
-  // Plan cards come entirely from live admin data: each active + public plan is
-  // one card (price + duration), mapped to the locked template by position
+  // Plan cards come entirely from live admin data: one card per DISTINCT
+  // DURATION (same-duration location variants collapse — the Location choice
+  // lives inside checkout), mapped to the locked template by position
   // (shared with the client portal — see src/lib/plan-tiers.ts). No hardcoded
   // prices/durations.
   const plans = await prisma.plan.findMany({
     where: { active: true, visibility: 'PUBLIC', deletedAt: null },
     orderBy: { durationDays: 'asc' },
   });
-  const live = plans
+  const live = collapseLiveByDuration(plans
     .filter((p) => p.capacityState !== 'SOLD_OUT')
-    .map((p) => ({ durationDays: p.durationDays, price: Number(p.price) }));
+    .map((p) => ({ durationDays: p.durationDays, price: Number(p.price) })));
   const planCards =
     buildPlanCardsHtml(live, {
       hrefFor: buyHref,

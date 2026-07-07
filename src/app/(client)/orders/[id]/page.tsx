@@ -106,7 +106,14 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
                     ))}
                   </div>
                 </div>
-                {order.assignments.length > 0 && (
+                {order.status === 'SUSPENDED' ? (
+                  <div className="panel">
+                    <div className="panel-header"><span className="panel-title">Assigned Proxies</span></div>
+                    <div className="panel-body">
+                      <span className="muted">This order is suspended — proxy access has been withdrawn. Contact support to resume.</span>
+                    </div>
+                  </div>
+                ) : order.assignments.length > 0 && (
                   <div className="panel">
                     <div className="panel-header">
                       <span className="panel-title">Assigned Proxies</span>

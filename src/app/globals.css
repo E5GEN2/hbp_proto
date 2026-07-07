@@ -1172,8 +1172,10 @@ table.dt { table-layout: fixed; }
 }
 .help-floater.visible { display: block; }
 /* Cream theme carries far less ambient contrast than the admin dark —
-   soften the floater shadow accordingly. */
-.theme-client .help-floater { box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
+   soften the floater shadow accordingly. The floater is body-attached and
+   carries the portal theme class ITSELF (TipFloater copies it so the theme
+   variables resolve on it) — match both selector forms. */
+.theme-client .help-floater, .help-floater.theme-client { box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
 
 /* Canon truncation-tooltip wrapper (Design Code §3.4) — ellipsis like col-*,
    plus data-tip so the floater opens on hover ONLY when actually clipped. */

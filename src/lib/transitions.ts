@@ -336,8 +336,29 @@ export async function extendOrder({
     if (!ord) throw new Error('Order not found');
     if (ord.status === 'CANCELLED') throw new Error('Cannot extend a cancelled order');
 
+    const now = new Date();
     const days = additionalDays ?? ord.plan.durationDays;
-    const base = ord.expiresAt && ord.expiresAt > new Date() ? ord.expiresAt : new Date();
+
+    // An EXPIRED order has had its proxies auto-released to the pool — a bare
+    // term shift would reactivate it with nothing assigned. Re-provision
+    // instead (fresh proxies pool-first; short pool → PAID_NOT_PROVISIONED
+    // with the clock held for manual Assign).
+    if (ord.status === 'EXPIRED') {
+      const repro = await reprovisionRenewedOrder(tx, ord, actor.id, now);
+      if (repro) {
+        await tx.order.update({ where: { id: orderId }, data: repro.data });
+        await notify(tx, ord.clientId,
+          repro.fullyAssigned
+            ? `Order ${orderId} renewed — ${ord.qty} fresh ${ord.qty === 1 ? 'proxy' : 'proxies'} assigned`
+            : `Order ${orderId} renewed — proxies are being provisioned`,
+          'SUCCESS', `/orders/${orderId}`);
+        await log(tx, actor.id, 'ORDER.EXTEND', 'ORDER', orderId,
+          `Extended after expiry · re-provisioned ${repro.assignedCount}/${ord.qty} · method=${paymentMethod ?? 'comp'}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
+        return { ok: true, newExpiry: repro.fullyAssigned ? new Date(now.getTime() + ord.plan.durationDays * 86_400_000) : null };
+      }
+    }
+
+    const base = ord.expiresAt && ord.expiresAt > now ? ord.expiresAt : now;
     const newExpiry = new Date(base.getTime() + days * 86_400_000);
 
     await tx.order.update({
@@ -358,6 +379,71 @@ export async function extendOrder({
     await log(tx, actor.id, 'ORDER.EXTEND', 'ORDER', orderId, `Extended ${days} days · method=${paymentMethod ?? 'comp'}`);
     return { ok: true, newExpiry };
   });
+}
+
+/**
+ * Renewal-of-EXPIRED re-provisioning (product decision 2026-07-07: proxies
+ * return to the pool the moment an order expires). Extending the term is then
+ * not enough — the client paid and holds nothing. Re-run the activation
+ * contract instead, exactly like a new order:
+ *   · plan.autoProvision → pool-first pick (plan.pool, then carrier+region);
+ *     full → ACTIVE with a FRESH term from now; short → PROVISIONING +
+ *     PAID_NOT_PROVISIONED with the clock held (expiresAt null) until manual
+ *     Assign stamps the full term (see assignProxyManually).
+ *   · autoProvision OFF → PROVISIONING, manual fulfilment, clock held.
+ *
+ * Returns null when the order still holds live assignments — the caller then
+ * applies its normal "shift expiresAt" extension. Used by every path that can
+ * reactivate an EXPIRED order: settleAwaitingPayment (crypto renewal),
+ * checkout/place (balance renewal), extendOrder (admin Extend).
+ */
+export async function reprovisionRenewedOrder(
+  tx: Tx,
+  ord: { id: string; qty: number; region: string; activatedAt: Date | null; plan: { carrier: string; pool: string; durationDays: number; autoProvision: boolean } },
+  actorId: string,
+  now: Date,
+): Promise<null | { fullyAssigned: boolean; assignedCount: number; data: Prisma.OrderUpdateInput }> {
+  const live = await tx.assignment.count({ where: { orderId: ord.id, releasedAt: null } });
+  if (live > 0) return null; // proxies still bound — plain term extension applies
+
+  let assignedCount = 0;
+  if (ord.plan.autoProvision) {
+    const candidates = await tx.proxy.findMany({
+      where: { carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
+      take: ord.qty,
+    });
+    if (candidates.length < ord.qty) {
+      const more = await tx.proxy.findMany({
+        where: { carrier: ord.plan.carrier, region: ord.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
+        take: ord.qty - candidates.length,
+      });
+      candidates.push(...more);
+    }
+    const ids = await newAssignmentIds(tx, candidates.length);
+    for (let i = 0; i < candidates.length; i++) {
+      await tx.assignment.create({
+        data: { id: ids[i], orderId: ord.id, proxyId: candidates[i].id, actorId, assignedAt: now },
+      });
+      await tx.proxy.update({ where: { id: candidates[i].id }, data: { status: 'ASSIGNED', currentOrderId: ord.id } });
+      assignedCount++;
+    }
+  }
+
+  const fullyAssigned = ord.plan.autoProvision && assignedCount >= ord.qty;
+  return {
+    fullyAssigned, assignedCount,
+    data: {
+      status: fullyAssigned ? 'ACTIVE' : 'PROVISIONING',
+      activatedAt: ord.activatedAt ?? (fullyAssigned ? now : null),
+      expiresAt: fullyAssigned ? new Date(now.getTime() + ord.plan.durationDays * 86_400_000) : null,
+      credentialsSentAt: fullyAssigned ? now : null,
+      credentialsChannel: null,
+      renewalBucket: 'RENEWED',
+      lastReminderAt: null,
+      exception: ord.plan.autoProvision && !fullyAssigned ? 'PAID_NOT_PROVISIONED' : null,
+      excInfo: ord.plan.autoProvision && !fullyAssigned ? `Renewal re-provisioning — pool had ${assignedCount}/${ord.qty}` : null,
+    },
+  };
 }
 
 export async function assignProxyManually({

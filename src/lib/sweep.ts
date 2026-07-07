@@ -12,8 +12,11 @@ import type { RenewalBucket } from '@prisma/client';
  *      first (balance → card waterfall, see auto-renew.ts; retried every 24h
  *      inside the plan's grace window, during which the order STAYS ACTIVE) —
  *      only then EXPIRED. Non-auto-renew orders expire immediately as before.
- *      Assignments are PRESERVED — the grace window keeps the proxies bound
- *      (LIFECYCLE_CONTRACT l.87); auto-release after grace stays deferred.
+ *      On the EXPIRED transition the proxies are RELEASED to the pool in the
+ *      same transaction (product decision 2026-07-07 — immediate, not after
+ *      grace) with security-reset stamps; renewal of an expired order
+ *      re-provisions fresh proxies (reprovisionRenewedOrder). Step 1b is the
+ *      catch-up for EXPIRED orders that still hold assignments.
  *   2. renewalBucket classifier — drives admin Renewals tabs + dashboard
  *      Expiring-soon: H24 / D3 / D7 for approaching expiry, GRACE while inside
  *      the plan's grace window after expiry, EXPIRED past it. RENEWED is sticky
@@ -41,8 +44,10 @@ export type SweepResult = {
   skipped?: boolean;
 };
 
-// Default matches the seed (`autoReleaseAfterGrace: true`) when the flag row
-// is absent. Admin can disable it for custom contracts (Settings → Flags).
+// Kill-switch for the release-on-expiry step (Settings → Flags; admin can
+// disable for custom contracts). Key kept as `autoReleaseAfterGrace` for
+// seed/DB continuity — semantics are now "release on expiry" (2026-07-07).
+// Default matches the seed (true) when the flag row is absent.
 async function autoReleaseEnabled(): Promise<boolean> {
   const row = await prisma.systemSetting.findUnique({ where: { key: 'autoReleaseAfterGrace' } });
   return row ? row.value === true : true;
@@ -136,6 +141,8 @@ export async function runSweep(): Promise<SweepResult> {
       }
 
       const bucket = targetBucket({ expiresAt: o.expiresAt, renewalBucket: o.renewalBucket, graceHours: o.plan.gracePeriodHours }, now);
+      const releaseNow = await autoReleaseEnabled();
+      let releasedHere = 0;
       await prisma.$transaction(async tx => {
         const fresh = await tx.order.findUnique({ where: { id: o.id }, select: { status: true } });
         if (fresh?.status !== 'ACTIVE') return; // renewed/cancelled since the read
@@ -143,42 +150,61 @@ export async function runSweep(): Promise<SweepResult> {
           where: { id: o.id },
           data: { status: 'EXPIRED', renewalBucket: bucket },
         });
+        // Release proxies to the pool IMMEDIATELY on expiry (product decision
+        // 2026-07-07): assignments closed with reason ORDER_EXPIRED, proxies →
+        // AVAILABLE with the same security-reset stamps cancelOrder /
+        // returnProxyToPool use (password + IP-rotation markers — the next
+        // client never inherits live credentials). Client views filter
+        // releasedAt:null, so credentials vanish at the same moment. Renewal
+        // of an expired order re-provisions fresh proxies
+        // (reprovisionRenewedOrder). Grace remains the auto-renew retry /
+        // renewal-reminder window only — it no longer holds inventory.
+        if (releaseNow) {
+          const live = await tx.assignment.findMany({ where: { orderId: o.id, releasedAt: null } });
+          const releasedAt = new Date(now);
+          for (const a of live) {
+            await tx.assignment.update({
+              where: { id: a.id },
+              data: { releasedAt, reason: 'ORDER_EXPIRED', reasonDetail: 'Auto-released on expiry' },
+            });
+            await tx.proxy.update({
+              where: { id: a.proxyId },
+              data: { status: 'AVAILABLE', currentOrderId: null, securityResetAt: releasedAt, passwordRotatedAt: releasedAt, ipRotatedAt: releasedAt },
+            });
+          }
+          releasedHere = live.length;
+        }
       });
       expired++;
+      released += releasedHere;
       await notify(o.clientId,
         autoRenewGaveUp
-          ? `Order ${o.id} expired — auto-renew could not complete. Renew manually to restore your proxies.`
-          : `Order ${o.id} expired on ${fmtDate(o.expiresAt)} — renew to keep your proxies`,
+          ? `Order ${o.id} expired — auto-renew could not complete. Renew to get fresh proxies.`
+          : `Order ${o.id} expired on ${fmtDate(o.expiresAt)} — renew to get fresh proxies`,
         'WARNING', `/orders/${o.id}`);
       if (autoRenewGaveUp && o.client.emailRenewal) {
         await sendEmail({ to: o.client.email, ...autoRenewFailedExpiredEmail(o.id) });
       }
       await log('ORDER.EXPIRE', 'ORDER', o.id,
-        `Expired by sweep · was due ${o.expiresAt?.toISOString() ?? '—'} · bucket=${bucket ?? '—'}${autoRenewGaveUp ? ' · auto-renew exhausted' : ''}`);
+        `Expired by sweep · was due ${o.expiresAt?.toISOString() ?? '—'} · bucket=${bucket ?? '—'}${releasedHere ? ` · released ${releasedHere} to pool` : ''}${autoRenewGaveUp ? ' · auto-renew exhausted' : ''}`);
     }
 
-    // ── 1b. Auto-release proxies once the grace window is fully over ────────
-    //   Expiry (step 1) intentionally KEEPS assignments through grace
-    //   (LIFECYCLE_CONTRACT). This returns them to the pool afterwards:
-    //   assignments closed with reason ORDER_EXPIRED, proxies → AVAILABLE
-    //   with the same security-reset stamps cancelOrder/returnProxyToPool
-    //   use (password + IP rotation markers — the next client never inherits
-    //   live credentials). Gated by the autoReleaseAfterGrace flag; until now
-    //   this was a daily manual admin chore (report finding #5).
+    // ── 1b. Safety net: EXPIRED orders still holding live assignments ───────
+    //   Catches orders that expired before this shipped, expiries that raced
+    //   the flag, or periods when the admin had auto-release toggled off.
+    //   Same release semantics as step 1.
     if (await autoReleaseEnabled()) {
       const stranded = await prisma.order.findMany({
-        where: { status: 'EXPIRED', expiresAt: { not: null }, assignments: { some: { releasedAt: null } } },
-        include: { plan: { select: { gracePeriodHours: true } }, assignments: { where: { releasedAt: null } } },
+        where: { status: 'EXPIRED', assignments: { some: { releasedAt: null } } },
+        include: { assignments: { where: { releasedAt: null } } },
       });
       for (const o of stranded) {
-        const graceEnd = o.expiresAt!.getTime() + o.plan.gracePeriodHours * 3_600_000;
-        if (now < graceEnd) continue; // still inside grace — proxies stay bound
         const releasedAt = new Date(now);
         await prisma.$transaction(async tx => {
           for (const a of o.assignments) {
             await tx.assignment.update({
               where: { id: a.id },
-              data: { releasedAt, reason: 'ORDER_EXPIRED', reasonDetail: 'Auto-released after grace window' },
+              data: { releasedAt, reason: 'ORDER_EXPIRED', reasonDetail: 'Auto-released on expiry (catch-up)' },
             });
             await tx.proxy.update({
               where: { id: a.proxyId },
@@ -188,10 +214,10 @@ export async function runSweep(): Promise<SweepResult> {
         });
         released += o.assignments.length;
         await notify(o.clientId,
-          `Order ${o.id}: the grace period ended and its proxies were released. Renew to get fresh proxies.`,
+          `Order ${o.id} expired — its proxies were released. Renew to get fresh proxies.`,
           'INFO', `/orders/${o.id}`);
         await log('ORDER.RELEASE', 'ORDER', o.id,
-          `Auto-released ${o.assignments.length} ${o.assignments.length === 1 ? 'proxy' : 'proxies'} after grace · pool restored, credentials/IP rotation markers stamped`);
+          `Auto-released ${o.assignments.length} ${o.assignments.length === 1 ? 'proxy' : 'proxies'} on expiry (catch-up) · pool restored, credentials/IP rotation markers stamped`);
       }
     }
 

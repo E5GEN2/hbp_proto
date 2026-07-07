@@ -54,7 +54,7 @@ export function SystemFlagsForm({ initial }: {
       <div className="form-field full"><div className="subsection-title">Operational flags</div></div>
       <FlagToggle label="Auto-provision proxies on order paid" tip="When payment confirms, pick an available proxy from the plan's pool automatically." on={state.systemAutoProvisionOnPayment} onClick={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
       <FlagToggle label="Auto-replace on faulty-proxy detection" tip="If a proxy fails health checks, queue a replacement from the same pool without waiting for an admin." on={state.autoReplaceOnFaulty} onClick={() => flip('autoReplaceOnFaulty')} pending={pending} />
-      <FlagToggle label="Auto-release proxies after grace window" tip="Once grace ends, return the proxy to the pool. Disable only for custom contracts." on={state.autoReleaseAfterGrace} onClick={() => flip('autoReleaseAfterGrace')} pending={pending} />
+      <FlagToggle label="Auto-release proxies on order expiry" tip="The moment an order expires its proxies return to the pool (credentials reset) and vanish from the client portal; renewal assigns fresh ones. Disable only for custom contracts." on={state.autoReleaseAfterGrace} onClick={() => flip('autoReleaseAfterGrace')} pending={pending} />
       <FlagToggle label="Require 2FA for every refund action" on={state.require2FAForRefund} onClick={() => flip('require2FAForRefund')} pending={pending} />
       <FlagToggle label="Require internal note for suspend / block" on={state.requireNoteOnSuspend} onClick={() => flip('requireNoteOnSuspend')} pending={pending} />
       <div className="form-field full">

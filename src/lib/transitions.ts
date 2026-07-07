@@ -72,7 +72,6 @@ export async function markPaymentPaid({
       const ord = pay.order;
       const plan = ord.plan;
       const willActivate = plan.autoProvision;
-      const expiresAt = willActivate ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
 
       // Try to assign proxies if auto-provision
       let assignedCount = 0;
@@ -101,6 +100,11 @@ export async function markPaymentPaid({
       }
 
       const fullyAssigned = assignedCount >= ord.qty;
+      // Start the clock only on full activation — a PAID_NOT_PROVISIONED order
+      // waiting on a manual Assign must not burn its term while it waits. This
+      // matches checkout/place and settle-payment (both null-until-ACTIVE);
+      // Assign then stamps now+durationDays when the last proxy lands (P1 #2).
+      const expiresAt = willActivate && fullyAssigned ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
       await tx.order.update({
         where: { id: ord.id },
         data: {
@@ -362,7 +366,7 @@ export async function assignProxyManually({
   return prisma.$transaction(async tx => {
     const ord = await tx.order.findUnique({
       where: { id: orderId },
-      include: { assignments: { where: { releasedAt: null } } },
+      include: { plan: true, assignments: { where: { releasedAt: null } } },
     });
     if (!ord) throw new Error('Order not found');
 
@@ -387,7 +391,9 @@ export async function assignProxyManually({
         data: {
           status: 'ACTIVE',
           activatedAt: ord.activatedAt ?? now,
-          expiresAt: ord.expiresAt ?? new Date(now.getTime() + 30 * 86_400_000),
+          // Honour the plan's real term — was hardcoded +30d, so a 7- or
+          // 90-day plan provisioned via manual Assign got 30 days (P1 #1).
+          expiresAt: ord.expiresAt ?? new Date(now.getTime() + ord.plan.durationDays * 86_400_000),
           credentialsSentAt: ord.credentialsSentAt ?? now,
           credentialsChannel: ord.credentialsChannel ?? null,
           exception: ord.exception === 'PAID_NOT_PROVISIONED' ? null : ord.exception,
@@ -946,7 +952,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     const isInstant = input.paymentMethod === 'comp' || input.paymentMethod === 'stripe';
     const willActivate = isInstant && plan.autoProvision;
     const now = new Date();
-    const expiresAt = willActivate ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+    // (Term is computed as `finalExpires` below, gated on ACTIVE — the order
+    // create uses that; no pay-time expiry here.)
 
     const orderId = await nextOrderIdInTx(tx);
     const payId = await nextPaymentIdInTx(tx);

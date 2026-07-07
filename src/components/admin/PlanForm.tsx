@@ -7,6 +7,11 @@ import * as A from '@/lib/ui-actions/admin-actions';
 import type { PlanInput } from '@/lib/transitions';
 
 type CatalogOption = { value: string };
+
+// Hardlocked (product ask 2026-07-07) — not catalog-driven, managed in code.
+const CURRENCIES: CatalogOption[] = [{ value: 'USD' }, { value: 'RUB' }, { value: 'CNY' }];
+const DEFAULT_POOL = 'Default Pool'; // seeded catalog row; create-mode default
+
 export type PlanFormProps = {
   mode: 'create' | 'edit';
   planId?: string;
@@ -15,7 +20,7 @@ export type PlanFormProps = {
   catalog: {
     carriers: CatalogOption[]; regions: CatalogOption[]; pools: CatalogOption[];
     protocols: CatalogOption[]; rotations: CatalogOption[]; traffic: CatalogOption[];
-    durations: CatalogOption[]; currencies: CatalogOption[];
+    durations: CatalogOption[];
   };
   capacity?: { allocated: number; displayAvailable: number; state: string };
   canDelete?: boolean;
@@ -36,8 +41,8 @@ const DEFAULTS: PlanInput = {
 // Create-mode initial: text/number/select fields empty (Choose… / placeholder),
 // behaviour switches ON — matching prototype.html plan-create exactly.
 const CREATE_BLANK: Record<string, unknown> = {
-  name: '', description: '', visibility: '', carrier: '', region: '', pool: '',
-  durationDays: '', price: '', currency: '', availableQuota: '', protocols: '', rotation: '', traffic: '',
+  name: '', description: '', visibility: '', carrier: '', region: '', pool: DEFAULT_POOL,
+  durationDays: '', price: '', currency: 'USD', availableQuota: '', protocols: '', rotation: '', traffic: '',
   active: true, autoProvision: true, autoRenewDefault: true, renewalAllowed: true,
   preRenewalReminderHours: '', gracePeriodHours: '', renewalDiscountPct: '', lowCapacityThresholdPct: null,
 };
@@ -108,18 +113,20 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     });
   }
 
-  const Sel = (k: string, label: string, opts: CatalogOption[], required = false, tip?: string) => {
+  const Sel = (k: string, label: string, opts: CatalogOption[], required = false, tip?: string, blank = true) => {
     // A plan can hold a value that was since removed from the catalog (values
     // are denormalized strings). A controlled <select> with no matching
     // <option> LOOKS like the first option while the state still holds the
     // stale value — show the truth as a disabled option instead.
+    // `blank=false` drops the Choose… placeholder for hardlocked selects that
+    // always carry a default (Currency).
     const cur = String(form[k] ?? '');
     const stale = cur !== '' && !opts.some(o => o.value === cur);
     return (
       <div className="form-field">
         <div className="form-label">{label}{required && <span className="req"> *</span>}{tip && <span className="help-tip" data-tip={tip}>i</span>}</div>
         <select className="form-select" value={cur} onChange={e => set(k, e.target.value)} required={required}>
-          <option value="">Choose…</option>
+          {blank && <option value="">Choose…</option>}
           {stale && <option value={cur} disabled>{cur} (removed from catalog)</option>}
           {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
         </select>
@@ -203,7 +210,9 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
             <div className="form-label">Price <span className="req">*</span>{!isCreate && <span className="help-tip" data-tip="Per-plan price in the selected Currency. Each plan carries its own price — there is no flat fallback.">i</span>}</div>
             <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} placeholder="e.g. 50" onChange={e => setNum('price', e.target.value)} />
           </div>
-          {Sel('currency', 'Currency', catalog.currencies, true)}
+          {/* Hardlocked trio, default USD — no blank placeholder needed; Sel's
+              stale-value guard still covers a legacy plan on another currency. */}
+          {Sel('currency', 'Currency', CURRENCIES, true, undefined, false)}
           {/* Canon create-plan carries the capacity pair INSIDE Commercial
               Setup (prototype.html plan-create); the edit page moves them to
               the Selling Capacity aside, so render here for create only. */}

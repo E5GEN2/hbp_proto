@@ -218,18 +218,17 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
 
             {tab === 'display' && <DisplayForm initial={{ timeFormat: display.timeFormat ?? 'UTC' }} />}
 
+            {/* Hardlocked kinds are managed in code, not here (product ask
+                2026-07-07): VISIBILITY (Public/Internal) and CURRENCY
+                (USD/RUB/CNY) live in PlanForm; PROTOCOL/ROTATION/TRAFFIC
+                lists are frozen (plan-edit still reads existing rows). */}
             {tab === 'catalog' && (
               <CatalogManager
                 kinds={[
                   { kind: 'CARRIER',    label: 'Carriers' },
-                  { kind: 'REGION',     label: 'Region / Location' },
-                  { kind: 'PROTOCOL',   label: 'Protocols' },
-                  { kind: 'ROTATION',   label: 'Rotation policies' },
-                  { kind: 'TRAFFIC',    label: 'Traffic policies' },
+                  { kind: 'REGION',     label: 'Location' },
                   { kind: 'POOL',       label: 'Proxy pools' },
                   { kind: 'DURATION',   label: 'Durations' },
-                  { kind: 'VISIBILITY', label: 'Visibility' },
-                  { kind: 'CURRENCY',   label: 'Currencies' },
                 ]}
                 items={catalogByKind}
               />

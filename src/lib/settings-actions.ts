@@ -139,6 +139,11 @@ export const removeCatalogItemAction = guarded(async function removeCatalogItemA
   const actor = await getAdminActor();
   const item = await prisma.catalogItem.findUnique({ where: { id } });
   if (!item) throw new Error('Not found');
+  // "Default Pool" is the built-in hardlocked default on plan-create (seeded
+  // by migration) — deleting it would strand every new plan's default value.
+  if (item.kind === 'POOL' && item.value === 'Default Pool') {
+    throw new Error('Default Pool is built-in — it cannot be removed');
+  }
   // Plans reference locations by denormalized region STRING (no FK), so
   // deleting a location in use would strand its plans on a dead value and
   // silently drop them from checkout (which only offers live locations).

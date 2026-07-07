@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { fmtDate } from './date';
 import { attemptAutoRenew } from './auto-renew';
-import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail } from './email';
+import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail, renewalReminderEmail } from './email';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -21,6 +21,9 @@ import type { RenewalBucket } from '@prisma/client';
  *      (reprovisionRenewedOrder); while proxies are still bound (in grace)
  *      renewal is a plain term extension. gracePeriodHours = 0 → release on
  *      the tick after expiry. Kill-switch: autoReleaseAfterGrace flag.
+ *   1c. Pre-renewal reminders: non-auto-renew ACTIVE orders inside their
+ *      plan's preRenewalReminderHours window get ONE bell notification +
+ *      email per term (lastReminderAt gates; renewals reset it).
  *   2. renewalBucket classifier — drives admin Renewals tabs + dashboard
  *      Expiring-soon: H24 / D3 / D7 for approaching expiry, GRACE while inside
  *      the plan's grace window after expiry, EXPIRED past it. RENEWED is sticky
@@ -40,6 +43,7 @@ export type SweepResult = {
   ranAt: string;
   expired: number;
   released: number;
+  reminders: number;
   bucketUpdates: number;
   timedOutPayments: number;
   cancelledOrders: number;
@@ -84,11 +88,11 @@ let running = false;
 
 export async function runSweep(): Promise<SweepResult> {
   const ranAt = new Date().toISOString();
-  if (running) return { ranAt, expired: 0, released: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, skipped: true };
+  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, skipped: true };
   running = true;
   try {
     const now = Date.now();
-    let expired = 0, released = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
+    let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
     let autoRenewed = 0, autoRenewFailed = 0;
 
     // ── 1. Past-due ACTIVE orders: auto-renew attempt first, then expire ────
@@ -202,6 +206,33 @@ export async function runSweep(): Promise<SweepResult> {
       }
     }
 
+    // ── 1c. Pre-renewal reminders ────────────────────────────────────────────
+    //   plan.preRenewalReminderHours was written by the plan form but never
+    //   read — clients learned about expiry only after the fact. One reminder
+    //   per term, for orders WITHOUT auto-renew (auto-renew orders charge
+    //   automatically; their failures get dedicated grace emails).
+    //   lastReminderAt gates repeats; every renewal path resets it to null,
+    //   so each new term reminds once.
+    const reminderDue = await prisma.order.findMany({
+      where: { status: 'ACTIVE', autoRenew: false, lastReminderAt: null, expiresAt: { gt: new Date(now) } },
+      include: { plan: { select: { preRenewalReminderHours: true } }, client: { select: { email: true, emailRenewal: true } } },
+    });
+    for (const o of reminderDue) {
+      const hours = o.plan.preRenewalReminderHours;
+      if (hours <= 0) continue; // plan opted out of reminders
+      if (o.expiresAt!.getTime() - now > hours * 3_600_000) continue; // not in the window yet
+      await prisma.order.update({ where: { id: o.id }, data: { lastReminderAt: new Date(now) } });
+      reminders++;
+      await notify(o.clientId,
+        `Order ${o.id} expires ${fmtDate(o.expiresAt)} — renew to keep your proxies`,
+        'WARNING', `/orders/${o.id}`);
+      if (o.client.emailRenewal) {
+        await sendEmail({ to: o.client.email, ...renewalReminderEmail(o.id, fmtDate(o.expiresAt!)) });
+      }
+      await log('ORDER.REMINDER', 'ORDER', o.id,
+        `Pre-renewal reminder sent · expires ${o.expiresAt!.toISOString()} · window ${hours}h`);
+    }
+
     // ── 2. Re-classify renewal buckets (ACTIVE approaching + EXPIRED aging) ─
     const classifiable = await prisma.order.findMany({
       where: { status: { in: ['ACTIVE', 'EXPIRED'] }, expiresAt: { not: null } },
@@ -241,7 +272,7 @@ export async function runSweep(): Promise<SweepResult> {
       }
     }
 
-    return { ranAt, expired, released, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed };
+    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed };
   } finally {
     running = false;
   }
@@ -258,7 +289,7 @@ export function startSweepLoop() {
   const tick = () => {
     runSweep()
       .then(r => {
-        if (r.expired || r.released || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed) {
+        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed) {
           console.log('[sweep]', JSON.stringify(r));
         }
       })

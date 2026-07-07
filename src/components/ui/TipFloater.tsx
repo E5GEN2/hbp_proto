@@ -10,14 +10,16 @@ export function TipFloater() {
   useEffect(() => {
     const floater = document.createElement('div');
     floater.className = 'help-floater';
-    // Body-attached = OUTSIDE the .theme-admin/.theme-client scope, so the
-    // floater resolved :root (client-light) variables — cream tooltips on the
-    // dark admin. Carry the portal's theme class onto the floater itself so
-    // var(--surface-2) etc. resolve to the correct theme (canon #232938 on
-    // admin, cream on client).
-    const theme = document.querySelector('.theme-admin, .theme-client');
-    if (theme) floater.classList.add(theme.classList.contains('theme-admin') ? 'theme-admin' : 'theme-client');
-    document.body.appendChild(floater);
+    // Mount INSIDE the portal shell, not on <body>: body sits outside the
+    // .theme-admin/.theme-client scope, so the floater resolved :root
+    // (client-light) variables — cream tooltips on the dark admin. As a shell
+    // CHILD it inherits the theme variables; copying the theme CLASS onto the
+    // floater instead is a trap — shell classes carry element-level layout
+    // rules (.theme-admin { min-width: 1280px } stretched the tooltip to a
+    // full-row line with dead space). position:fixed keeps it
+    // viewport-anchored (the shell creates no containing block).
+    const host = document.querySelector('.theme-admin, .theme-client') ?? document.body;
+    host.appendChild(floater);
 
     function show(trigger: Element) {
       const text = (trigger as HTMLElement).dataset.tip;

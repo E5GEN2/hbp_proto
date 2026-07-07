@@ -77,8 +77,7 @@ export function FilterBar({
             key={f.name}
             value={current}
             onChange={v => setParam(f.name, v)}
-            options={f.options}
-            placeholder={f.label}
+            options={[{ value: '', label: f.label }, ...f.options]}
             btnClassName={`form-select ${f.size ? `filter-select-${f.size}` : ''}`}
           />
         );

@@ -10,6 +10,13 @@ export function TipFloater() {
   useEffect(() => {
     const floater = document.createElement('div');
     floater.className = 'help-floater';
+    // Body-attached = OUTSIDE the .theme-admin/.theme-client scope, so the
+    // floater resolved :root (client-light) variables — cream tooltips on the
+    // dark admin. Carry the portal's theme class onto the floater itself so
+    // var(--surface-2) etc. resolve to the correct theme (canon #232938 on
+    // admin, cream on client).
+    const theme = document.querySelector('.theme-admin, .theme-client');
+    if (theme) floater.classList.add(theme.classList.contains('theme-admin') ? 'theme-admin' : 'theme-client');
     document.body.appendChild(floater);
 
     function show(trigger: Element) {

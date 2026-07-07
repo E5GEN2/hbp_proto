@@ -23,6 +23,8 @@ export type PlanFormProps = {
   activitySlot?: ReactNode;
 };
 
+// Edit-mode fallback values. Create starts blank so every select shows the
+// canon "Choose…" placeholder rather than a pre-filled default.
 const DEFAULTS: PlanInput = {
   name: '', description: '', visibility: 'PUBLIC', carrier: 'Verizon', region: 'US East',
   pool: 'Verizon-East-A', durationDays: 30, price: 129, currency: 'USD', availableQuota: 50,
@@ -31,28 +33,61 @@ const DEFAULTS: PlanInput = {
   gracePeriodHours: 48, renewalDiscountPct: 0, lowCapacityThresholdPct: null,
 };
 
+// Create-mode initial: text/number/select fields empty (Choose… / placeholder),
+// behaviour switches ON — matching prototype.html plan-create exactly.
+const CREATE_BLANK: Record<string, unknown> = {
+  name: '', description: '', visibility: '', carrier: '', region: '', pool: '',
+  durationDays: '', price: '', currency: '', availableQuota: '', protocols: '', rotation: '', traffic: '',
+  active: true, autoProvision: true, autoRenewDefault: true, renewalAllowed: true,
+  preRenewalReminderHours: '', gracePeriodHours: '', renewalDiscountPct: '', lowCapacityThresholdPct: null,
+};
+
 const CAP_LABEL: Record<string, string> = { 'sold-out': 'Sold out', low: 'Low availability', available: 'Available' };
 
 export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDelete, notesSlot, activitySlot }: PlanFormProps) {
   const router = useRouter();
-  const [form, setForm] = useState<PlanInput>({ ...DEFAULTS, ...initial } as PlanInput);
+  const isCreate = mode === 'create';
+  const [form, setForm] = useState<Record<string, any>>(
+    isCreate ? { ...CREATE_BLANK, ...initial } : { ...DEFAULTS, ...initial },
+  );
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
-  function set<K extends keyof PlanInput>(k: K, v: PlanInput[K]) { setForm(f => ({ ...f, [k]: v })); }
+  function set(k: string, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
+
+  // Store '' while a numeric field is empty so its placeholder shows and the
+  // required-check can see it as unset; coerce on submit.
+  const setNum = (k: string, raw: string) => set(k, raw === '' ? '' : parseFloat(raw));
 
   function onSubmit() {
     setErr(null);
+
+    if (isCreate) {
+      const required: Array<[unknown, string]> = [
+        [typeof form.name === 'string' ? form.name.trim() : form.name, 'Plan name'],
+        [form.visibility, 'Visibility'], [form.durationDays, 'Duration'], [form.price, 'Price'],
+        [form.currency, 'Currency'], [form.availableQuota, 'Available quota'],
+        [form.carrier, 'Carrier'], [form.region, 'Region / Location'], [form.pool, 'Proxy pool'],
+      ];
+      const missing = required.filter(([v]) => v === '' || v == null).map(([, label]) => label);
+      if (missing.length) { setErr(`Please fill in the required field${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}.`); return; }
+    }
+
+    const num = (v: unknown, fallback = 0) => (v === '' || v == null ? fallback : Number(v));
     const payload: PlanInput = {
-      ...form,
-      durationDays: Number(form.durationDays), price: Number(form.price), availableQuota: Number(form.availableQuota),
-      preRenewalReminderHours: Number(form.preRenewalReminderHours), gracePeriodHours: Number(form.gracePeriodHours),
-      renewalDiscountPct: Number(form.renewalDiscountPct),
-      lowCapacityThresholdPct: form.lowCapacityThresholdPct == null ? null : Number(form.lowCapacityThresholdPct),
+      ...(form as PlanInput),
+      durationDays: num(form.durationDays),
+      price: num(form.price),
+      availableQuota: num(form.availableQuota),
+      preRenewalReminderHours: num(form.preRenewalReminderHours, 72),
+      gracePeriodHours: num(form.gracePeriodHours, 48),
+      renewalDiscountPct: num(form.renewalDiscountPct, 0),
+      lowCapacityThresholdPct:
+        form.lowCapacityThresholdPct === '' || form.lowCapacityThresholdPct == null ? null : Number(form.lowCapacityThresholdPct),
     };
     start(async () => {
       try {
-        if (mode === 'create') {
+        if (isCreate) {
           const r = await A.createPlanAction(payload);
           if (r.ok && r.planId) router.push(`/admin/plans/${r.planId}`);
         } else if (planId) {
@@ -73,17 +108,18 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     });
   }
 
-  const Sel = (k: keyof PlanInput, label: string, opts: CatalogOption[], required = false, tip?: string) => {
+  const Sel = (k: string, label: string, opts: CatalogOption[], required = false, tip?: string) => {
     // A plan can hold a value that was since removed from the catalog (values
     // are denormalized strings). A controlled <select> with no matching
     // <option> LOOKS like the first option while the state still holds the
     // stale value — show the truth as a disabled option instead.
-    const cur = String((form as any)[k] ?? '');
+    const cur = String(form[k] ?? '');
     const stale = cur !== '' && !opts.some(o => o.value === cur);
     return (
       <div className="form-field">
         <div className="form-label">{label}{required && <span className="req"> *</span>}{tip && <span className="help-tip" data-tip={tip}>i</span>}</div>
-        <select className="form-select" value={cur} onChange={e => set(k, e.target.value as any)} required={required}>
+        <select className="form-select" value={cur} onChange={e => set(k, e.target.value)} required={required}>
+          <option value="">Choose…</option>
           {stale && <option value={cur} disabled>{cur} (removed from catalog)</option>}
           {opts.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
         </select>
@@ -92,13 +128,32 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
   };
 
   const Toggle = (k: 'active' | 'autoProvision' | 'autoRenewDefault' | 'renewalAllowed', label: string, tip?: string) => (
-    <div className="toggle-row">
-      <label onClick={() => set(k, !form[k] as any)}>
+    <div className="toggle-row" key={k}>
+      <label onClick={() => set(k, !form[k])}>
         <span className={`toggle-v2 ${form[k] ? 'on' : ''}`} />
         <span className="toggle-label">{label}{tip && <span className="help-tip" data-tip={tip}>i</span>}</span>
       </label>
     </div>
   );
+
+  const AUTO_PROVISION_TIP = 'Controls fulfilment automation AFTER payment confirmation. If ON, the system may assign a proxy from the pool and send credentials automatically. If OFF, an admin assigns the proxy and sends credentials manually. Does NOT control whether payment itself is automatic — payment confirmation may be manual (invoice / crypto) or automatic (Stripe webhook) regardless of this setting.';
+  const AUTO_RENEW_TIP = 'Default state on new orders. Activation requires a saved card or sufficient portal balance.';
+  const RENEWAL_ALLOWED_TIP = 'If OFF, the plan can still be sold but cannot be renewed. Used when retiring a plan while honoring existing orders.';
+
+  // Canon plan-create shows 3 switches (a fresh plan is published/active by
+  // default, so no Active toggle). Edit keeps the Active switch.
+  const toggles = isCreate
+    ? [
+        Toggle('autoRenewDefault', 'Auto-renew default', AUTO_RENEW_TIP),
+        Toggle('autoProvision', 'Auto-provision on payment confirm', AUTO_PROVISION_TIP),
+        Toggle('renewalAllowed', 'Renewal allowed', RENEWAL_ALLOWED_TIP),
+      ]
+    : [
+        Toggle('active', 'Active (sellable in client catalog)'),
+        Toggle('autoProvision', 'Auto-provision on payment confirm', AUTO_PROVISION_TIP),
+        Toggle('autoRenewDefault', 'Auto-renew default', AUTO_RENEW_TIP),
+        Toggle('renewalAllowed', 'Renewal allowed', RENEWAL_ALLOWED_TIP),
+      ];
 
   const formPanel = (
     <div className="panel">
@@ -111,25 +166,24 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           <div className="identity-col">
             <div className="form-field">
               <div className="form-label">Plan name <span className="req">*</span></div>
-              <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} placeholder="e.g. Verizon 30-day East" />
+              <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} placeholder="e.g. Verizon 1m NY" />
             </div>
-            {mode === 'edit' && (
-              <div className="form-field">
-                <div className="form-label">Internal SKU<span className="help-tip" data-tip="Auto-generated using the SKU rule configured in Settings. Default rule includes Duration; optional components may include Carrier and Region. Never shown to clients.">i</span></div>
-                <input className="form-input" value={sku ?? '—'} disabled />
-              </div>
-            )}
+            <div className="form-field">
+              <div className="form-label">Internal SKU<span className="help-tip" data-tip="Auto-generated using the SKU rule configured in Settings. Default rule includes Duration; optional components may include Carrier and Region. Never shown to clients.">i</span></div>
+              <input className="form-input" value={isCreate ? '' : (sku ?? '—')} placeholder={isCreate ? 'Auto · generated by SKU rule' : undefined} disabled />
+            </div>
             <div className="form-field">
               <div className="form-label">Visibility <span className="req">*</span><span className="help-tip" data-tip="Public appears in client checkout. Internal is admin-only and not shown to clients.">i</span></div>
-              <select className="form-select" value={form.visibility} onChange={e => set('visibility', e.target.value as any)}>
+              <select className="form-select" value={form.visibility} onChange={e => set('visibility', e.target.value)}>
+                {isCreate && <option value="">Choose…</option>}
                 <option value="PUBLIC">Public</option>
                 <option value="INTERNAL">Internal</option>
               </select>
             </div>
           </div>
           <div className="identity-desc">
-            <div className="form-label">Description<span className="help-tip" data-tip="Plain text. Shown at client-portal checkout and on the public website's plan card. Keep it 1–2 lines.">i</span></div>
-            <textarea className="form-textarea" value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="Shown at client-portal checkout and on the public plan card. Keep it 1–2 lines." />
+            <div className="form-label">Description<span className="help-tip" data-tip="Internal staff notes for this plan — sourcing quirks, special handling, do-not-renew flags. Never shown to clients, at checkout, or on plan cards.">i</span></div>
+            <textarea className="form-textarea" value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="Internal notes for staff — not shown to clients." />
           </div>
         </div>
       </div>
@@ -140,27 +194,27 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           {Sel('durationDays', 'Duration', catalog.durations, true)}
           <div className="form-field">
             <div className="form-label">Price <span className="req">*</span><span className="help-tip" data-tip="Per-plan price in the selected Currency. Each plan carries its own price — there is no flat fallback.">i</span></div>
-            <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} onChange={e => set('price', parseFloat(e.target.value || '0'))} />
+            <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} placeholder="e.g. 50" onChange={e => setNum('price', e.target.value)} />
           </div>
           {Sel('currency', 'Currency', catalog.currencies, true)}
           {/* Canon create-plan carries the capacity pair INSIDE Commercial
               Setup (prototype.html plan-create); the edit page moves them to
               the Selling Capacity aside, so render here for create only. */}
-          {mode === 'create' && (
+          {isCreate && (
             <>
               <div className="form-field">
                 <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales — sales stop at the cap.">i</span></div>
-                <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => set('availableQuota', parseInt(e.target.value || '0', 10))} />
+                <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} placeholder="e.g. 50" onChange={e => setNum('availableQuota', e.target.value)} />
               </div>
               <div className="form-field">
                 <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override of the global default in Settings → Notifications. Leave blank to inherit the global value (85%).">i</span></div>
-                <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="inherits 15%" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
+                <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="Inherit global" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
               </div>
             </>
           )}
           <div className="form-field">
-            <div className="form-label">Renewal discount (%)<span className="help-tip" data-tip="Applied to every renewal payment for this plan. 0% = full price.">i</span></div>
-            <input className="form-input" type="number" min={0} max={100} step={1} value={form.renewalDiscountPct} onChange={e => set('renewalDiscountPct', parseInt(e.target.value || '0', 10))} />
+            <div className="form-label">Renewal discount<span className="help-tip" data-tip="Applied to every renewal payment for this plan. 0% = full price.">i</span></div>
+            <input className="form-input" type="number" min={0} max={100} step={1} value={form.renewalDiscountPct} placeholder="0%" onChange={e => setNum('renewalDiscountPct', e.target.value)} />
           </div>
         </div>
       </div>
@@ -181,20 +235,17 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
         <div className="panel-title">Lifecycle &amp; Automation</div>
         <div className="lifecycle-grid">
           <div className="lifecycle-col">
-            {Toggle('active', 'Active (sellable in client catalog)')}
-            {Toggle('autoProvision', 'Auto-provision on payment confirm', 'Controls fulfilment automation AFTER payment confirmation. If ON, the system may assign a proxy from the pool and send credentials automatically. If OFF, an admin assigns the proxy and sends credentials manually. Does NOT control whether payment itself is automatic — payment confirmation may be manual (invoice / crypto) or automatic (Stripe webhook) regardless of this setting.')}
-            {Toggle('autoRenewDefault', 'Auto-renew default', 'Default state on new orders. Activation requires a saved card or sufficient portal balance.')}
-            {Toggle('renewalAllowed', 'Renewal allowed', 'If OFF, the plan can still be sold but cannot be renewed. Used when retiring a plan while honoring existing orders.')}
+            {toggles}
           </div>
           <div className="lifecycle-col">
             <div className="lifecycle-fields">
               <div className="form-field">
                 <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="When to send the first renewal reminder, in hours before expiry. Additional reminders are scheduled in Settings → Grace Rules.">i</span></div>
-                <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => set('preRenewalReminderHours', parseInt(e.target.value || '0', 10))} />
+                <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} placeholder="e.g. 72" onChange={e => setNum('preRenewalReminderHours', e.target.value)} />
               </div>
               <div className="form-field">
                 <div className="form-label">Grace period (hours)<span className="help-tip" data-tip="Time after expiry before the proxy is released back to pool. Set 0 to release the moment the order expires.">i</span></div>
-                <input className="form-input" type="number" min={0} max={720} step={1} value={form.gracePeriodHours} onChange={e => set('gracePeriodHours', parseInt(e.target.value || '0', 10))} />
+                <input className="form-input" type="number" min={0} max={720} step={1} value={form.gracePeriodHours} placeholder="e.g. 48" onChange={e => setNum('gracePeriodHours', e.target.value)} />
               </div>
             </div>
           </div>
@@ -205,66 +256,78 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
 
   const capState = capacity?.state ?? 'available';
 
+  // ── Create: single-column page-shell + compact status header (canon). The
+  //    "New plan" title is kept per product ask, rendered in the sans
+  //    `.plan-create-title` (not the mono `.detail-id` used by entity pages).
+  if (isCreate) {
+    return (
+      <div className="page-shell">
+        <div className="detail-header compact">
+          <div className="detail-header-status">
+            <div className="plan-create-title">New plan</div>
+            <span className="badge-soft">Draft · not yet published</span>
+          </div>
+          <div className="detail-header-actions">
+            <Link href="/admin/plans" className="btn">Cancel</Link>
+            <button type="button" className="btn primary" onClick={onSubmit} disabled={pending}>{pending ? 'Saving…' : 'Create plan'}</button>
+          </div>
+        </div>
+        {err && <div className="exc-banner danger" style={{ marginBottom: 0 }}><div className="exc-banner-body"><div className="exc-banner-desc">{err}</div></div></div>}
+        {formPanel}
+      </div>
+    );
+  }
+
   return (
-    <div className="plan-edit-page" style={mode === 'create' ? { maxWidth: 1080 } : undefined}>
+    <div className="plan-edit-page">
       <div className="detail-header">
         <div className="detail-header-left">
-          <div className="detail-id">{mode === 'create' ? (form.name || 'New plan') : form.name}</div>
+          <div className="detail-id">{form.name}</div>
           <div className="detail-chips">
-            {mode === 'edit' ? (
-              <>
-                <span className={`chip ${form.active ? 'active' : 'expired'}`}>{form.active ? 'Active' : 'Disabled'}</span>
-                <span className="badge-soft">{sku ?? planId}</span>
-              </>
-            ) : (
-              <span className="chip expired">Draft · not yet published</span>
-            )}
+            <span className={`chip ${form.active ? 'active' : 'expired'}`}>{form.active ? 'Active' : 'Disabled'}</span>
+            <span className="badge-soft">{sku ?? planId}</span>
           </div>
         </div>
         <div className="detail-header-actions">
           <Link href="/admin/plans" className="btn">Cancel</Link>
-          {mode === 'edit' && canDelete && <button type="button" className="btn danger" onClick={onDelete} disabled={pending}>Delete</button>}
-          <button type="button" className="btn primary" onClick={onSubmit} disabled={pending}>{pending ? 'Saving…' : mode === 'create' ? 'Create plan' : 'Save changes'}</button>
+          {canDelete && <button type="button" className="btn danger" onClick={onDelete} disabled={pending}>Delete</button>}
+          <button type="button" className="btn primary" onClick={onSubmit} disabled={pending}>{pending ? 'Saving…' : 'Save changes'}</button>
         </div>
       </div>
 
       {err && <div className="exc-banner danger" style={{ marginBottom: 0 }}><div className="exc-banner-body"><div className="exc-banner-desc">{err}</div></div></div>}
 
-      {mode === 'edit' ? (
-        <div className="plan-edit-shell">
-          <div className="grid-left">
-            {formPanel}
-            {notesSlot}
-          </div>
-          <aside className="form-aside">
-            <div className="panel">
-              <div className="panel-header"><span className="panel-title">Selling Capacity<span className="help-tip" data-tip="What the client portal is allowed to sell for this plan. Set manually — independent of the physical pool size. The Capacity State below is a derived condition, separate from the plan's primary Status.">i</span></span></div>
-              <div className="panel-section">
-                <div className="form-grid">
-                  <div className="form-field">
-                    <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales.">i</span></div>
-                    <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => set('availableQuota', parseInt(e.target.value || '0', 10))} />
-                  </div>
-                  <div className="form-field">
-                    <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override for the global default in Settings → Notifications → 'Plan capacity > X% full'. Leave blank to inherit (85%).">i</span></div>
-                    <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="inherits 15%" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
-                  </div>
+      <div className="plan-edit-shell">
+        <div className="grid-left">
+          {formPanel}
+          {notesSlot}
+        </div>
+        <aside className="form-aside">
+          <div className="panel">
+            <div className="panel-header"><span className="panel-title">Selling Capacity<span className="help-tip" data-tip="What the client portal is allowed to sell for this plan. Set manually — independent of the physical pool size. The Capacity State below is a derived condition, separate from the plan's primary Status.">i</span></span></div>
+            <div className="panel-section">
+              <div className="form-grid">
+                <div className="form-field">
+                  <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales.">i</span></div>
+                  <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => setNum('availableQuota', e.target.value)} />
                 </div>
-              </div>
-              <div className="panel-section">
-                <div className="kv">
-                  <div className="kv-row"><span className="kv-key">Allocated</span><span className="kv-val">{capacity?.allocated ?? 0}</span></div>
-                  <div className="kv-row"><span className="kv-key">Display available</span><span className="kv-val">{capacity?.displayAvailable ?? 0}</span></div>
-                  <div className="kv-row"><span className="kv-key">Capacity State</span><span className="kv-val"><span className={`cap-label ${capState}`}>{CAP_LABEL[capState] ?? 'Available'}</span></span></div>
+                <div className="form-field">
+                  <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override for the global default in Settings → Notifications → 'Plan capacity > X% full'. Leave blank to inherit (85%).">i</span></div>
+                  <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="inherits 15%" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
                 </div>
               </div>
             </div>
-            {activitySlot}
-          </aside>
-        </div>
-      ) : (
-        formPanel
-      )}
+            <div className="panel-section">
+              <div className="kv">
+                <div className="kv-row"><span className="kv-key">Allocated</span><span className="kv-val">{capacity?.allocated ?? 0}</span></div>
+                <div className="kv-row"><span className="kv-key">Display available</span><span className="kv-val">{capacity?.displayAvailable ?? 0}</span></div>
+                <div className="kv-row"><span className="kv-key">Capacity State</span><span className="kv-val"><span className={`cap-label ${capState}`}>{CAP_LABEL[capState] ?? 'Available'}</span></span></div>
+              </div>
+            </div>
+          </div>
+          {activitySlot}
+        </aside>
+      </div>
     </div>
   );
 }

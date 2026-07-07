@@ -141,7 +141,9 @@ export default async function CheckoutPage({ searchParams }: {
   const presetLocation = renewalOrder ? renewalOrder.region : searchParams.location;
   const presetAutoExtend = renewalOrder ? renewalOrder.autoRenew : searchParams.autoExtend !== '0';
 
-  let planSummaries: { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; description: string; available: number }[];
+  // NB: plan.description is deliberately NOT surfaced here — it's an internal
+  // admin-notes field and must never reach the client bundle.
+  let planSummaries: { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number }[];
   if (renewalOrder) {
     // Single "plan" = the original order's terms; the seats are already held.
     // Price carries the plan's renewal discount (audit B-6) — the same helper
@@ -154,7 +156,6 @@ export default async function CheckoutPage({ searchParams }: {
       carrier: p.carrier,
       price: renewalUnitPrice(Number(p.price), p.renewalDiscountPct),
       autoProvision: p.autoProvision,
-      description: p.description ?? '',
       available: renewalOrder.qty,
     }];
   } else {
@@ -202,7 +203,6 @@ export default async function CheckoutPage({ searchParams }: {
       carrier: p.carrier,
       price: Number(p.price),
       autoProvision: p.autoProvision,
-      description: p.description ?? '',
       available: Math.max(0, p.availableQuota - (allocationByPlan.get(p.id) ?? 0)),
     }));
   }

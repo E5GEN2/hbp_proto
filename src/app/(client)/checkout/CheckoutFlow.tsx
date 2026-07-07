@@ -6,7 +6,7 @@ import { money } from '@/lib/money';
 import { useToast } from '@/components/ui/Toast';
 import { durationLabel, tierFeatures } from '@/lib/catalog';
 
-type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; description: string; available: number };
+type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number };
 
 const WALLET = 'TRX9aB7eFmZxXk4mPzRq8nGdLcVtJwS6Hb';
 const WALLET_SHORT = WALLET.slice(0, 8) + '…' + WALLET.slice(-6);

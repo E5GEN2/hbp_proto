@@ -970,6 +970,15 @@ table.dt { table-layout: fixed; }
 }
 .detail-header-left { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .detail-id { font: 650 18px var(--font-mono); letter-spacing: -0.01em; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* Create-plan: single-column shell + compact status header (canon plan-create).
+   `.plan-create-title` is the one deviation from canon — a sans page title kept
+   per product ask; every other detail page uses the mono `.detail-id`. */
+.page-shell { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.page-shell > .detail-header { margin-bottom: 0; }
+.detail-header.compact { padding: 14px 22px; align-items: center; }
+.detail-header-status { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.plan-create-title { font-family: var(--font-sans); font-size: 18px; font-weight: 650; line-height: 1.2; letter-spacing: -.005em; color: var(--text); }
 .detail-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 

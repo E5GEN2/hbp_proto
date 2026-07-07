@@ -111,10 +111,20 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
 
     let assignedCount = 0;
     if (wantsAutoProvision) {
+      // Pool-first, then widen to any pool of the same carrier+region — the
+      // crypto path used to skip straight to the wide query, diluting the
+      // plan's own pool (P2 #3). Mirrors markPaymentPaid / checkout/place.
       const candidates = await tx.proxy.findMany({
-        where: { carrier: order.plan.carrier, region: order.region, status: 'AVAILABLE', health: 'HEALTHY' },
+        where: { carrier: order.plan.carrier, region: order.region, pool: order.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
         take: order.qty,
       });
+      if (candidates.length < order.qty) {
+        const more = await tx.proxy.findMany({
+          where: { carrier: order.plan.carrier, region: order.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
+          take: order.qty - candidates.length,
+        });
+        candidates.push(...more);
+      }
       for (const p of candidates) {
         const aid = await nextAssignmentId();
         await tx.assignment.create({ data: { id: aid, orderId: order.id, proxyId: p.id, actorId: 'ADM-SYS', assignedAt: now } });

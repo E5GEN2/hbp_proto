@@ -1,19 +1,24 @@
 'use client';
+import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 export type FormSelectOption = { value: string; label?: string; disabled?: boolean };
 
 /* Custom dropdown replacing native <select> (product ask 2026-07-07): the
-   macOS native popup opens over the control, shifted left and sized to its
-   own content. This menu keeps the field's exact width and opens below it.
-   The closed control reuses .form-select so it stays pixel-identical to the
-   native canon field (geometry, chevron, focus halo). */
-export function FormSelect({ value, onChange, options, placeholder = 'Choose…' }: {
+   macOS native popup opens over the control, shifted left, self-sized and
+   always light. This menu keeps the field's exact width, opens below it and
+   follows the theme. The closed control reuses .form-select so it stays
+   pixel-identical to the native canon field (geometry, chevron, focus halo).
+   `placeholder` is button text for the empty state ONLY — it is never
+   rendered as a pickable option (product ask: Choose… must not be a choice). */
+export function FormSelect({ value, onChange, options, placeholder = 'Choose…', disabled = false, wrapStyle, btnStyle }: {
   value: string;
   onChange: (v: string) => void;
   options: FormSelectOption[];
-  /** null = hardlocked select that always carries a value — no blank row */
   placeholder?: string | null;
+  disabled?: boolean;
+  wrapStyle?: CSSProperties;
+  btnStyle?: CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -28,20 +33,21 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
   }, [open]);
 
   const pick = (v: string) => { onChange(v); setOpen(false); };
-  const shown = value === '' ? (placeholder ?? '') : (options.find(o => o.value === value)?.label ?? value);
+  // Option lookup first: a filter select may carry a real '' option
+  // ("All carriers") whose label must win over the placeholder.
+  const current = options.find(o => o.value === value);
+  const shown = current ? (current.label ?? current.value) : (value === '' ? (placeholder ?? '') : value);
 
   return (
-    <div className="form-select-wrap" ref={rootRef}>
-      <button type="button" className="form-select form-select-btn" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+    <div className="form-select-wrap" ref={rootRef} style={wrapStyle}>
+      <button
+        type="button" className="form-select form-select-btn" style={btnStyle} disabled={disabled}
+        aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}
+      >
         <span className="form-select-btn-text">{shown}</span>
       </button>
       {open && (
         <div className="form-select-menu" role="listbox">
-          {placeholder !== null && (
-            <div className={`form-select-opt ${value === '' ? 'selected' : ''}`} role="option" aria-selected={value === ''} onClick={() => pick('')}>
-              {placeholder}
-            </div>
-          )}
           {options.map(o => (
             <div
               key={o.value}

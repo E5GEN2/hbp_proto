@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
 import * as BA from '@/lib/ui-actions/billing-actions';
+import { FormSelect } from '@/components/ui/FormSelect';
 
 type Method = {
   id: string;
@@ -142,9 +143,11 @@ function AddPaymentMethodModal({ open, onClose }: { open: boolean; onClose: () =
       <div className="form-grid-2">
         <div style={{ gridColumn: '1 / -1' }}>
           <label className="form-label">Brand</label>
-          <select className="form-select" value={brand} onChange={e => setBrand(e.target.value)}>
-            <option>Visa</option><option>Mastercard</option><option>American Express</option><option>Discover</option>
-          </select>
+          <FormSelect
+            value={brand}
+            onChange={setBrand}
+            options={[{ value: 'Visa' }, { value: 'Mastercard' }, { value: 'American Express' }, { value: 'Discover' }]}
+          />
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <label className="form-label">Card number</label>

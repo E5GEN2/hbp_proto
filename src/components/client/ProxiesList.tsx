@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
+import { FormSelect } from '@/components/ui/FormSelect';
 
 export type ProxyRow = {
   id: string;
@@ -175,19 +176,19 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
             placeholder=""
           />
         </div>
-        <select
-          className="form-select"
+        <FormSelect
           value={carrier}
-          onChange={e => {
-            setCarrier(e.target.value);
+          onChange={v => {
+            setCarrier(v);
             setPage(1);
           }}
-        >
-          <option value="">All carriers</option>
-          <option>Verizon</option>
-          <option>T-Mobile</option>
-          <option>AT&amp;T</option>
-        </select>
+          options={[
+            { value: '', label: 'All carriers' },
+            { value: 'Verizon' },
+            { value: 'T-Mobile' },
+            { value: 'AT&T' },
+          ]}
+        />
         <div className="filter-divider" />
         <button className="btn" onClick={resetFilters}>
           Reset filters

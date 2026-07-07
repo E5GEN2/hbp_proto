@@ -79,7 +79,7 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
           </select>
         </Field>
         {form.risk !== 'NONE' && (
-          <Field label="Risk note" required span={2} tip="Stored as a CLIENT.NOTE_ADD entry in the audit log after creation, so future support reps can read context.">
+          <Field label="Risk note" required span={2}>
             <textarea className="form-textarea" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2} />
           </Field>
         )}

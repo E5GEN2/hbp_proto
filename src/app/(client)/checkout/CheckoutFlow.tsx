@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { money } from '@/lib/money';
 import { useToast } from '@/components/ui/Toast';
 import { durationLabel, tierFeatures } from '@/lib/catalog';
+import { FormSelect } from '@/components/ui/FormSelect';
 
 type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number };
 
@@ -166,13 +167,15 @@ export function CheckoutFlow({
                 <div className="panel">
                   <div className="panel-header"><span className="panel-title">Location</span></div>
                   <div className="panel-body">
-                    <select className="form-select" value={location} onChange={e => setLocation(e.target.value)}>
-                      {plans.map(p => (
-                        <option key={p.id} value={p.region} disabled={p.available === 0}>
-                          {p.region}{p.available > 0 && p.available <= 3 ? ' · limited' : ''}{p.available === 0 ? ' (sold out)' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <FormSelect
+                      value={location}
+                      onChange={setLocation}
+                      options={plans.map(p => ({
+                        value: p.region,
+                        label: `${p.region}${p.available > 0 && p.available <= 3 ? ' · limited' : ''}${p.available === 0 ? ' (sold out)' : ''}`,
+                        disabled: p.available === 0,
+                      }))}
+                    />
                     <div className="help-text">Choose where your proxies are based.</div>
                   </div>
                 </div>

@@ -98,7 +98,7 @@ export function EditClientModal({
             {regions.map(r => <option key={r}>{r}</option>)}
           </select>
         </Field>
-        <Field label="Pre-renewal reminder (hours)" tip="Hours before expiry to send the renewal reminder. Default inherited from the global Settings → Notifications value.">
+        <Field label="Pre-renewal reminder (hours)">
           <input className="form-input" type="number" min={0} max={720} value={form.preRenewalReminderHours} onChange={e => setForm({ ...form, preRenewalReminderHours: parseInt(e.target.value || '0', 10) })} />
         </Field>
         <div />

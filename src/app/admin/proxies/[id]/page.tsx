@@ -36,6 +36,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
         { label: proxy.id },
       ]} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div className="detail-page-shell">
         <div className="detail-header">
           <div className="detail-header-left">
             <div className="detail-id">{proxy.id}</div>
@@ -119,6 +120,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
 
             <EntityActivityWidget objectType="PROXY" objectId={proxy.id} />
           </div>
+        </div>
         </div>
       </main>
     </>

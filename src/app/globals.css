@@ -2038,6 +2038,12 @@ thead th .th-label > .help-tip {
 /* Canon `.plan-edit-page` wrapper: caps detail width at the 1416 content
    cap and centers it; `.plan-edit-shell` is the 1fr+aside grid; `.form-aside`
    is the sticky right column. Reused by Payment Detail and (later) Plan Edit. */
+/* Canon caps every "open one record" surface (client / order / payment /
+   proxy detail + settings) at 1080 + aside + 16 = --page-w, centered
+   (prototype.html `.page[data-page="client-detail"], …`). Our detail pages
+   render straight into <main> with no cap, so they sprawl on wide screens —
+   wrap their content in this to match. */
+.detail-page-shell { width: 100%; max-width: var(--page-w); margin-inline: auto; }
 .plan-edit-page { width: 100%; max-width: calc(1080px + var(--aside-w) + 16px); margin: 0 auto; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .plan-edit-page > .detail-header { margin-bottom: 0; }
 .plan-edit-shell { display: grid; grid-template-columns: minmax(0, 1fr) var(--aside-w); gap: 16px; align-items: start; }

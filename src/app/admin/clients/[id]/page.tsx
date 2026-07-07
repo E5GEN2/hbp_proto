@@ -57,6 +57,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
         { label: `${c.id} · ${c.name}` },
       ]} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+        <div className="detail-page-shell">
         {/* Identity header */}
         <div className="detail-header">
           <div className="detail-header-left">
@@ -184,6 +185,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
 
             <EntityActivityWidget objectType="CLIENT" objectId={c.id} />
           </div>
+        </div>
         </div>
       </main>
     </>

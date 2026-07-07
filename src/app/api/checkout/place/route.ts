@@ -8,6 +8,7 @@ import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/ru
 import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { npEnabled, npCreateInvoice } from '@/lib/nowpayments';
+import { reprovisionRenewedOrder } from '@/lib/transitions';
 import { appUrl } from '@/lib/app-url';
 
 const Schema = z.object({
@@ -369,6 +370,31 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
       await tx.balanceLedgerEntry.create({
         data: { userId, op: 'ORDER_DEBIT', amount: -total, balanceAfter: newBal, refOrderId: order.id, refPaymentId: paymentId, note: `Renewal of ${order.id}` },
       });
+    }
+
+    // An EXPIRED order has had its proxies auto-released to the pool — a bare
+    // term shift would reactivate it with nothing assigned. Re-provision
+    // (fresh proxies pool-first; short pool -> PAID_NOT_PROVISIONED with the
+    // clock held for manual Assign).
+    const repro = order.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, userId, now) : null;
+    if (repro) {
+      await tx.order.update({ where: { id: order.id }, data: repro.data });
+      await tx.log.create({
+        data: {
+          actorId: userId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
+          detail: `Renewed via checkout · ${paymentMethod} · $${total.toFixed(2)} · re-provisioned ${repro.assignedCount}/${order.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId,
+          title: repro.fullyAssigned
+            ? `Order ${order.id} renewed — ${order.qty} fresh ${order.qty === 1 ? 'proxy' : 'proxies'} assigned`
+            : `Order ${order.id} renewed — proxies are being provisioned`,
+          kind: 'SUCCESS', link: `/orders/${order.id}`,
+        },
+      });
+      return;
     }
 
     const base = order.expiresAt && order.expiresAt > now ? order.expiresAt : now;

@@ -6,6 +6,7 @@
 import { prisma } from './prisma';
 import { nextInvoiceId, nextAssignmentId } from './id';
 import { fmtDate } from './date';
+import { reprovisionRenewedOrder } from './transitions';
 import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
 
 export type SettleResult =
@@ -57,16 +58,43 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
 
   // ── Renewal: the order itself is already settled (paymentStatus PAID/…) and
   //    the AWAITING row is a renewal charge. Confirming it EXTENDS the original
-  //    order — no proxy assignment (B-2). ─────────────────────────────────────
+  //    order when its proxies are still bound (B-2); an EXPIRED order has had
+  //    them auto-released to the pool, so it re-provisions like a new order
+  //    (fresh term from now; short pool → PAID_NOT_PROVISIONED, clock held). ──
   if (order.paymentStatus !== 'AWAITING') {
     const base = order.expiresAt && order.expiresAt > now ? order.expiresAt : now;
-    const newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
+    let newExpiry: Date | null = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
+    let reproShort = false;
     await prisma.$transaction(async tx => {
       await tx.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: now } });
       const invoiceId = await nextInvoiceId();
       await tx.invoice.create({
         data: { id: invoiceId, paymentId: payment.id, orderId: order.id, clientId: order.clientId, amount: Number(payment.gross) },
       });
+
+      const repro = order.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, 'ADM-SYS', now) : null;
+      if (repro) {
+        reproShort = !repro.fullyAssigned;
+        newExpiry = repro.fullyAssigned ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
+        await tx.order.update({ where: { id: order.id }, data: repro.data });
+        await tx.log.create({
+          data: {
+            actorId: order.clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id,
+            detail: `Crypto renewal confirmed via ${via} for ${order.id} — re-provisioned ${repro.assignedCount}/${order.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`,
+          },
+        });
+        await tx.notification.create({
+          data: {
+            id: notifId(), userId: order.clientId,
+            title: repro.fullyAssigned
+              ? `Order ${order.id} renewed — ${order.qty} fresh ${order.qty === 1 ? 'proxy' : 'proxies'} assigned`
+              : `Order ${order.id} renewed — proxies are being provisioned`,
+            kind: 'SUCCESS', link: `/orders/${order.id}`,
+          },
+        });
+        return;
+      }
+
       await tx.order.update({
         where: { id: order.id },
         data: {
@@ -80,18 +108,18 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
       await tx.log.create({
         data: {
           actorId: order.clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id,
-          detail: `Crypto renewal payment confirmed via ${via} for ${order.id} — extended to ${newExpiry.toISOString().slice(0, 10)}`,
+          detail: `Crypto renewal payment confirmed via ${via} for ${order.id} — extended to ${newExpiry!.toISOString().slice(0, 10)}`,
         },
       });
       await tx.notification.create({
         data: {
           id: notifId(), userId: order.clientId,
-          title: `Order ${order.id} renewed — new expiry ${fmtDate(newExpiry)}`,
+          title: `Order ${order.id} renewed — new expiry ${fmtDate(newExpiry!)}`,
           kind: 'SUCCESS', link: `/orders/${order.id}`,
         },
       });
     });
-    await sendEmail({ to: clientEmail, ...orderRenewedEmail(order.id, fmtDate(newExpiry)) });
+    await sendEmail({ to: clientEmail, ...orderRenewedEmail(order.id, newExpiry ? fmtDate(newExpiry) : (reproShort ? 'starts when your proxies are assigned' : fmtDate(now))) });
     return { ok: true, kind: 'renewal' };
   }
 

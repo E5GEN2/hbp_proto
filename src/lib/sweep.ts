@@ -12,8 +12,15 @@ import type { RenewalBucket } from '@prisma/client';
  *      first (balance → card waterfall, see auto-renew.ts; retried every 24h
  *      inside the plan's grace window, during which the order STAYS ACTIVE) —
  *      only then EXPIRED. Non-auto-renew orders expire immediately as before.
- *      Assignments are PRESERVED — the grace window keeps the proxies bound
- *      (LIFECYCLE_CONTRACT l.87); auto-release after grace stays deferred.
+ *      Assignments are PRESERVED through the grace window — the client keeps
+ *      using the proxies (LIFECYCLE_CONTRACT l.87).
+ *   1b. Once grace is fully over, step 1b RELEASES the proxies back to the
+ *      pool (reason ORDER_EXPIRED, security-reset stamps) — credentials
+ *      vanish from the client portal at that moment. Renewal of an order
+ *      whose proxies were released re-provisions fresh ones
+ *      (reprovisionRenewedOrder); while proxies are still bound (in grace)
+ *      renewal is a plain term extension. gracePeriodHours = 0 → release on
+ *      the tick after expiry. Kill-switch: autoReleaseAfterGrace flag.
  *   2. renewalBucket classifier — drives admin Renewals tabs + dashboard
  *      Expiring-soon: H24 / D3 / D7 for approaching expiry, GRACE while inside
  *      the plan's grace window after expiry, EXPIRED past it. RENEWED is sticky
@@ -32,6 +39,7 @@ const SWEEP_INTERVAL_MS = 5 * 60_000;
 export type SweepResult = {
   ranAt: string;
   expired: number;
+  released: number;
   bucketUpdates: number;
   timedOutPayments: number;
   cancelledOrders: number;
@@ -39,6 +47,13 @@ export type SweepResult = {
   autoRenewFailed: number;
   skipped?: boolean;
 };
+
+// Default matches the seed (`autoReleaseAfterGrace: true`) when the flag row
+// is absent. Admin can disable it for custom contracts (Settings → Flags).
+async function autoReleaseEnabled(): Promise<boolean> {
+  const row = await prisma.systemSetting.findUnique({ where: { key: 'autoReleaseAfterGrace' } });
+  return row ? row.value === true : true;
+}
 
 async function notify(userId: string, title: string, kind: 'INFO' | 'WARNING', link: string) {
   await prisma.notification.create({
@@ -69,11 +84,11 @@ let running = false;
 
 export async function runSweep(): Promise<SweepResult> {
   const ranAt = new Date().toISOString();
-  if (running) return { ranAt, expired: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, skipped: true };
+  if (running) return { ranAt, expired: 0, released: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, skipped: true };
   running = true;
   try {
     const now = Date.now();
-    let expired = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
+    let expired = 0, released = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
     let autoRenewed = 0, autoRenewFailed = 0;
 
     // ── 1. Past-due ACTIVE orders: auto-renew attempt first, then expire ────
@@ -149,6 +164,44 @@ export async function runSweep(): Promise<SweepResult> {
         `Expired by sweep · was due ${o.expiresAt?.toISOString() ?? '—'} · bucket=${bucket ?? '—'}${autoRenewGaveUp ? ' · auto-renew exhausted' : ''}`);
     }
 
+    // ── 1b. Auto-release proxies once the grace window is fully over ────────
+    //   Expiry (step 1) intentionally KEEPS assignments through grace
+    //   (LIFECYCLE_CONTRACT). This returns them to the pool afterwards:
+    //   assignments closed with reason ORDER_EXPIRED, proxies → AVAILABLE
+    //   with the same security-reset stamps cancelOrder/returnProxyToPool
+    //   use (password + IP rotation markers — the next client never inherits
+    //   live credentials). Gated by the autoReleaseAfterGrace flag; until now
+    //   this was a daily manual admin chore (report finding #5).
+    if (await autoReleaseEnabled()) {
+      const stranded = await prisma.order.findMany({
+        where: { status: 'EXPIRED', expiresAt: { not: null }, assignments: { some: { releasedAt: null } } },
+        include: { plan: { select: { gracePeriodHours: true } }, assignments: { where: { releasedAt: null } } },
+      });
+      for (const o of stranded) {
+        const graceEnd = o.expiresAt!.getTime() + o.plan.gracePeriodHours * 3_600_000;
+        if (now < graceEnd) continue; // still inside grace — proxies stay bound
+        const releasedAt = new Date(now);
+        await prisma.$transaction(async tx => {
+          for (const a of o.assignments) {
+            await tx.assignment.update({
+              where: { id: a.id },
+              data: { releasedAt, reason: 'ORDER_EXPIRED', reasonDetail: 'Auto-released after grace window' },
+            });
+            await tx.proxy.update({
+              where: { id: a.proxyId },
+              data: { status: 'AVAILABLE', currentOrderId: null, securityResetAt: releasedAt, passwordRotatedAt: releasedAt, ipRotatedAt: releasedAt },
+            });
+          }
+        });
+        released += o.assignments.length;
+        await notify(o.clientId,
+          `Order ${o.id}: the grace period ended and its proxies were released. Renew to get fresh proxies.`,
+          'INFO', `/orders/${o.id}`);
+        await log('ORDER.RELEASE', 'ORDER', o.id,
+          `Auto-released ${o.assignments.length} ${o.assignments.length === 1 ? 'proxy' : 'proxies'} after grace · pool restored, credentials/IP rotation markers stamped`);
+      }
+    }
+
     // ── 2. Re-classify renewal buckets (ACTIVE approaching + EXPIRED aging) ─
     const classifiable = await prisma.order.findMany({
       where: { status: { in: ['ACTIVE', 'EXPIRED'] }, expiresAt: { not: null } },
@@ -188,7 +241,7 @@ export async function runSweep(): Promise<SweepResult> {
       }
     }
 
-    return { ranAt, expired, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed };
+    return { ranAt, expired, released, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed };
   } finally {
     running = false;
   }
@@ -205,7 +258,7 @@ export function startSweepLoop() {
   const tick = () => {
     runSweep()
       .then(r => {
-        if (r.expired || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed) {
+        if (r.expired || r.released || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed) {
           console.log('[sweep]', JSON.stringify(r));
         }
       })

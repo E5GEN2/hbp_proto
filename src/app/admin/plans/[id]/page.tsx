@@ -85,6 +85,5 @@ async function loadCatalog() {
     rotations: group('ROTATION'),
     traffic: group('TRAFFIC'),
     durations: group('DURATION'),
-    currencies: group('CURRENCY'),
   };
 }

@@ -1583,63 +1583,6 @@ thead th .th-label > .help-tip {
 .timeline { padding: 20px; display: flex; flex-direction: column; position: relative; }
 .timeline.activity-scroll { max-height: 254px; overflow-y: auto; }
 
-/* ===== Activity timeline-mini (canon client-panel.html:1908) =====
-   Grid rows: 8px dot column on the 20px inset (same line as the panel-title
-   gold dot) · content · date pinned to the right column — the stamp lands on
-   the same right rhythm as kv values in Order snapshot. */
-.timeline-mini { display: flex; flex-direction: column; }
-.timeline-mini.activity-scroll { max-height: 254px; overflow-y: auto; }
-.timeline-mini.activity-scroll::-webkit-scrollbar { width: 6px; }
-.timeline-mini.activity-scroll::-webkit-scrollbar-track { background: transparent; }
-.timeline-mini.activity-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-.timeline-mini-row {
-  display: grid;
-  grid-template-columns: 14px 1fr auto;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 20px;
-  background-image: linear-gradient(90deg,
-    transparent 20px,
-    var(--border-subtle) 20px,
-    var(--border-subtle) calc(100% - 20px),
-    transparent calc(100% - 20px));
-  background-position: bottom;
-  background-size: 100% 1px;
-  background-repeat: no-repeat;
-}
-.timeline-mini-row:last-child { background-image: none; }
-.timeline-mini-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  margin-top: 5px;
-}
-.timeline-mini-dot.success { background: var(--success); }
-.timeline-mini-dot.warning { background: var(--warning); }
-.timeline-mini-dot.danger  { background: var(--danger); }
-.timeline-mini-dot.info    { background: var(--info); }
-.timeline-mini-dot.muted   { background: var(--muted); }
-.timeline-mini-dot.accent  { background: var(--accent); }
-.timeline-mini-dot.violet  { background: var(--violet); }
-.timeline-mini-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.timeline-mini-title {
-  font: 500 13px var(--font-sans);
-  color: var(--text-secondary);
-}
-.timeline-mini-detail {
-  font: 400 12px var(--font-sans);
-  color: var(--muted);
-}
-.timeline-mini-stamp {
-  font: 400 11px var(--font-mono);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 .tl-item { display: flex; gap: 14px; padding-bottom: 16px; position: relative; }
 .tl-item:last-child { padding-bottom: 0; }
 .tl-item:not(:last-child)::before {
@@ -2033,12 +1976,8 @@ thead th .th-label > .help-tip {
 .prov-next-action.failed    .prov-next-val { color: var(--danger);  }
 .prov-next-action.completed .prov-next-val { color: var(--muted);   }
 
-/* --- Notes panel + Activity widget (activity-list) --------------------- */
+/* --- Notes panel (activity-list) -------------------------------------- */
 .activity-list { display: flex; flex-direction: column; }
-.activity-list.activity-scroll { max-height: 280px; overflow-y: auto; }
-.activity-list.activity-scroll::-webkit-scrollbar { width: 6px; }
-.activity-list.activity-scroll::-webkit-scrollbar-track { background: transparent; }
-.activity-list.activity-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .activity-row {
   display: flex; gap: 12px; padding: 12px 20px;
   background-image: linear-gradient(var(--border-subtle), var(--border-subtle));

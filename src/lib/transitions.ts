@@ -71,7 +71,10 @@ export async function markPaymentPaid({
     if (pay.order) {
       const ord = pay.order;
       const plan = ord.plan;
-      const willActivate = plan.autoProvision;
+      // Snapshot semantics (report №3): the order carries autoProvision as
+      // captured at purchase time — flipping the PLAN's flag between order
+      // and payment must not change how this order settles.
+      const willActivate = ord.autoProvision;
 
       // Try to assign proxies if auto-provision
       let assignedCount = 0;
@@ -389,7 +392,7 @@ export async function extendOrder({
  * return to the pool the moment an order expires). Extending the term is then
  * not enough — the client paid and holds nothing. Re-run the activation
  * contract instead, exactly like a new order:
- *   · plan.autoProvision → pool-first pick (plan.pool, then carrier+region);
+ *   · order.autoProvision (purchase-time snapshot) → pool-first pick;
  *     full → ACTIVE with a FRESH term from now; short → PROVISIONING +
  *     PAID_NOT_PROVISIONED with the clock held (expiresAt null) until manual
  *     Assign stamps the full term (see assignProxyManually).
@@ -402,7 +405,7 @@ export async function extendOrder({
  */
 export async function reprovisionRenewedOrder(
   tx: Tx,
-  ord: { id: string; qty: number; region: string; activatedAt: Date | null; plan: { carrier: string; pool: string; durationDays: number; autoProvision: boolean } },
+  ord: { id: string; qty: number; region: string; activatedAt: Date | null; autoProvision: boolean; plan: { carrier: string; pool: string; durationDays: number } },
   actorId: string,
   now: Date,
 ): Promise<null | { fullyAssigned: boolean; assignedCount: number; data: Prisma.OrderUpdateInput }> {
@@ -410,7 +413,7 @@ export async function reprovisionRenewedOrder(
   if (live > 0) return null; // proxies still bound — plain term extension applies
 
   let assignedCount = 0;
-  if (ord.plan.autoProvision) {
+  if (ord.autoProvision) {
     const candidates = await tx.proxy.findMany({
       where: { carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
       take: ord.qty,
@@ -432,7 +435,7 @@ export async function reprovisionRenewedOrder(
     }
   }
 
-  const fullyAssigned = ord.plan.autoProvision && assignedCount >= ord.qty;
+  const fullyAssigned = ord.autoProvision && assignedCount >= ord.qty;
   return {
     fullyAssigned, assignedCount,
     data: {
@@ -443,8 +446,8 @@ export async function reprovisionRenewedOrder(
       credentialsChannel: null,
       renewalBucket: 'RENEWED',
       lastReminderAt: null,
-      exception: ord.plan.autoProvision && !fullyAssigned ? 'PAID_NOT_PROVISIONED' : null,
-      excInfo: ord.plan.autoProvision && !fullyAssigned ? `Renewal re-provisioning — pool had ${assignedCount}/${ord.qty}` : null,
+      exception: ord.autoProvision && !fullyAssigned ? 'PAID_NOT_PROVISIONED' : null,
+      excInfo: ord.autoProvision && !fullyAssigned ? `Renewal re-provisioning — pool had ${assignedCount}/${ord.qty}` : null,
     },
   };
 }
@@ -458,6 +461,15 @@ export async function assignProxyManually({
       include: { plan: true, assignments: { where: { releasedAt: null } } },
     });
     if (!ord) throw new Error('Order not found');
+    // Server-side mirror of the UI showAssign gate (report №8) — the action
+    // used to trust the UI: an unpaid or dead order would be resurrected to
+    // ACTIVE by the fullyAssigned branch below.
+    if (['CANCELLED', 'EXPIRED', 'SUSPENDED'].includes(ord.status)) {
+      throw new Error(`Cannot assign proxies to a ${ord.status.toLowerCase()} order`);
+    }
+    if (!['PAID', 'FREE', 'CONFIRMED'].includes(ord.paymentStatus)) {
+      throw new Error(`Order is not paid (payment status ${ord.paymentStatus}) — confirm the payment first`);
+    }
 
     const now = new Date();
     const ids = await newAssignmentIds(tx, proxyIds.length);

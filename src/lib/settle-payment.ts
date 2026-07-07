@@ -125,7 +125,8 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
 
   // ── New order: mark paid, then provision (assign proxies if the plan wants
   //    auto-provisioning and the pool has capacity). ─────────────────────────
-  const wantsAutoProvision = order.plan.autoProvision;
+  // Purchase-time snapshot, not the plan's current flag (report №3).
+  const wantsAutoProvision = order.autoProvision;
   let finalActive = false;
 
   await prisma.$transaction(async tx => {

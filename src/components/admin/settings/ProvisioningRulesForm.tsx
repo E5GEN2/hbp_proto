@@ -64,8 +64,8 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
     <div className="panel-section">
       <div className="panel-title-row">
         <div className="vstack">
-          <span className="subsection-title">Provisioning rules · {rules.length} mapped</span>
-          <span className="muted">Order checkout uses these to pre-pick a pool. Auto-assign OFF = client sees a pool dropdown at checkout.</span>
+          <span className="subsection-title">Provisioning rules · {rules.length} mapped<span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></span>
+          <span className="muted">Rules are stored but not yet consulted by any assignment path — provisioning currently uses pool-first by the plan&rsquo;s own carrier/region/pool. Auto-assign / fallback chains activate in Phase 2.</span>
         </div>
         <button className="btn primary sm" onClick={openCreate}>+ Add rule</button>
       </div>

@@ -266,7 +266,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
                   <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => setNum('preRenewalReminderHours', e.target.value)} />
                 </div>
                 <div className="form-field">
-                  <div className="form-label">Grace period (hours)<span className="help-tip" data-tip="Auto-renew retry window after expiry: the order stays active while charges are retried daily. Proxies return to the pool the moment an order actually expires.">i</span></div>
+                  <div className="form-label">Grace period (hours)<span className="help-tip" data-tip="Time after expiry before the proxy is released back to pool. Set 0 to release the moment the order expires.">i</span></div>
                   <input className="form-input" type="number" min={0} max={720} step={1} value={form.gracePeriodHours} onChange={e => setNum('gracePeriodHours', e.target.value)} />
                 </div>
               </div>

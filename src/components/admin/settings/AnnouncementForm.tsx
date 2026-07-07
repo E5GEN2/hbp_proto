@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
@@ -52,15 +53,16 @@ export function AnnouncementForm({ initial }: { initial: Announcement }) {
       </div>
       <div className="form-field">
         <div className="form-label">Style</div>
-        <select
-          className="form-select"
+        <FormSelect
           value={s.variant}
-          onChange={(e) => setS({ ...s, variant: e.target.value as AnnouncementVariant })}
-        >
-          <option value="promo">Promo (blue)</option>
-          <option value="info">Info (neutral)</option>
-          <option value="warning">Highlight (gold)</option>
-        </select>
+          onChange={v => setS({ ...s, variant: v as AnnouncementVariant })}
+          placeholder={null}
+          options={[
+            { value: 'promo', label: 'Promo (blue)' },
+            { value: 'info', label: 'Info (neutral)' },
+            { value: 'warning', label: 'Highlight (gold)' },
+          ]}
+        />
       </div>
 
       <div className="form-field full">

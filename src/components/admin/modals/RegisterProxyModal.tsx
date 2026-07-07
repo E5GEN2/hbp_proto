@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -70,19 +71,13 @@ export function RegisterProxyModal({
       <SectionTitle>Network</SectionTitle>
       <Grid cols={3}>
         <Field label="Carrier" required>
-          <select className="form-select" value={form.carrier} onChange={e => setForm({ ...form, carrier: e.target.value })}>
-            {carriers.map(c => <option key={c}>{c}</option>)}
-          </select>
+          <FormSelect value={form.carrier} onChange={v => setForm({ ...form, carrier: v })} options={carriers.map(c => ({ value: c }))} />
         </Field>
         <Field label="Region" required>
-          <select className="form-select" value={form.region} onChange={e => setForm({ ...form, region: e.target.value })}>
-            {regions.map(r => <option key={r}>{r}</option>)}
-          </select>
+          <FormSelect value={form.region} onChange={v => setForm({ ...form, region: v })} options={regions.map(r => ({ value: r }))} />
         </Field>
         <Field label="Pool" required>
-          <select className="form-select" value={form.pool} onChange={e => setForm({ ...form, pool: e.target.value })}>
-            {pools.map(p => <option key={p}>{p}</option>)}
-          </select>
+          <FormSelect value={form.pool} onChange={v => setForm({ ...form, pool: v })} options={pools.map(p => ({ value: p }))} />
         </Field>
         <Field label="City"><input className="form-input" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="New York" /></Field>
       </Grid>

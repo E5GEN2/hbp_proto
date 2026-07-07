@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState } from 'react';
 import Link from 'next/link';
 import { money } from '@/lib/money';
@@ -40,13 +41,19 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
     <div className="panel">
       <div className="panel-header">
         <span className="panel-title">Orders</span>
-        <select className="orders-filter-select" value={filter} onChange={e => setFilter(e.target.value)}>
-          <option value="all">Orders: all</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="problem">Problem orders</option>
-        </select>
+        <FormSelect
+          value={filter}
+          onChange={setFilter}
+          btnClassName="orders-filter-select"
+          wrapStyle={{ width: 'fit-content' }}
+          options={[
+            { value: 'all', label: 'Orders: all' },
+            { value: 'active', label: 'Active' },
+            { value: 'expired', label: 'Expired' },
+            { value: 'cancelled', label: 'Cancelled' },
+            { value: 'problem', label: 'Problem orders' },
+          ]}
+        />
       </div>
       <div className="table-wrap">
         <table className="dt">

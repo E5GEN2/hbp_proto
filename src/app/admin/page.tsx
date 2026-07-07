@@ -4,12 +4,12 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 
-// Flexible .dt column widths (canon applyDtAnchors reproduced in pure CSS): each
-// flex col = (100% − fixed anchors) × w / col-total. Recent Orders: anchor-id +
-// anchor-date = 328px fixed, col-total 19. Capacity: anchor-text + 168px = 336px,
-// col-total 3.
-const FLEX_RO = (w: number) => `calc((100% - 328px) * ${w} / 19)`;
-const FLEX_CAP = (w: number) => `calc((100% - 336px) * ${w} / 3)`;
+// Flexible .dt column widths — canon Column System (prototype.html :root docs):
+// each flex col = 100% × w / col-total; px anchors + % flexibles are then
+// renormalized together by table-layout: fixed, exactly like the canon
+// calc(var(--w) / var(--col-total) * 100%).
+const FLEX_RO = (w: number) => `calc(100% * ${w} / 19)`;
+const FLEX_CAP = (w: number) => `calc(100% * ${w} / 3)`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 const CAP_LABEL: Record<string, string> = {
@@ -157,9 +157,9 @@ export default async function AdminDashboardPage() {
                       <tr><td colSpan={7}><div className="empty"><div className="empty-desc">No orders yet.</div></div></td></tr>
                     ) : recentOrders.map(o => (
                       <tr key={o.id}>
-                        <td className="col-id"><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></td>
-                        <td className="col-id"><Link href={`/admin/clients/${o.client.id}`} className="td-link">{o.client.id}</Link></td>
-                        <td className="col-text">{o.plan.name}</td>
+                        <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
+                        <td className="col-id"><span className="cell-tip" data-tip={o.client.id}><Link href={`/admin/clients/${o.client.id}`} className="td-link">{o.client.id}</Link></span></td>
+                        <td className="col-text muted"><span className="cell-tip" data-tip={o.plan.name}>{o.plan.name}</span></td>
                         <td className="col-money">{money(Number(o.amount))}</td>
                         <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
                         <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
@@ -189,10 +189,10 @@ export default async function AdminDashboardPage() {
                   <thead>
                     <tr>
                       <th className="col-text">Plan</th>
-                      <th className="col-num">Quota<span className="help-tip" data-tip="Total capacity this plan is configured to sell. Set manually on the plan. The hard ceiling.">i</span></th>
-                      <th className="col-num">Allocated<span className="help-tip" data-tip="Capacity occupied by live orders. Includes orders in grace and unreleased assignments.">i</span></th>
-                      <th className="col-num">Available<span className="help-tip" data-tip="What the client portal shows as sellable right now. Quota − Allocated. If 0, the plan is hidden from checkout.">i</span></th>
-                      <th className="col-status">Capacity State<span className="help-tip" data-tip="Derived selling condition based on Available quota, allocated orders, grace blocks, and release timing. One label per plan: Available (default) · Low availability · Blocked by grace · Waiting release · Sold out. At most one per plan. Separate from the plan's primary Status (Active / Disabled).">i</span></th>
+                      <th className="col-num"><span className="th-label">Quota<span className="help-tip" data-tip="Total capacity this plan is configured to sell. Set manually on the plan. The hard ceiling.">i</span></span></th>
+                      <th className="col-num"><span className="th-label">Allocated<span className="help-tip" data-tip="Capacity occupied by live orders. Includes orders in grace and unreleased assignments.">i</span></span></th>
+                      <th className="col-num"><span className="th-label">Available<span className="help-tip" data-tip="What the client portal shows as sellable right now. Quota − Allocated. If 0, the plan is hidden from checkout.">i</span></span></th>
+                      <th className="col-status"><span className="th-label">Capacity State<span className="help-tip" data-tip="Derived selling condition based on Available quota, allocated orders, grace blocks, and release timing. One label per plan: Available (default) · Low availability · Blocked by grace · Waiting release · Sold out. At most one per plan. Separate from the plan's primary Status (Active / Disabled).">i</span></span></th>
                     </tr>
                   </thead>
                   <tbody>

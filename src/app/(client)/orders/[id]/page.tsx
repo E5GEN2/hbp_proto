@@ -93,15 +93,15 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
               <div className="order-detail-split">
                 <div className="panel">
                   <div className="panel-header"><span className="panel-title">Activity</span></div>
-                  <div className="timeline activity-scroll">
+                  <div className="timeline-mini activity-scroll">
                     {events.map((e, i) => (
-                      <div className="tl-item" key={i}>
-                        <span className={`tl-dot ${tlDot(e.tone)}`} />
-                        <div className="tl-body">
-                          <span className="tl-stamp">{fmtAdminStamp(e.at)}</span>
-                          <span className="tl-title">{e.title}</span>
-                          {e.detail && <span className="tl-detail">{e.detail}</span>}
+                      <div className="timeline-mini-row" key={i}>
+                        <span className={`timeline-mini-dot ${tlDot(e.tone)}`} />
+                        <div className="timeline-mini-body">
+                          <span className="timeline-mini-title">{e.title}</span>
+                          {e.detail && <span className="timeline-mini-detail">{e.detail}</span>}
                         </div>
+                        <span className="timeline-mini-stamp">{fmtAdminStamp(e.at)}</span>
                       </div>
                     ))}
                   </div>

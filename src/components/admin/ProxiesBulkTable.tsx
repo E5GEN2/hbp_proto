@@ -22,7 +22,7 @@ type Row = {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 // Canon Proxies .dt: 64 chk + 168 Proxy ID = 232 fixed; flex cols sum 26.
-const FLEX = (w: number) => `calc((100% - 232px) * ${w} / 26)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 26)`;
 
 export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
   const router = useRouter();
@@ -84,10 +84,10 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <th className="col-id">Proxy ID</th>
             <th className="col-id">Assigned to</th>
             <th className="col-text">Carrier · Region</th>
-            <th className="col-text">Pool<span className="help-tip" data-tip="A named group of proxies a plan can draw from. Pools encode carrier + region + any segregation rules (e.g. clean IPs, premium tier).">i</span></th>
-            <th className="col-text">Credentials<span className="help-tip" data-tip="Host:port pair the customer connects to. Includes the proxy's public IP and exposed port.">i</span></th>
+            <th className="col-text"><span className="th-label">Pool<span className="help-tip" data-tip="A named group of proxies a plan can draw from. Pools encode carrier + region + any segregation rules (e.g. clean IPs, premium tier).">i</span></span></th>
+            <th className="col-text"><span className="th-label">Credentials<span className="help-tip" data-tip="Host:port pair the customer connects to. Includes the proxy's public IP and exposed port.">i</span></span></th>
             <th className="col-text">Hardware ID</th>
-            <th className="col-num">Data 30D<span className="help-tip" data-tip="Aggregate egress traffic on this proxy over the last 30 days, in GB.">i</span></th>
+            <th className="col-num"><span className="th-label">Data 30D<span className="help-tip" data-tip="Aggregate egress traffic on this proxy over the last 30 days, in GB.">i</span></span></th>
             <th className="col-num">Uptime 30d</th>
             <th className="col-status">Status</th>
           </tr></thead>

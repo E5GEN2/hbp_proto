@@ -24,7 +24,7 @@ type Row = {
 
 // Canon .dt anchor scheme: L = 64px chk + 164px Order ID + 164px Expires R-anchor
 // = 392px fixed; seven middle cols share the slack by --w weights (col-total 25).
-const FLEX = (w: number) => `calc((100% - 392px) * ${w} / 25)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 25)`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 export function OrdersBulkTable({ orders }: { orders: Row[] }) {

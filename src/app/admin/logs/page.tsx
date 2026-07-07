@@ -127,11 +127,11 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
           <div className="table-wrap">
             <table className="dt">
               <colgroup>
-                <col style={{ width: 'calc((100% - 320px) * 4 / 18)' }} />
-                <col style={{ width: 'calc((100% - 320px) * 2 / 18)' }} />
-                <col style={{ width: 'calc((100% - 320px) * 5 / 18)' }} />
-                <col style={{ width: 'calc((100% - 320px) * 3 / 18)' }} />
-                <col style={{ width: 'calc((100% - 320px) * 4 / 18)' }} />
+                <col style={{ width: 'calc(100% * 4 / 18)' }} />
+                <col style={{ width: 'calc(100% * 2 / 18)' }} />
+                <col style={{ width: 'calc(100% * 5 / 18)' }} />
+                <col style={{ width: 'calc(100% * 3 / 18)' }} />
+                <col style={{ width: 'calc(100% * 4 / 18)' }} />
                 <col style={{ width: 320 }} />
               </colgroup>
               <thead>

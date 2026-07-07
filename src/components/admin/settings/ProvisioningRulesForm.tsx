@@ -82,8 +82,8 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
           <thead><tr>
             <th className="col-text">Carrier · Region</th>
             <th className="col-text">Default pool</th>
-            <th className="col-text">Fallback chain<span className="help-tip" data-tip="Ordered list of pools tried when the default pool is at allocation capacity. Empty = no automatic fallback; provisioning falls into manual queue.">i</span></th>
-            <th className="col-text">Auto-assign<span className="help-tip" data-tip="ON = system silently picks the default pool at checkout. OFF = client-portal checkout shows a pool dropdown so the client picks.">i</span></th>
+            <th className="col-text"><span className="th-label">Fallback chain<span className="help-tip" data-tip="Ordered list of pools tried when the default pool is at allocation capacity. Empty = no automatic fallback; provisioning falls into manual queue.">i</span></span></th>
+            <th className="col-text"><span className="th-label">Auto-assign<span className="help-tip" data-tip="ON = system silently picks the default pool at checkout. OFF = client-portal checkout shows a pool dropdown so the client picks.">i</span></span></th>
             <th className="col-text">Notes</th>
             <th className="col-action"></th>
           </tr></thead>

@@ -72,9 +72,9 @@ export function PaymentMethodsPanel({ methods, balance }: { methods: Method[]; b
           const expLabel = m.exp
             ? `Expires ${m.exp}`
             : isBalance ? 'Always available' : m.kind === 'CRYPTO' ? 'No expiry' : '';
-          // Set as default never applies to Balance (the action rejects it);
-          // Remove never applies to locked methods.
-          const canSetDefault = !m.isDefault && !isBalance;
+          // Canon: every non-default method offers «Set as default» — Balance
+          // included; Remove never applies to locked methods.
+          const canSetDefault = !m.isDefault;
           const canRemove = !m.locked;
           const showActions = canSetDefault || canRemove;
           return (

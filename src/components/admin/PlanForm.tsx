@@ -143,6 +143,21 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
             <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} onChange={e => set('price', parseFloat(e.target.value || '0'))} />
           </div>
           {Sel('currency', 'Currency', catalog.currencies, true)}
+          {/* Canon create-plan carries the capacity pair INSIDE Commercial
+              Setup (prototype.html plan-create); the edit page moves them to
+              the Selling Capacity aside, so render here for create only. */}
+          {mode === 'create' && (
+            <>
+              <div className="form-field">
+                <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales — sales stop at the cap.">i</span></div>
+                <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => set('availableQuota', parseInt(e.target.value || '0', 10))} />
+              </div>
+              <div className="form-field">
+                <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override of the global default in Settings → Notifications. Leave blank to inherit the global value (85%).">i</span></div>
+                <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} placeholder="inherits 15%" onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
+              </div>
+            </>
+          )}
           <div className="form-field">
             <div className="form-label">Renewal discount (%)<span className="help-tip" data-tip="Applied to every renewal payment for this plan. 0% = full price.">i</span></div>
             <input className="form-input" type="number" min={0} max={100} step={1} value={form.renewalDiscountPct} onChange={e => set('renewalDiscountPct', parseInt(e.target.value || '0', 10))} />

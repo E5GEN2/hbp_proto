@@ -22,7 +22,7 @@ type Row = {
 
 // Canon .dt anchor scheme: 64px chk + 164px Payment ID + 164px Date R-anchor
 // = 392px fixed; middle cols share the slack by --w weights (col-total 19).
-const FLEX = (w: number) => `calc((100% - 392px) * ${w} / 19)`;
+const FLEX = (w: number) => `calc(100% * ${w} / 19)`;
 const CONFIRMABLE = new Set(['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW']);
 
 export function PaymentsBulkTable({ payments }: { payments: Row[] }) {

@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -73,32 +74,22 @@ export function EditClientModal({
         <Field label="Display name"><input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label="Telegram"><input className="form-input" placeholder="@handle" value={form.telegram ?? ''} onChange={e => setForm({ ...form, telegram: e.target.value || null })} /></Field>
         <Field label="Country">
-          <select className="form-select" value={form.country ?? 'US'} onChange={e => setForm({ ...form, country: e.target.value })}>
-            {['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => <option key={c}>{c}</option>)}
-          </select>
+          <FormSelect value={form.country ?? 'US'} onChange={v => setForm({ ...form, country: v })} placeholder={null} options={['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => ({ value: c }))} />
         </Field>
         <Field label="Tier">
-          <select className="form-select" value={form.tier} onChange={e => setForm({ ...form, tier: e.target.value as any })}>
-            <option value="STANDARD">Standard</option><option value="PRO">Pro</option><option value="VIP">VIP</option>
-          </select>
+          <FormSelect value={form.tier} onChange={v => setForm({ ...form, tier: v as any })} placeholder={null} options={[{ value: 'STANDARD', label: 'Standard' }, { value: 'PRO', label: 'Pro' }, { value: 'VIP', label: 'VIP' }]} />
         </Field>
       </Grid>
 
       <SectionTitle>Preferences</SectionTitle>
       <Grid cols={2}>
         <Field label="Preferred carrier">
-          <select className="form-select" value={form.preferredCarrier ?? ''} onChange={e => setForm({ ...form, preferredCarrier: e.target.value || null })}>
-            <option value="">— None —</option>
-            {carriers.map(c => <option key={c}>{c}</option>)}
-          </select>
+          <FormSelect value={form.preferredCarrier ?? ''} onChange={v => setForm({ ...form, preferredCarrier: v || null })} placeholder={null} options={[{ value: '', label: '— None —' }, ...carriers.map(c => ({ value: c }))]} />
         </Field>
         <Field label="Preferred region">
-          <select className="form-select" value={form.preferredRegion ?? ''} onChange={e => setForm({ ...form, preferredRegion: e.target.value || null })}>
-            <option value="">— None —</option>
-            {regions.map(r => <option key={r}>{r}</option>)}
-          </select>
+          <FormSelect value={form.preferredRegion ?? ''} onChange={v => setForm({ ...form, preferredRegion: v || null })} placeholder={null} options={[{ value: '', label: '— None —' }, ...regions.map(r => ({ value: r }))]} />
         </Field>
-        <Field label="Pre-renewal reminder (hours)">
+        <Field label="Pre-renewal reminder (hours)" tip="Hours before expiry to send the renewal reminder. Default inherited from the global Settings → Notifications value.">
           <input className="form-input" type="number" min={0} max={720} value={form.preRenewalReminderHours} onChange={e => setForm({ ...form, preRenewalReminderHours: parseInt(e.target.value || '0', 10) })} />
         </Field>
         <div />

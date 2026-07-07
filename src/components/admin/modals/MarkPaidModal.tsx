@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -49,12 +50,17 @@ export function MarkPaidModal({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
           <label className="form-label">Confirmation source</label>
-          <select className="form-select" value={source} onChange={e => setSource(e.target.value as any)}>
-            <option value="bank-transfer">Bank transfer</option>
-            <option value="on-chain">On-chain (crypto)</option>
-            <option value="cash">Cash</option>
-            <option value="other">Other</option>
-          </select>
+          <FormSelect
+            value={source}
+            onChange={v => setSource(v as any)}
+            placeholder={null}
+            options={[
+              { value: 'bank-transfer', label: 'Bank transfer' },
+              { value: 'on-chain', label: 'On-chain (crypto)' },
+              { value: 'cash', label: 'Cash' },
+              { value: 'other', label: 'Other' },
+            ]}
+          />
         </div>
         <div>
           <label className="form-label">Reference / txn ID (optional)</label>

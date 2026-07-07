@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -66,23 +67,25 @@ export function NewOrderModal({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div style={{ gridColumn: '1 / -1' }}>
           <label className="form-label">Client *</label>
-          <select className="form-select" value={clientId} onChange={e => setClientId(e.target.value)}>
-            <option value="">Select a client…</option>
-            {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.id} · {c.name} · {c.email} · balance {money(c.balance)}</option>
-            ))}
-          </select>
+          <FormSelect
+            value={clientId}
+            onChange={setClientId}
+            placeholder="Select a client…"
+            options={clients.map(c => ({ value: c.id, label: `${c.id} · ${c.name} · ${c.email} · balance ${money(c.balance)}` }))}
+          />
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <label className="form-label">Plan *</label>
-          <select className="form-select" value={planId} onChange={e => { setPlanId(e.target.value); setQty(1); }}>
-            <option value="">Select a plan…</option>
-            {plans.map(p => (
-              <option key={p.id} value={p.id} disabled={p.available <= 0}>
-                {p.name} · {p.carrier} · {p.region} · {p.durationDays}d · {money(p.price)} · avail {p.available}
-              </option>
-            ))}
-          </select>
+          <FormSelect
+            value={planId}
+            onChange={v => { setPlanId(v); setQty(1); }}
+            placeholder="Select a plan…"
+            options={plans.map(p => ({
+              value: p.id,
+              label: `${p.name} · ${p.carrier} · ${p.region} · ${p.durationDays}d · ${money(p.price)} · avail ${p.available}`,
+              disabled: p.available <= 0,
+            }))}
+          />
         </div>
         <div>
           <label className="form-label">Quantity *</label>
@@ -99,12 +102,17 @@ export function NewOrderModal({
         </div>
         <div>
           <label className="form-label">Payment method *</label>
-          <select className="form-select" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)}>
-            <option value="stripe">Stripe — confirmed immediately (mock)</option>
-            <option value="invoice">Bank transfer — awaiting</option>
-            <option value="crypto">Crypto — awaiting on-chain</option>
-            <option value="comp">Comp — free</option>
-          </select>
+          <FormSelect
+            value={paymentMethod}
+            onChange={v => setPaymentMethod(v as any)}
+            placeholder={null}
+            options={[
+              { value: 'stripe', label: 'Stripe — confirmed immediately (mock)' },
+              { value: 'invoice', label: 'Bank transfer — awaiting' },
+              { value: 'crypto', label: 'Crypto — awaiting on-chain' },
+              { value: 'comp', label: 'Comp — free' },
+            ]}
+          />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 22 }}>
           <span className={`toggle-v2 ${autoRenew ? 'on' : ''}`} onClick={() => setAutoRenew(v => !v)} style={{ cursor: 'pointer' }} />

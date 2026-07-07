@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -23,6 +24,7 @@ export function ExtendOrderModal({
   const [mode, setMode] = useState<Mode>('same');
   const [periodDays, setPeriodDays] = useState(currentDuration);
   const [newQty, setNewQty] = useState(currentQty);
+  const [chargeMode, setChargeMode] = useState('comp');
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,6 +32,7 @@ export function ExtendOrderModal({
       setMode('same');
       setPeriodDays(currentDuration);
       setNewQty(currentQty);
+      setChargeMode('comp');
       setErr(null);
     }
   }, [open, currentDuration, currentQty]);
@@ -79,19 +82,25 @@ export function ExtendOrderModal({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         <div>
           <label className="form-label">Extension period</label>
-          <select className="form-select" value={periodDays} onChange={e => setPeriodDays(parseInt(e.target.value, 10))}>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-          </select>
+          <FormSelect
+            value={String(periodDays)}
+            onChange={v => setPeriodDays(parseInt(v, 10))}
+            placeholder={null}
+            options={[{ value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]}
+          />
         </div>
         <div>
           <label className="form-label">Charge method</label>
-          <select className="form-select" defaultValue="comp">
-            <option value="comp">Comp (no charge — admin override)</option>
-            <option value="balance">Charge from client balance</option>
-            <option value="invoice">Issue invoice</option>
-          </select>
+          <FormSelect
+            value={chargeMode}
+            onChange={setChargeMode}
+            placeholder={null}
+            options={[
+              { value: 'comp', label: 'Comp (no charge — admin override)' },
+              { value: 'balance', label: 'Charge from client balance' },
+              { value: 'invoice', label: 'Issue invoice' },
+            ]}
+          />
         </div>
         {mode === 'changeQty' && (
           <div style={{ gridColumn: '1 / -1' }}>

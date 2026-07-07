@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -53,9 +54,7 @@ export function BlockClientModal({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
           <label className="form-label">Reason</label>
-          <select className="form-select" value={reason} onChange={e => setReason(e.target.value as any)}>
-            {REASONS.map(r => <option key={r}>{r}</option>)}
-          </select>
+          <FormSelect value={reason} onChange={v => setReason(v as any)} placeholder={null} options={REASONS.map(r => ({ value: r }))} />
         </div>
         <div>
           <label className="form-label">Detail (audited)</label>

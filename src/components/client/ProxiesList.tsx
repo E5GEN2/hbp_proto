@@ -182,8 +182,8 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
             setCarrier(v);
             setPage(1);
           }}
+          placeholder="All carriers"
           options={[
-            { value: '', label: 'All carriers' },
             { value: 'Verizon' },
             { value: 'T-Mobile' },
             { value: 'AT&T' },

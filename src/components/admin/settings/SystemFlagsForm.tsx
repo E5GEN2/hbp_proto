@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
+import { HelpTip } from '@/components/ui/HelpTip';
 import { setSystemFlagAction } from '@/lib/ui-actions/settings-actions';
 
 type Flags = { maxConcurrentOrdersPerClient: number; maxProxyReplacementsPerOrder: number; supportRefundCapUSD: number; discountCapWithoutSuperApprovalPercent: number };
@@ -51,15 +52,16 @@ export function SystemFlagsForm({ initial }: {
   return (
     <div className="form-grid cols-2">
       <div className="form-field full"><div className="subsection-title">Operational flags</div></div>
-      <FlagToggle label="Auto-provision proxies on order paid" on={state.systemAutoProvisionOnPayment} onClick={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
-      <FlagToggle label="Auto-replace on faulty-proxy detection" on={state.autoReplaceOnFaulty} onClick={() => flip('autoReplaceOnFaulty')} pending={pending} />
-      <FlagToggle label="Auto-release proxies after grace window" on={state.autoReleaseAfterGrace} onClick={() => flip('autoReleaseAfterGrace')} pending={pending} />
+      <FlagToggle label="Auto-provision proxies on order paid" tip="When payment confirms, pick an available proxy from the plan's pool automatically." on={state.systemAutoProvisionOnPayment} onClick={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
+      <FlagToggle label="Auto-replace on faulty-proxy detection" tip="If a proxy fails health checks, queue a replacement from the same pool without waiting for an admin." on={state.autoReplaceOnFaulty} onClick={() => flip('autoReplaceOnFaulty')} pending={pending} />
+      <FlagToggle label="Auto-release proxies after grace window" tip="Once grace ends, return the proxy to the pool. Disable only for custom contracts." on={state.autoReleaseAfterGrace} onClick={() => flip('autoReleaseAfterGrace')} pending={pending} />
       <FlagToggle label="Require 2FA for every refund action" on={state.require2FAForRefund} onClick={() => flip('require2FAForRefund')} pending={pending} />
       <FlagToggle label="Require internal note for suspend / block" on={state.requireNoteOnSuspend} onClick={() => flip('requireNoteOnSuspend')} pending={pending} />
       <div className="form-field full">
         <label className="hstack">
           <span className={`toggle-v2 danger ${state.freezeNewOrders ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={() => flip('freezeNewOrders', 'Client portal will reject new orders')} />
           <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Freeze new orders (emergency)</span>
+          <HelpTip>Blocks the client portal from creating any new orders. Existing orders unaffected. Use during incidents only.</HelpTip>
         </label>
       </div>
 
@@ -76,12 +78,13 @@ export function SystemFlagsForm({ initial }: {
   );
 }
 
-function FlagToggle({ label, on, onClick, pending }: { label: string; on: boolean; onClick: () => void; pending: boolean }) {
+function FlagToggle({ label, tip, on, onClick, pending }: { label: string; tip?: string; on: boolean; onClick: () => void; pending: boolean }) {
   return (
     <div className="form-field">
       <label className="hstack">
         <span className={`toggle-v2 ${on ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={onClick} />
         <span>{label}</span>
+        {tip && <HelpTip>{tip}</HelpTip>}
       </label>
     </div>
   );

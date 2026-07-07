@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -60,26 +61,20 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
         <Field label="Email" required><input className="form-input" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
         <Field label="Telegram"><input className="form-input" placeholder="@handle" value={form.telegram} onChange={e => setForm({ ...form, telegram: e.target.value })} /></Field>
         <Field label="Country">
-          <select className="form-select" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })}>
-            {['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => <option key={c}>{c}</option>)}
-          </select>
+          <FormSelect value={form.country} onChange={v => setForm({ ...form, country: v })} placeholder={null} options={['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => ({ value: c }))} />
         </Field>
       </div>
 
       <SectionTitle>Classification</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         <Field label="Tier">
-          <select className="form-select" value={form.tier} onChange={e => setForm({ ...form, tier: e.target.value as any })}>
-            <option value="STANDARD">Standard</option><option value="PRO">Pro</option><option value="VIP">VIP</option>
-          </select>
+          <FormSelect value={form.tier} onChange={v => setForm({ ...form, tier: v as any })} placeholder={null} options={[{ value: 'STANDARD', label: 'Standard' }, { value: 'PRO', label: 'Pro' }, { value: 'VIP', label: 'VIP' }]} />
         </Field>
         <Field label="Risk">
-          <select className="form-select" value={form.risk} onChange={e => setForm({ ...form, risk: e.target.value as any })}>
-            <option value="NONE">None</option><option value="REVIEW">Under review</option><option value="FLAG">Flagged</option>
-          </select>
+          <FormSelect value={form.risk} onChange={v => setForm({ ...form, risk: v as any })} placeholder={null} options={[{ value: 'NONE', label: 'None' }, { value: 'REVIEW', label: 'Under review' }, { value: 'FLAG', label: 'Flagged' }]} />
         </Field>
         {form.risk !== 'NONE' && (
-          <Field label="Risk note" required span={2}>
+          <Field label="Risk note" required span={2} tip="Stored as a CLIENT.NOTE_ADD entry in the audit log after creation, so future support reps can read context.">
             <textarea className="form-textarea" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={2} />
           </Field>
         )}

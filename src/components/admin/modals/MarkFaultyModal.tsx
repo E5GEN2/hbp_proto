@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -66,9 +67,7 @@ export function MarkFaultyModal({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
           <label className="form-label">Fault category</label>
-          <select className="form-select" value={category} onChange={e => setCategory(e.target.value)}>
-            {CATEGORIES.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
-          </select>
+          <FormSelect value={category} onChange={setCategory} placeholder={null} options={CATEGORIES.map(c => ({ value: c.v, label: c.l }))} />
         </div>
         <div>
           <label className="form-label">Detail / note (audited)</label>

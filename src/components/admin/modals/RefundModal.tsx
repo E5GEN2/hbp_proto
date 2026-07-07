@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
@@ -73,9 +74,7 @@ export function RefundModal({
         </div>
         <div>
           <label className="form-label">Reason category</label>
-          <select className="form-select" value={category} onChange={e => setCategory(e.target.value as any)}>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
+          <FormSelect value={category} onChange={v => setCategory(v as any)} placeholder={null} options={CATEGORIES.map(c => ({ value: c }))} />
         </div>
         <div>
           <label className="form-label">Detail (optional)</label>

@@ -11,7 +11,7 @@ export type FormSelectOption = { value: string; label?: string; disabled?: boole
    pixel-identical to the native canon field (geometry, chevron, focus halo).
    `placeholder` is button text for the empty state ONLY — it is never
    rendered as a pickable option (product ask: Choose… must not be a choice). */
-export function FormSelect({ value, onChange, options, placeholder = 'Choose…', disabled = false, wrapStyle, btnStyle }: {
+export function FormSelect({ value, onChange, options, placeholder = 'Choose…', disabled = false, wrapStyle, btnStyle, btnClassName = 'form-select' }: {
   value: string;
   onChange: (v: string) => void;
   options: FormSelectOption[];
@@ -19,6 +19,9 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
   disabled?: boolean;
   wrapStyle?: CSSProperties;
   btnStyle?: CSSProperties;
+  /** Class(es) for the closed control — defaults to the canon .form-select
+      field look; pass e.g. "orders-filter-select" for compact variants. */
+  btnClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -41,7 +44,7 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
   return (
     <div className="form-select-wrap" ref={rootRef} style={wrapStyle}>
       <button
-        type="button" className="form-select form-select-btn" style={btnStyle} disabled={disabled}
+        type="button" className={`${btnClassName} form-select-btn`} style={btnStyle} disabled={disabled}
         aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}
       >
         <span className="form-select-btn-text">{shown}</span>

@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
@@ -72,15 +73,14 @@ export function FilterBar({
         }
         const current = params.get(f.name) ?? '';
         return (
-          <select
+          <FormSelect
             key={f.name}
-            className={`form-select ${f.size ? `filter-select-${f.size}` : ''}`}
             value={current}
-            onChange={e => setParam(f.name, e.target.value)}
-          >
-            <option value="">{f.label}</option>
-            {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+            onChange={v => setParam(f.name, v)}
+            options={f.options}
+            placeholder={f.label}
+            btnClassName={`form-select ${f.size ? `filter-select-${f.size}` : ''}`}
+          />
         );
       })}
       <div className="filter-divider" />

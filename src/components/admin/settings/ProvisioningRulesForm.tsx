@@ -1,4 +1,5 @@
 'use client';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
@@ -117,21 +118,15 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
         <div className="form-grid cols-3" style={{ padding: 0 }}>
           <div className="form-field">
             <div className="form-label">Carrier <span className="req">*</span></div>
-            <select className="form-select" value={form.carrier ?? ''} onChange={e => setForm({ ...form, carrier: e.target.value })}>
-              {carriers.map(c => <option key={c}>{c}</option>)}
-            </select>
+            <FormSelect value={form.carrier ?? ''} onChange={v => setForm({ ...form, carrier: v })} options={carriers.map(c => ({ value: c }))} />
           </div>
           <div className="form-field">
             <div className="form-label">Region <span className="req">*</span></div>
-            <select className="form-select" value={form.region ?? ''} onChange={e => setForm({ ...form, region: e.target.value })}>
-              {regions.map(r => <option key={r}>{r}</option>)}
-            </select>
+            <FormSelect value={form.region ?? ''} onChange={v => setForm({ ...form, region: v })} options={regions.map(r => ({ value: r }))} />
           </div>
           <div className="form-field">
             <div className="form-label">Default pool <span className="req">*</span></div>
-            <select className="form-select" value={form.defaultPool ?? ''} onChange={e => setForm({ ...form, defaultPool: e.target.value })}>
-              {pools.map(p => <option key={p}>{p}</option>)}
-            </select>
+            <FormSelect value={form.defaultPool ?? ''} onChange={v => setForm({ ...form, defaultPool: v })} options={pools.map(p => ({ value: p }))} />
           </div>
           <div className="form-field full">
             <div className="form-label">Fallback pools (comma-separated; ordered)</div>

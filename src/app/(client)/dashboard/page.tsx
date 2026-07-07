@@ -173,17 +173,17 @@ export default async function ClientDashboard() {
               <div className="dash-2col-2-1">
                 <div className="panel">
                   <div className="panel-header"><span className="panel-title">Recent activity</span></div>
-                  <div className="timeline-mini activity-scroll">
+                  <div className="timeline activity-scroll">
                     {events.length === 0 ? (
                       <div className="empty" style={{ padding: '48px 20px' }}><div className="empty-desc">No recent activity yet.</div></div>
                     ) : events.slice(0, 25).map((e, i) => (
-                      <div className="timeline-mini-row" key={i}>
-                        <span className={`timeline-mini-dot ${e.dot}`} />
-                        <div className="timeline-mini-body">
-                          <span className="timeline-mini-title">{e.title}</span>
-                          <span className="timeline-mini-detail">{e.detail}</span>
+                      <div className="tl-item" key={i}>
+                        <span className={`tl-dot ${e.dot}`} />
+                        <div className="tl-body">
+                          <span className="tl-stamp">{fmtAdminStamp(e.at)}</span>
+                          <span className="tl-title">{e.title}</span>
+                          <span className="tl-detail">{e.detail}</span>
                         </div>
-                        <span className="timeline-mini-stamp">{fmtAdminStamp(e.at)}</span>
                       </div>
                     ))}
                   </div>

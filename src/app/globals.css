@@ -278,7 +278,9 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 .form-select-btn-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .form-select-menu {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
-  background: var(--surface);
+  /* --surface-2 = the canon tooltip swatch (prototype .help-floater matches
+     .form-select on purpose) — menus and help tips read as one surface. */
+  background: var(--surface-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 4px;
@@ -286,6 +288,10 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   max-height: 260px; overflow-y: auto;
 }
 .theme-client .form-select-menu { box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
+/* In filter bars the control is content-sized (canon .filter-bar .form-select
+   width:auto rules hit the button); the wrap must shrink with it so the menu
+   still spans exactly the button's width. */
+.filter-bar .form-select-wrap { width: fit-content; }
 .form-select-opt {
   padding: 7px 9px;
   border-radius: 6px;
@@ -2310,9 +2316,12 @@ thead th .th-label > .help-tip {
    keeping both drew a double line. */
 .lifecycle-col .toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; background-image: none; }
 .lifecycle-col .toggle-row + .toggle-row { border-top: 1px solid var(--border-subtle); }
-/* Create page drops the dividers between its three switches (product ask
-   2026-07-07). Scoped via .page-shell — only plan-create renders the form
-   inside it; plan-edit keeps the canon separators. */
+/* Create page drops the dividers between its three switches and tightens
+   the rhythm to match Settings toggle lists (bare .form-field rows in a
+   16px .form-grid — product ask 2026-07-07). Scoped via .page-shell —
+   only plan-create renders the form inside it; plan-edit keeps canon rows. */
+.page-shell .lifecycle-col { gap: 16px; }
+.page-shell .lifecycle-col .toggle-row { padding: 0; }
 .page-shell .lifecycle-col .toggle-row + .toggle-row { border-top: 0; }
 .lifecycle-col .toggle-row label { display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; min-width: 0; }
 .lifecycle-col .toggle-row .toggle-label { font-size: 12.5px; color: var(--text); font-weight: 500; }

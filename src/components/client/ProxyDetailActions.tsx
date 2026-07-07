@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import * as CA from '@/lib/ui-actions/client-actions';
+import { FormSelect } from '@/components/ui/FormSelect';
 
 const REASONS = [
   'Cannot connect / dropped',
@@ -82,9 +83,12 @@ export function ClientProxyHeaderActions({
           We&rsquo;ll swap this proxy for a healthy one from the same pool. The replacement keeps your order active and shows up here automatically.
         </div>
         <label className="form-label">What went wrong?</label>
-        <select className="form-select" value={reason} onChange={e => setReason(e.target.value)} style={{ marginBottom: 12 }}>
-          {REASONS.map(r => <option key={r}>{r}</option>)}
-        </select>
+        <FormSelect
+          value={reason}
+          onChange={setReason}
+          options={REASONS.map(r => ({ value: r }))}
+          wrapStyle={{ marginBottom: 12 }}
+        />
         <label className="form-label">Detail (optional)</label>
         <textarea className="form-textarea" rows={3} value={detail} onChange={e => setDetail(e.target.value)} placeholder="Anything that would help us reproduce the issue" />
       </Modal>

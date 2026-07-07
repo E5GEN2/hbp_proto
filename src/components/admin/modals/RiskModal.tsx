@@ -46,7 +46,7 @@ export function RiskModal({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
-          <label className="form-label">Risk level<span className="help-tip" data-tip="Risk is a contextual flag separate from client Status. Flagging does not block the client.">i</span></label>
+          <label className="form-label">Risk level</label>
           <div style={{ display: 'flex', gap: 6 }}>
             {(['NONE', 'REVIEW', 'FLAG'] as const).map(r => (
               <button

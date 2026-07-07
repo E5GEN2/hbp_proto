@@ -52,12 +52,17 @@ export function CatalogManager({ kinds, items }: {
               <div className="catalog-list">
                 {list.length === 0
                   ? <span className="catalog-empty">None yet</span>
-                  : list.map(i => (
-                    <span className="catalog-tag" key={i.id}>
-                      {i.value}
-                      <button disabled={pending} onClick={() => remove(i.id, i.value)} aria-label={`Remove ${i.value}`}>×</button>
-                    </span>
-                  ))}
+                  : list.map(i => {
+                    // "Default Pool" is the built-in plan-create default —
+                    // no delete affordance (server guard mirrors this).
+                    const builtIn = k.kind === 'POOL' && i.value === 'Default Pool';
+                    return (
+                      <span className="catalog-tag" key={i.id}>
+                        {i.value}
+                        {!builtIn && <button disabled={pending} onClick={() => remove(i.id, i.value)} aria-label={`Remove ${i.value}`}>×</button>}
+                      </span>
+                    );
+                  })}
               </div>
               <div className="catalog-add">
                 <input

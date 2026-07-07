@@ -45,13 +45,13 @@ export function GraceRulesForm({ initial }: { initial: Grace }) {
       {/* Honest-state badge (audit B-4): values persist, but the lifecycle sweep
           uses its own fixed windows — these knobs aren't consulted yet (Phase 2). */}
       <div className="form-field full"><div className="subsection-title">Global defaults <span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
-      <div className="form-field"><div className="form-label">Default grace period (hours) <span className="req">*</span><span className="help-tip" data-tip="Fallback grace if a plan does not specify its own. After this window, proxies are released back to pool.">i</span></div>{num('defaultGraceHours')}</div>
+      <div className="form-field"><div className="form-label">Default grace period (hours) <span className="req">*</span></div>{num('defaultGraceHours')}</div>
       <div className="form-field"><div className="form-label">Pre-renewal reminder (hours before expiry) <span className="req">*</span></div>{num('preRenewalReminderHours')}</div>
       <div className="form-field"><div className="form-label">Second reminder</div>{num('secondReminderHours')}</div>
       <div className="form-field"><div className="form-label">Third reminder (at expiry)</div>{num('thirdReminderHours')}</div>
 
       <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.autoRenew24hBeforeExpiry ? 'on' : ''}`} onClick={() => setG({ ...g, autoRenew24hBeforeExpiry: !g.autoRenew24hBeforeExpiry })} /> Auto-renew: charge 24h before expiry if card on file</label></div>
-      <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.keepProxyDuringGrace ? 'on' : ''}`} onClick={() => setG({ ...g, keepProxyDuringGrace: !g.keepProxyDuringGrace })} /> Keep proxy assigned during grace (client can still use)<span className="help-tip" data-tip="If ON, service continues during grace. If OFF, proxy becomes read-only at expiry. Most businesses keep this ON.">i</span></label></div>
+      <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.keepProxyDuringGrace ? 'on' : ''}`} onClick={() => setG({ ...g, keepProxyDuringGrace: !g.keepProxyDuringGrace })} /> Keep proxy assigned during grace (client can still use)</label></div>
       <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.autoSuspendAfter3Fails ? 'on' : ''}`} onClick={() => setG({ ...g, autoSuspendAfter3Fails: !g.autoSuspendAfter3Fails })} /> Auto-suspend after 3 failed auto-renew attempts</label></div>
 
       <div className="form-field full" style={{ marginTop: 10 }}><div className="subsection-title">Per-tier overrides</div></div>

@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import * as CA from '@/lib/ui-actions/client-actions';
+import { FormSelect } from '@/components/ui/FormSelect';
 
 export function ProfileForm({ initial }: {
   initial: { name: string; telegram: string | null; country: string | null };
@@ -40,9 +41,11 @@ export function ProfileForm({ initial }: {
         </div>
         <div className="settings-field">
           <label className="settings-field-label">Country</label>
-          <select className="form-select" value={country} onChange={e => setCountry(e.target.value)}>
-            {['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => <option key={c}>{c}</option>)}
-          </select>
+          <FormSelect
+            value={country}
+            onChange={setCountry}
+            options={['US','UK','DE','FR','ES','IT','CA','AU','JP','BR','RU','IN','UAE','Other'].map(c => ({ value: c }))}
+          />
         </div>
       </div>
       <div className="settings-actions">

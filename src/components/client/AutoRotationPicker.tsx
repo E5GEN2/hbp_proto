@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { updateAutoRotateAction } from '@/lib/ui-actions/proxy-actions';
 
 // Stage 1.5 backend per IMPLEMENTATION_BACKLOG.md S4: the plan declares
@@ -38,16 +39,13 @@ export function AutoRotationPicker({ proxyId, current }: { proxyId: string; curr
   }
 
   return (
-    <select
-      className="form-select"
-      value={value}
+    <FormSelect
+      value={String(value)}
       disabled={pending}
-      onChange={e => save(parseInt(e.target.value, 10))}
-      style={{ minWidth: 0, width: 'auto', padding: '4px 8px', fontSize: 12, lineHeight: 1.4 }}
-    >
-      {CHOICES.map(c => (
-        <option key={c.value} value={c.value}>{c.label}</option>
-      ))}
-    </select>
+      onChange={v => save(parseInt(v, 10))}
+      options={CHOICES.map(c => ({ value: String(c.value), label: c.label }))}
+      wrapStyle={{ width: 'fit-content' }}
+      btnStyle={{ minWidth: 0, width: 'auto', height: 'auto', padding: '4px 28px 4px 8px', fontSize: 12, lineHeight: 1.4 }}
+    />
   );
 }

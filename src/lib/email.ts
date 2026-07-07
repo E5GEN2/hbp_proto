@@ -147,6 +147,18 @@ export function orderRenewedEmail(orderId: string, newExpiry: string) {
   };
 }
 
+export function renewalReminderEmail(orderId: string, expiresOn: string) {
+  return {
+    subject: `Order ${orderId} expires soon`,
+    html: shell(
+      'Renewal reminder',
+      p(`Order <strong>${orderId}</strong> expires on <strong>${expiresOn}</strong>. Renew before then to keep your proxies — after expiry they are released and a later renewal assigns fresh ones.`) +
+      cta('Renew now', appUrl(`/orders/${orderId}`)),
+    ),
+    text: `Order ${orderId} expires on ${expiresOn}. Renew to keep your proxies: ${appUrl(`/orders/${orderId}`)}`,
+  };
+}
+
 export function autoRenewedEmail(orderId: string, newExpiry: string, via: string) {
   return {
     subject: `Order ${orderId} auto-renewed`,

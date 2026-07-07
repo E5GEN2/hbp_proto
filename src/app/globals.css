@@ -150,6 +150,13 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   margin-right: 8px;
   flex-shrink: 0;
 }
+/* Admin panel-title marker follows the canon blue accent halo. The base rule
+   above hardcodes the gold client-portal halo, which left a blue dot with a
+   gold glow on admin section headers. Scoped to .theme-admin so the client
+   portal keeps its gold marker. */
+.theme-admin .panel-title::before {
+  box-shadow: 0 0 4px 1px rgba(91,140,255,.85), 0 0 8px rgba(91,140,255,.4);
+}
 .panel-body { padding: 20px; }
 .panel-body.tight { padding: 12px 20px; }
 .panel-body.flush { padding: 0; }
@@ -974,7 +981,11 @@ table.dt { table-layout: fixed; }
 /* Create-plan: single-column shell + compact status header (canon plan-create).
    `.plan-create-title` is the one deviation from canon — a sans page title kept
    per product ask; every other detail page uses the mono `.detail-id`. */
-.page-shell { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+/* Canon `.page-shell` caps at 1080 but its content (3 form columns whose
+   inputs have no width:100%) shrinks it to ~771px. Our inputs are width:100%,
+   so we pin the shell to that rendered 771 directly — stable regardless of
+   live catalog option lengths, and lands the 3 columns at the canon 231px. */
+.page-shell { max-width: 771px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 .page-shell > .detail-header { margin-bottom: 0; }
 .detail-header.compact { padding: 14px 22px; align-items: center; }
 .detail-header-status { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -2246,7 +2257,10 @@ thead th .th-label > .help-tip {
 .lifecycle-grid { display: grid; gap: 22px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
 .lifecycle-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .lifecycle-fields { display: flex; flex-direction: column; gap: 14px; }
-.lifecycle-col .toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+/* background-image: none kills the generic .toggle-row bottom-gradient
+   divider; canon lifecycle rows separate with the border-top below ONLY —
+   keeping both drew a double line. */
+.lifecycle-col .toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; background-image: none; }
 .lifecycle-col .toggle-row + .toggle-row { border-top: 1px solid var(--border-subtle); }
 .lifecycle-col .toggle-row label { display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; min-width: 0; }
 .lifecycle-col .toggle-row .toggle-label { font-size: 12.5px; color: var(--text); font-weight: 500; }

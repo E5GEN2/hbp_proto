@@ -19,7 +19,7 @@ export async function GET() {
 
   const lastRead = user?.notifLastReadAt ?? new Date(0);
   const unread = notifs.filter(n => n.createdAt > lastRead).length;
-  return NextResponse.json({ notifs, unread, balance: Number(user?.balance ?? 0) });
+  return NextResponse.json({ notifs, unread, lastReadAt: lastRead.toISOString(), balance: Number(user?.balance ?? 0) });
 }
 
 export async function POST() {

@@ -2,6 +2,7 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { GlobalNewOrder } from './shell/NewOrderContext';
+import { AdminNotifBell } from './AdminNotifBell';
 import { NavBacklink } from '@/components/ui/NavBacklink';
 import { signalStructural } from '@/lib/nav-history';
 
@@ -59,13 +60,7 @@ export function AdminTopbar({
       </div>
       <div className="topbar-right">
         {action}
-        <button className="notif-btn" type="button" aria-label="Notifications">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1.5a4.5 4.5 0 0 1 4.5 4.5v2l1 2H1.5l1-2V6A4.5 4.5 0 0 1 7 1.5z" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M5.5 11.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.3" />
-          </svg>
-          <span className="notif-dot" />
-        </button>
+        <AdminNotifBell />
         <GlobalNewOrder />
       </div>
     </header>

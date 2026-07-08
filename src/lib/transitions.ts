@@ -11,6 +11,7 @@
 import { prisma } from './prisma';
 import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyId, nextAssignmentId } from './id';
 import { renewalUnitPrice } from './renewal';
+import { fmtDate } from './date';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -379,7 +380,7 @@ export async function extendOrder({
     });
 
     await notify(tx, ord.clientId,
-      `Order ${orderId} extended by ${days} days. New expiry: ${newExpiry.toDateString()}`,
+      `Order ${orderId} extended by ${days} days. New expiry: ${fmtDate(newExpiry)}`,
       'SUCCESS', `/orders/${orderId}`,
     );
     await log(tx, actor.id, 'ORDER.EXTEND', 'ORDER', orderId, `Extended ${days} days · method=${paymentMethod ?? 'comp'}`);
@@ -554,7 +555,7 @@ export async function markProxyFaulty({
           data: { exception: 'REPLACEMENT_PENDING', excInfo: `Proxy ${proxyId} marked faulty: ${reason}` },
         });
         await notify(tx, a.order.clientId,
-          `Proxy ${proxyId} on order ${a.orderId} flagged faulty — replacement in progress`,
+          `Proxy ${proxyId} on order ${a.orderId} flagged faulty — a replacement is being arranged`,
           'WARNING', `/orders/${a.orderId}`,
         );
       }
@@ -599,13 +600,22 @@ export async function markProxyFaulty({
 
 export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor: Actor }) {
   return prisma.$transaction(async tx => {
-    const proxy = await tx.proxy.findUnique({ where: { id: proxyId } });
+    const proxy = await tx.proxy.findUnique({
+      where: { id: proxyId },
+      include: { assignments: { where: { releasedAt: null }, include: { order: { select: { id: true, clientId: true } } } } },
+    });
     if (!proxy) throw new Error('Proxy not found');
     await tx.assignment.updateMany({
       where: { proxyId, releasedAt: null },
       data: { releasedAt: new Date(), reason: 'CANCEL', reasonDetail: 'Admin released' },
     });
     await tx.proxy.update({ where: { id: proxyId }, data: { status: 'RELEASED', currentOrderId: null } });
+    // The client's proxy just vanished from their portal — say so (was silent).
+    for (const a of proxy.assignments) {
+      await notify(tx, a.order.clientId,
+        `Proxy ${proxyId} on order ${a.order.id} was released by support — contact us if this is unexpected`,
+        'WARNING', `/orders/${a.order.id}`);
+    }
     await log(tx, actor.id, 'PROXY.RELEASE', 'PROXY', proxyId, 'Manually released');
     return { ok: true };
   });
@@ -1180,11 +1190,10 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     await notify(tx, input.clientId,
       finalStatus === 'ACTIVE'
         ? `Order ${orderId} activated — ${input.qty} ${input.qty === 1 ? 'proxy' : 'proxies'} ready`
-        : finalException === 'PAID_NOT_PROVISIONED'
-          ? `Order ${orderId} received — provisioning in progress (capacity hit)`
-          : isInstant ? `Order ${orderId} received — fulfilment in progress`
+        : isInstant || input.paymentMethod === 'comp'
+          ? `Order ${orderId} received — your proxies are being prepared`
           : `Order ${orderId} created — awaiting payment`,
-      finalStatus === 'ACTIVE' ? 'SUCCESS' : finalException ? 'WARNING' : 'INFO',
+      finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO',
       `/orders/${orderId}`,
     );
     await log(tx, actor.id, 'ORDER.CREATE', 'ORDER', orderId,
@@ -1405,8 +1414,8 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
       },
     });
     await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
-      `Client renewal · $${price} from balance · new expiry ${newExpiry.toDateString()}`);
-    await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${newExpiry.toLocaleDateString()}`, 'SUCCESS', `/orders/${orderId}`);
+      `Client renewal · $${price} from balance · new expiry ${fmtDate(newExpiry)}`);
+    await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${orderId}`);
     return { ok: true, redirect: null, newExpiry: newExpiry.toISOString() };
   });
 }

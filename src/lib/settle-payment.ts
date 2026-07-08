@@ -226,6 +226,22 @@ export async function failAwaitingPayment(paymentId: string, reason: string): Pr
       if (order && order.paymentStatus === 'AWAITING') {
         await tx.order.update({ where: { id: order.id }, data: { paymentStatus: 'FAILED' } });
       }
+      // The client got NO signal before — the order just sat there failed.
+      await tx.notification.create({
+        data: {
+          id: notifId(), userId: payment.clientId,
+          title: `Payment for order ${payment.orderId} didn't complete — you can retry from the order page`,
+          kind: 'WARNING', link: `/orders/${payment.orderId}`,
+        },
+      });
+    } else {
+      await tx.notification.create({
+        data: {
+          id: notifId(), userId: payment.clientId,
+          title: `Deposit ${payment.id} didn't complete — your balance was not credited`,
+          kind: 'WARNING', link: '/billing',
+        },
+      });
     }
     await tx.log.create({
       data: {

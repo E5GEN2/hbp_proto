@@ -156,10 +156,15 @@ export async function runSweep(): Promise<SweepResult> {
         });
       });
       expired++;
+      // Honest next-step per grace: with a window the proxies keep working
+      // until graceEnd (renew keeps THEM); without one they release on the
+      // next tick and a later renewal assigns fresh ones.
       await notify(o.clientId,
         autoRenewGaveUp
-          ? `Order ${o.id} expired — auto-renew could not complete. Renew manually to restore your proxies.`
-          : `Order ${o.id} expired on ${fmtDate(o.expiresAt)} — renew to keep your proxies`,
+          ? `Order ${o.id} expired — auto-renew could not complete. Renew to get fresh proxies.`
+          : graceMs > 0
+            ? `Order ${o.id} expired — proxies keep working until ${fmtDate(new Date(graceEnd))}; renew before then to keep them`
+            : `Order ${o.id} expired on ${fmtDate(o.expiresAt)} — renew to get fresh proxies`,
         'WARNING', `/orders/${o.id}`);
       if (autoRenewGaveUp && o.client.emailRenewal) {
         await sendEmail({ to: o.client.email, ...autoRenewFailedExpiredEmail(o.id) });

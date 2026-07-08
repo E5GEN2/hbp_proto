@@ -258,13 +258,8 @@ export async function POST(req: Request) {
         title:
           finalStatus === 'ACTIVE'
             ? `Order ${orderId} activated — ${qty} ${qty === 1 ? 'proxy' : 'proxies'} ready`
-            : finalException === 'PAID_NOT_PROVISIONED'
-              ? `Order ${orderId} received — provisioning in progress (capacity hit)`
-              : `Order ${orderId} received — fulfilment in progress`,
-        kind:
-          finalStatus === 'ACTIVE' ? 'SUCCESS'
-          : finalException === 'PAID_NOT_PROVISIONED' ? 'WARNING'
-          : 'INFO',
+            : `Order ${orderId} received — your proxies are being prepared`,
+        kind: finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO',
         link: `/orders/${orderId}`,
       },
     });

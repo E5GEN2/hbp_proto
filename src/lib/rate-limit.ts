@@ -3,18 +3,22 @@
 // counters reset on redeploy, which is fine for abuse throttling.
 const buckets = new Map<string, number[]>();
 const MAX_KEYS = 10_000;
-const STALE_MS = 24 * 60 * 60 * 1000; // must exceed the largest window in use
+const STALE_MS = 2 * 60 * 60 * 1000; // just above the largest window in use
+const SWEEP_EVERY_MS = 60 * 1000;
+let lastSweepAt = 0;
 
 function sweep(now: number) {
+  if (buckets.size <= MAX_KEYS || now - lastSweepAt < SWEEP_EVERY_MS) return;
+  lastSweepAt = now;
   for (const [key, hits] of buckets) {
-    if (hits.length === 0 || hits[hits.length - 1] < now - STALE_MS) buckets.delete(key);
+    if ((hits[hits.length - 1] ?? 0) < now - STALE_MS) buckets.delete(key);
   }
 }
 
 /** Records a hit; returns 0 when allowed, otherwise seconds until the window frees up. */
 export function hitRateLimit(key: string, limit: number, windowMs: number): number {
   const now = Date.now();
-  if (buckets.size > MAX_KEYS) sweep(now);
+  sweep(now);
   const hits = (buckets.get(key) ?? []).filter(t => t > now - windowMs);
   if (hits.length >= limit) {
     buckets.set(key, hits);
@@ -26,10 +30,14 @@ export function hitRateLimit(key: string, limit: number, windowMs: number): numb
 }
 
 /**
- * Client IP behind the Railway edge proxy. Railway strips any client-supplied
- * x-forwarded-for at its edge and writes the real connecting IP as the FIRST
- * entry; trailing entries can be Railway/CDN internals, so taking the last hop
- * would collapse all clients into one bucket and lock registration globally.
+ * Best-effort client IP. Railway's current staff guidance says the edge
+ * strips client-supplied x-forwarded-for and writes the real connecting IP
+ * as the FIRST entry — but staff statements have contradicted each other
+ * over the years, so treat the contract as unverified: AUTH.REGISTER log
+ * rows record the raw headers so it can be checked against real traffic
+ * after deploy. First-hop worst case is limiter bypass (the pre-limiter
+ * status quo); last-hop worst case would collapse all clients into one
+ * bucket and lock registration globally — hence first-hop.
  */
 export function clientIp(req: Request): string {
   const first = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();

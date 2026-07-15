@@ -15,6 +15,7 @@ const Schema = z.object({
 const ATTEMPT_LIMIT = 10; // POSTs per IP per 10 minutes
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const SIGNUP_LIMIT = 3; // accounts per IP per hour
+const SIGNUP_GLOBAL_LIMIT = 30; // accounts per hour site-wide — backstop if per-IP keying fails
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 
 function tooMany(retryAfterSec: number) {
@@ -45,6 +46,8 @@ export async function POST(req: Request) {
   // consumes attempt slots only, not signup slots.
   const signupWait = hitRateLimit(`register:new:${ip}`, SIGNUP_LIMIT, SIGNUP_WINDOW_MS);
   if (signupWait) return tooMany(signupWait);
+  const globalWait = hitRateLimit('register:new:global', SIGNUP_GLOBAL_LIMIT, SIGNUP_WINDOW_MS);
+  if (globalWait) return tooMany(globalWait);
 
   const id = await nextUserId();
   const passwordHash = await bcrypt.hash(password, 10);
@@ -64,10 +67,17 @@ export async function POST(req: Request) {
     },
   });
 
+  // Raw proxy headers recorded alongside the resolved IP so the Railway
+  // x-forwarded-for contract can be audited from real traffic (see rate-limit.ts).
+  const rawXff = (req.headers.get('x-forwarded-for') ?? '—').slice(0, 120);
+  const rawRealIp = (req.headers.get('x-real-ip') ?? '—').slice(0, 45);
   // Best-effort — neither a mail outage nor a log failure must fail the signup.
   await prisma.log
     .create({
-      data: { actorId: id, action: 'AUTH.REGISTER', objectType: 'AUTH', objectId: id, detail: `Account created from ${ip}` },
+      data: {
+        actorId: id, action: 'AUTH.REGISTER', objectType: 'AUTH', objectId: id,
+        detail: `Account created from ${ip} (xff: ${rawXff}; real-ip: ${rawRealIp})`,
+      },
     })
     .catch(() => {});
   await sendEmail({ to: email, ...welcomeEmail(name) });

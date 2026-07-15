@@ -26,12 +26,12 @@ export function hitRateLimit(key: string, limit: number, windowMs: number): numb
 }
 
 /**
- * Client IP behind the Railway edge proxy. The LAST x-forwarded-for hop is the
- * one written by the trusted proxy — earlier entries can be spoofed by the
- * client to rotate identities past the limiter.
+ * Client IP behind the Railway edge proxy. Railway strips any client-supplied
+ * x-forwarded-for at its edge and writes the real connecting IP as the FIRST
+ * entry; trailing entries can be Railway/CDN internals, so taking the last hop
+ * would collapse all clients into one bucket and lock registration globally.
  */
 export function clientIp(req: Request): string {
-  const hops = req.headers.get('x-forwarded-for')?.split(',');
-  const last = hops?.[hops.length - 1]?.trim();
-  return last || req.headers.get('x-real-ip')?.trim() || 'unknown';
+  const first = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  return first || req.headers.get('x-real-ip')?.trim() || 'unknown';
 }

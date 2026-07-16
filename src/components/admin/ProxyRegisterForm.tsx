@@ -59,8 +59,10 @@ function parseImport(text: string, catalog: Catalog): ParsedLine[] {
     if (!r) { out.push({ n, error: `unknown region «${region}»` }); continue; }
     const p = find(catalog.pools, pool);
     if (!p) { out.push({ n, error: `unknown pool «${pool}»` }); continue; }
-    const endpoint = `${ip}:${port}`;
-    if (endpoints.has(endpoint)) { out.push({ n, error: `duplicate endpoint ${endpoint}` }); continue; }
+    // Same key as the server: ip:port:login — one host:port may carry several
+    // proxies that differ only by credentials.
+    const endpoint = `${ip}:${port}:${username}`;
+    if (endpoints.has(endpoint)) { out.push({ n, error: `duplicate ${endpoint}` }); continue; }
     endpoints.add(endpoint);
     out.push({ n, draft: { modem, carrier: c, region: r, pool: p, ip, port: portStr, username, password } });
   }

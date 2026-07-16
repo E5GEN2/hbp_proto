@@ -1248,11 +1248,16 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
       const pool = pools.get(input.pool.trim().toLowerCase());
       if (!pool) throw new Error(`${at}: unknown pool «${input.pool.trim()}»`);
 
-      const endpoint = `${input.ip.trim()}:${input.port}`;
-      if (seenEndpoints.has(endpoint)) throw new Error(`${at}: duplicate endpoint ${endpoint} in this batch`);
+      // Dedup key is ip:port:login — the same host:port legitimately serves
+      // several proxies distinguished by credentials (gateway setups).
+      const endpoint = `${input.ip.trim()}:${input.port}:${input.username.trim()}`;
+      if (seenEndpoints.has(endpoint)) throw new Error(`${at}: duplicate ${endpoint} in this batch`);
       seenEndpoints.add(endpoint);
-      const existing = await tx.proxy.findFirst({ where: { ip: input.ip.trim(), port: input.port }, select: { id: true } });
-      if (existing) throw new Error(`${at}: endpoint ${endpoint} is already registered as ${existing.id}`);
+      const existing = await tx.proxy.findFirst({
+        where: { ip: input.ip.trim(), port: input.port, username: input.username.trim() },
+        select: { id: true },
+      });
+      if (existing) throw new Error(`${at}: ${endpoint} is already registered as ${existing.id}`);
 
       const id = await nextProxyIdInTx(tx);
       await tx.proxy.create({

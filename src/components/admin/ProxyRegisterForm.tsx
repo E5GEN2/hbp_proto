@@ -29,7 +29,7 @@ function parseImport(text: string, catalog: Catalog): ParsedLine[] {
   const find = (list: string[], v: string) => list.find(x => x.toLowerCase() === v.trim().toLowerCase());
   const out: ParsedLine[] = [];
   const endpoints = new Set<string>();
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r\n|\r|\n/);
   let n = 0;
   for (const raw of lines) {
     const line = raw.trim();
@@ -49,8 +49,18 @@ function parseImport(text: string, catalog: Catalog): ParsedLine[] {
       out.push({ n, error: 'empty field' });
       continue;
     }
+    // A bare trailing colon would otherwise silently drop a character of the
+    // password — reject it like every other colon-in-password shape.
+    if (parts.length > 8 && !rotationUrl) {
+      out.push({ n, error: "password must not contain ':' (trailing colon?)" });
+      continue;
+    }
     if (rotationUrl && !/^https?:\/\//i.test(rotationUrl)) {
       out.push({ n, error: "rotation URL must start with http:// or https:// (password must not contain ':')" });
+      continue;
+    }
+    if (rotationUrl.length > 512) {
+      out.push({ n, error: 'rotation URL too long (max 512 characters)' });
       continue;
     }
     // Digits-only: Number() would accept '1e3'/'0x50' here while the submit
@@ -132,6 +142,12 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
         }
         if (r.rotationUrl.trim() && !/^https?:\/\//i.test(r.rotationUrl.trim())) {
           setErr(`Proxy ${i + 1}: rotation URL must start with http:// or https://`);
+          return;
+        }
+        // Credentials render and import as host:port:login:password — a colon
+        // inside either token would make that string unparseable.
+        if (r.username.includes(':') || r.password.includes(':')) {
+          setErr(`Proxy ${i + 1}: username and password must not contain ':'`);
           return;
         }
       }
@@ -243,7 +259,7 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
     <div className="panel-section">
       <div className="panel-title-row">
         <div className="panel-title">Import from file</div>
-        <span className="form-required-note">One proxy per line · <span className="mono">{IMPORT_FORMAT}</span></span>
+        <span className="form-required-note">One proxy per line · <span className="mono">{IMPORT_FORMAT}</span> · password without «:»</span>
       </div>
       <input
         ref={fileRef} type="file" accept=".txt,.csv,.list,text/plain" style={{ display: 'none' }}

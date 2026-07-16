@@ -1242,8 +1242,12 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
         throw new Error(`${at}: all proxy fields required`);
       }
       if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) throw new Error(`${at}: port out of range`);
+      // Credentials render and re-import as host:port:login:password — colons
+      // inside the tokens would make that string unparseable.
+      if (input.username.includes(':') || input.password.includes(':')) throw new Error(`${at}: username and password must not contain ':'`);
       const rotationUrl = input.rotationUrl?.trim() || null;
       if (rotationUrl && !/^https?:\/\//i.test(rotationUrl)) throw new Error(`${at}: rotation URL must start with http:// or https://`);
+      if (rotationUrl && rotationUrl.length > 512) throw new Error(`${at}: rotation URL too long (max 512 characters)`);
       const carrier = carriers.get(input.carrier.trim().toLowerCase());
       if (!carrier) throw new Error(`${at}: unknown carrier «${input.carrier.trim()}»`);
       const region = regions.get(input.region.trim().toLowerCase());

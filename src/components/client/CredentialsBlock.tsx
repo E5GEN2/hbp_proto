@@ -10,7 +10,6 @@ type Proxy = {
   password: string;
   carrier: string;
   region: string;
-  rotateToken: string | null;
 };
 
 type Protocol = 'http' | 'socks5';

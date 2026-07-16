@@ -16,6 +16,7 @@ const EMPTY: Draft = { modem: '', carrier: '', region: '', pool: '', ip: '', por
 
 const MAX_MANUAL = 10;
 const MAX_IMPORT = 200; // matches the server-side batch cap
+const PREVIEW_MAX = 250; // rows rendered in the import preview — a mis-picked huge file must not hang the tab
 const IMPORT_FORMAT = 'deviceid:carrier:region:pool:host:port:login:pass';
 
 type ParsedLine = { n: number; draft?: Draft; error?: string };
@@ -45,7 +46,9 @@ function parseImport(text: string, catalog: Catalog): ParsedLine[] {
       out.push({ n, error: 'empty field' });
       continue;
     }
-    const port = Number(portStr);
+    // Digits-only: Number() would accept '1e3'/'0x50' here while the submit
+    // path sends a different value — the two must agree on every input.
+    const port = /^\d+$/.test(portStr) ? Number(portStr) : NaN;
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       out.push({ n, error: `bad port «${portStr}»` });
       continue;
@@ -85,6 +88,12 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
 
   async function onFile(file: File) {
     setErr(null);
+    if (file.size > 512 * 1024) {
+      setFileName(file.name);
+      setParsed([]);
+      setErr('File is too large (max 512 KB). Split it and import in parts.');
+      return;
+    }
     setFileName(file.name);
     setParsed(parseImport(await file.text(), catalog));
   }
@@ -92,7 +101,7 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
   function toInput(d: Draft) {
     return {
       modem: d.modem.trim(), carrier: d.carrier, region: d.region, pool: d.pool,
-      ip: d.ip.trim(), port: parseInt(d.port, 10),
+      ip: d.ip.trim(), port: Number(d.port.trim()),
       username: d.username.trim(), password: d.password.trim(),
     };
   }
@@ -106,7 +115,7 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
           setErr(`Proxy ${i + 1}: all fields are required`);
           return;
         }
-        const port = Number(r.port);
+        const port = /^\d+$/.test(r.port.trim()) ? Number(r.port.trim()) : NaN;
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
           setErr(`Proxy ${i + 1}: port must be a whole number between 1 and 65535`);
           return;
@@ -124,7 +133,18 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
         toast(`${n} ${n === 1 ? 'proxy' : 'proxies'} registered`, n <= 3 ? r.proxyIds.join(', ') : `${r.proxyIds[0]} … ${r.proxyIds[n - 1]}`, 'success');
         router.push('/admin/proxies');
         router.refresh();
-      } catch (e: any) { setErr(e?.message ?? 'Failed'); }
+      } catch (e: any) {
+        let msg: string = e?.message ?? 'Failed';
+        if (mode === 'import') {
+          // The server numbers items by position in the submitted (valid-only)
+          // array — map that back to the preview's line numbers, which also
+          // count the skipped invalid lines.
+          const m = /^Proxy #(\d+): (.*)$/.exec(msg);
+          const line = m ? parsed.filter(l => l.draft)[parseInt(m[1], 10) - 1]?.n : undefined;
+          if (m && line !== undefined) msg = `Line ${line}: ${m[2]}`;
+        }
+        setErr(msg);
+      }
     });
   }
 
@@ -231,7 +251,7 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
               <th className="col-status">Check</th>
             </tr></thead>
             <tbody>
-              {parsed.map(l => (
+              {parsed.slice(0, PREVIEW_MAX).map(l => (
                 <tr key={l.n}>
                   <td className="col-num">{l.n}</td>
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={l.draft?.modem ?? '—'}>{l.draft?.modem ?? '—'}</span></td>
@@ -248,6 +268,11 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {parsed.length > PREVIEW_MAX && (
+        <div className="form-required-note" style={{ marginTop: 10 }}>
+          Preview shows the first {PREVIEW_MAX} of {parsed.length} lines.
         </div>
       )}
       {parsed.length > 0 && importErrors > 0 && (

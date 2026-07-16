@@ -359,6 +359,10 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 }
 .tab:hover { color: var(--text-secondary); }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+/* Tabs are normally <Link>; client-side mode switches (register-proxy page)
+   render them as <button> — strip the UA chrome so .tab applies identically.
+   Single-class specificity keeps .tab.active / .theme-admin .tab winning. */
+button.tab { background: none; border: none; border-bottom: 2px solid transparent; font-family: inherit; }
 .tab-count {
   display: inline-flex;
   align-items: center;

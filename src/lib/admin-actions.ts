@@ -171,9 +171,9 @@ export const setClientRiskAction = guarded(async function setClientRiskAction(us
   return r;
 });
 
-export const registerProxyAction = guarded(async function registerProxyAction(input: T.RegisterProxyInput) {
+export const registerProxiesAction = guarded(async function registerProxiesAction(inputs: T.RegisterProxyInput[]) {
   const actor = await getAdminActor();
-  const r = await T.registerProxy({ input, actor });
+  const r = await T.registerProxies({ inputs, actor });
   bust();
   return r;
 });

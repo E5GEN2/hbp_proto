@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
-import { ProxiesToolbar } from '@/components/admin/toolbars/ProxiesToolbar';
 import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { ProxiesBulkTable } from '@/components/admin/ProxiesBulkTable';
@@ -78,7 +77,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
             { kind: 'select', name: 'region', label: 'Region: all', size: 'md', options: regions.map(r => ({ value: r, label: r })) },
             { kind: 'select', name: 'pool', label: 'Pool: all', size: 'lg', options: pools.map(p => ({ value: p, label: p })) },
           ]}
-          action={<ProxiesToolbar carriers={carriers} regions={regions} pools={pools} />}
+          action={<Link href="/admin/proxies/new" className="btn primary">+ Register proxy</Link>}
         />
 
         <div className="panel">
@@ -93,6 +92,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
           <ProxiesBulkTable proxies={proxies.map(p => ({
             id: p.id, currentOrderId: p.currentOrderId, carrier: p.carrier, region: p.region, pool: p.pool,
             ip: p.ip, port: p.port, modem: p.modem, trafficUsedMB: p.trafficUsedMB, uptime: p.uptime, status: p.status,
+            registeredAt: p.registeredAt,
           }))} />
 
           <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/proxies" search={sp} />

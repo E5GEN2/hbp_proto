@@ -1,20 +1,22 @@
 'use client';
 import { useToast } from '@/components/ui/Toast';
 
-export function RotationUrlPanel({ rotateToken }: { rotateToken: string | null; proxyId?: string }) {
+// Shows the device's real rotation endpoint (Proxy.rotationUrl, set at
+// registration). Proxies without one simply don't get the panel.
+export function RotationUrlPanel({ rotationUrl }: { rotationUrl: string | null; proxyId?: string }) {
   const toast = useToast();
-  const url = rotateToken ? `https://rotate.proxy.io/${rotateToken}` : '';
 
   async function copy() {
-    if (!url) return;
+    if (!rotationUrl) return;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(rotationUrl);
       toast('URL copied', '', 'success');
     } catch {
       toast('Copy failed', '', 'danger');
     }
   }
 
+  if (!rotationUrl) return null;
   return (
     <div className="panel">
       <div className="panel-header">
@@ -22,9 +24,9 @@ export function RotationUrlPanel({ rotateToken }: { rotateToken: string | null; 
       </div>
       <div className="panel-body">
         <div className="creds-row">
-          <pre className="export-preview">{url || '— no token set'}</pre>
+          <pre className="export-preview">{rotationUrl}</pre>
           <div className="creds-actions">
-            <button className="btn" disabled={!url} onClick={copy}>Copy URL</button>
+            <button className="btn" onClick={copy}>Copy URL</button>
             <button className="btn ghost" disabled title="URL reset ships in a later release">Reset URL</button>
           </div>
         </div>

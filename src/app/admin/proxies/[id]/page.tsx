@@ -73,7 +73,11 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
                 <div className="kv-row"><span className="kv-key">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
                 <div className="kv-row"><span className="kv-key">Pool</span><span className="kv-val">{proxy.pool}</span></div>
                 <div className="kv-row"><span className="kv-key">Hardware ID</span><span className="kv-val">{proxy.modem}</span></div>
-                <div className="kv-row"><span className="kv-key">Host · Port</span><span className="kv-val">{proxy.ip} : {proxy.port}</span></div>
+                <div className="kv-row"><span className="kv-key">Host</span><span className="kv-val mono">{proxy.ip}</span></div>
+                <div className="kv-row"><span className="kv-key">Port</span><span className="kv-val mono">{proxy.port}</span></div>
+                <div className="kv-row"><span className="kv-key">Username</span><span className="kv-val mono">{proxy.username}</span></div>
+                <div className="kv-row"><span className="kv-key">Password</span><span className="kv-val mono">{proxy.password}</span></div>
+                <div className="kv-row"><span className="kv-key">Rotation URL</span><span className="kv-val mono">{proxy.rotationUrl ?? <span className="muted">—</span>}</span></div>
                 <div className="kv-row"><span className="kv-key">Protocols</span><span className="kv-val">HTTPS, SOCKS5</span></div>
                 <div className="kv-row"><span className="kv-key">Curl</span><span className="kv-val wrap">{curlExample}</span></div>
               </div>

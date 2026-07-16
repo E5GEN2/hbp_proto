@@ -60,9 +60,8 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
                 ip: proxy.ip, port: proxy.port,
                 username: proxy.username, password: proxy.password,
                 carrier: proxy.carrier, region: proxy.region,
-                rotateToken: proxy.rotateToken,
               }]} />
-              <RotationUrlPanel rotateToken={proxy.rotateToken} />
+              <RotationUrlPanel rotationUrl={proxy.rotationUrl} />
               <WhitelistPanel proxyId={proxy.id} entries={proxy.whitelist.map(w => ({ id: w.id, ip: w.ip }))} />
             </div>
 

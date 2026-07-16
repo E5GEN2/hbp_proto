@@ -15,6 +15,8 @@ type Row = {
   pool: string;
   ip: string;
   port: number;
+  username: string;
+  password: string;
   modem: string;
   trafficUsedMB: number;
   uptime: number;
@@ -89,7 +91,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <th className="col-id">Assigned to</th>
             <th className="col-text">Carrier · Region</th>
             <th className="col-text"><span className="th-label">Pool<span className="help-tip" data-tip="A named group of proxies a plan can draw from. Pools encode carrier + region + any segregation rules (e.g. clean IPs, premium tier).">i</span></span></th>
-            <th className="col-text"><span className="th-label">Credentials<span className="help-tip" data-tip="Host:port pair the customer connects to. Includes the proxy's public IP and exposed port.">i</span></span></th>
+            <th className="col-text"><span className="th-label">Credentials<span className="help-tip" data-tip="Full connection credentials the customer uses: host:port:login:password.">i</span></span></th>
             <th className="col-text">Hardware ID</th>
             <th className="col-num"><span className="th-label">Data 30D<span className="help-tip" data-tip="Aggregate egress traffic on this proxy over the last 30 days, in GB.">i</span></span></th>
             <th className="col-num">Uptime 30d</th>
@@ -108,7 +110,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
                   <td className="col-id">{p.currentOrderId ? <Link href={`/admin/orders/${p.currentOrderId}`} className="td-link">{p.currentOrderId}</Link> : <span className="muted">—</span>}</td>
                   <td className="col-text muted"><span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span></td>
                   <td className="col-text muted"><span className="cell-tip" data-tip={p.pool}>{p.pool}</span></td>
-                  <td className="col-text td-mono"><span className="cell-tip" data-tip={`${p.ip}:${p.port}`}>{p.ip}:{p.port}</span></td>
+                  <td className="col-text td-mono"><span className="cell-tip" data-tip={`${p.ip}:${p.port}:${p.username}:${p.password}`}>{p.ip}:{p.port}:{p.username}:{p.password}</span></td>
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={p.modem}>{p.modem}</span></td>
                   <td className="col-num">{maint ? '—' : `${(p.trafficUsedMB / 1024).toFixed(1)} GB`}</td>
                   <td className="col-num">{maint ? '—' : `${p.uptime}%`}</td>

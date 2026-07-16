@@ -91,7 +91,8 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
 
           <ProxiesBulkTable proxies={proxies.map(p => ({
             id: p.id, currentOrderId: p.currentOrderId, carrier: p.carrier, region: p.region, pool: p.pool,
-            ip: p.ip, port: p.port, modem: p.modem, trafficUsedMB: p.trafficUsedMB, uptime: p.uptime, status: p.status,
+            ip: p.ip, port: p.port, username: p.username, password: p.password,
+            modem: p.modem, trafficUsedMB: p.trafficUsedMB, uptime: p.uptime, status: p.status,
             registeredAt: p.registeredAt,
           }))} />
 

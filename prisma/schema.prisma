@@ -366,6 +366,7 @@ model Proxy {
   username          String
   password          String
   rotateToken       String?
+  rotationUrl       String?   // real modem-farm rotation endpoint (import field 9, optional)
 
   status            ProxyStatus  @default(AVAILABLE)
   health            ProxyHealth  @default(HEALTHY)

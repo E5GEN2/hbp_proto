@@ -1214,6 +1214,7 @@ export type RegisterProxyInput = {
   port: number;
   username: string;
   password: string;
+  rotationUrl?: string | null;
 };
 
 const nextProxyIdInTx = (tx: Tx) => nextProxyId(tx);
@@ -1241,6 +1242,8 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
         throw new Error(`${at}: all proxy fields required`);
       }
       if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) throw new Error(`${at}: port out of range`);
+      const rotationUrl = input.rotationUrl?.trim() || null;
+      if (rotationUrl && !/^https?:\/\//i.test(rotationUrl)) throw new Error(`${at}: rotation URL must start with http:// or https://`);
       const carrier = carriers.get(input.carrier.trim().toLowerCase());
       if (!carrier) throw new Error(`${at}: unknown carrier «${input.carrier.trim()}»`);
       const region = regions.get(input.region.trim().toLowerCase());
@@ -1274,6 +1277,7 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
           username: input.username.trim(),
           password: input.password.trim(),
           rotateToken: Math.random().toString(36).slice(2, 18),
+          rotationUrl,
           status: 'AVAILABLE',
           health: 'HEALTHY',
         },

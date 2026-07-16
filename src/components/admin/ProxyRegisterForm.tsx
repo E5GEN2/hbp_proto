@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormSelect } from '@/components/ui/FormSelect';
@@ -10,19 +10,20 @@ type Catalog = { carriers: string[]; regions: string[]; pools: string[] };
 
 type Draft = {
   modem: string; carrier: string; region: string; pool: string;
-  ip: string; port: string; username: string; password: string;
+  ip: string; port: string; username: string; password: string; rotationUrl: string;
 };
-const EMPTY: Draft = { modem: '', carrier: '', region: '', pool: '', ip: '', port: '', username: '', password: '' };
+const EMPTY: Draft = { modem: '', carrier: '', region: '', pool: '', ip: '', port: '', username: '', password: '', rotationUrl: '' };
 
 const MAX_MANUAL = 10;
 const MAX_IMPORT = 200; // matches the server-side batch cap
 const PREVIEW_MAX = 250; // rows rendered in the import preview — a mis-picked huge file must not hang the tab
-const IMPORT_FORMAT = 'deviceid:carrier:region:pool:host:port:login:pass';
+const IMPORT_FORMAT = 'deviceid:carrier:region:pool:host:port:login:pass[:rotationurl]';
 
 type ParsedLine = { n: number; draft?: Draft; error?: string };
 
 const DEVICE_ID_TIP = 'Identifier of the physical device (modem) serving this proxy. Free-form — use whatever your fleet tooling calls it.';
 const POOL_TIP = 'A named group of proxies a plan can draw from. Pools encode carrier + region + any segregation rules (e.g. clean IPs, premium tier).';
+const ROTATION_URL_TIP = 'Optional. Endpoint that forces an IP rotation on this device when requested. Leave empty if the device has none.';
 
 function parseImport(text: string, catalog: Catalog): ParsedLine[] {
   const find = (list: string[], v: string) => list.find(x => x.toLowerCase() === v.trim().toLowerCase());
@@ -39,11 +40,17 @@ function parseImport(text: string, catalog: Catalog): ParsedLine[] {
       out.push({ n, error: `expected 8 colon-separated fields, got ${parts.length}` });
       continue;
     }
-    // Password is the tail — rejoin so a colon inside it survives.
-    const [modem, carrier, region, pool, ip, portStr, username] = parts.map(p => p.trim());
-    const password = parts.slice(7).join(':').trim();
+    const [modem, carrier, region, pool, ip, portStr, username, password] = parts.map(p => p.trim());
+    // Field 9 is the optional rotation URL; it contains colons itself
+    // (http://…) so everything past the 8th separator is rejoined — which
+    // means the password itself must not contain ':'.
+    const rotationUrl = parts.length > 8 ? parts.slice(8).join(':').trim() : '';
     if (!modem || !carrier || !region || !pool || !ip || !portStr || !username || !password) {
       out.push({ n, error: 'empty field' });
+      continue;
+    }
+    if (rotationUrl && !/^https?:\/\//i.test(rotationUrl)) {
+      out.push({ n, error: "rotation URL must start with http:// or https:// (password must not contain ':')" });
       continue;
     }
     // Digits-only: Number() would accept '1e3'/'0x50' here while the submit
@@ -64,7 +71,7 @@ function parseImport(text: string, catalog: Catalog): ParsedLine[] {
     const endpoint = `${ip}:${port}:${username}`;
     if (endpoints.has(endpoint)) { out.push({ n, error: `duplicate ${endpoint}` }); continue; }
     endpoints.add(endpoint);
-    out.push({ n, draft: { modem, carrier: c, region: r, pool: p, ip, port: portStr, username, password } });
+    out.push({ n, draft: { modem, carrier: c, region: r, pool: p, ip, port: portStr, username, password, rotationUrl } });
   }
   return out;
 }
@@ -105,6 +112,7 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
       modem: d.modem.trim(), carrier: d.carrier, region: d.region, pool: d.pool,
       ip: d.ip.trim(), port: Number(d.port.trim()),
       username: d.username.trim(), password: d.password.trim(),
+      rotationUrl: d.rotationUrl.trim() || null,
     };
   }
 
@@ -120,6 +128,10 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
         const port = /^\d+$/.test(r.port.trim()) ? Number(r.port.trim()) : NaN;
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
           setErr(`Proxy ${i + 1}: port must be a whole number between 1 and 65535`);
+          return;
+        }
+        if (r.rotationUrl.trim() && !/^https?:\/\//i.test(r.rotationUrl.trim())) {
+          setErr(`Proxy ${i + 1}: rotation URL must start with http:// or https://`);
           return;
         }
       }
@@ -159,48 +171,62 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
   const manualSections = (
     <>
       {rows.map((r, i) => (
-        <div className="panel-section" key={i}>
-          <div className="panel-title-row">
-            <div className="panel-title">Proxy {i + 1}</div>
-            {i === 0
-              ? <span className="form-required-note"><span className="req">*</span>Required fields</span>
-              : <button type="button" className="btn sm" onClick={() => setRows(prev => prev.filter((_, j) => j !== i))} disabled={pending}>Remove</button>}
-          </div>
-          <div className="infra-grid">
-            <div className="form-field">
-              <div className="form-label">Device ID <span className="req">*</span><span className="help-tip" data-tip={DEVICE_ID_TIP}>i</span></div>
-              <input className="form-input mono" value={r.modem} onChange={e => setRow(i, { modem: e.target.value })} maxLength={64} />
+        <Fragment key={i}>
+          {/* Network targeting row — Carrier / Region / Pool on one line */}
+          <div className="panel-section">
+            <div className="panel-title-row">
+              <div className="panel-title">Proxy {i + 1}</div>
+              {i === 0
+                ? <span className="form-required-note"><span className="req">*</span>Required fields</span>
+                : <button type="button" className="btn sm" onClick={() => setRows(prev => prev.filter((_, j) => j !== i))} disabled={pending}>Remove</button>}
             </div>
-            <div className="form-field">
-              <div className="form-label">Carrier <span className="req">*</span></div>
-              <FormSelect value={r.carrier} onChange={v => setRow(i, { carrier: v })} options={catalog.carriers.map(c => ({ value: c }))} placeholder="Choose…" />
-            </div>
-            <div className="form-field">
-              <div className="form-label">Region <span className="req">*</span></div>
-              <FormSelect value={r.region} onChange={v => setRow(i, { region: v })} options={catalog.regions.map(x => ({ value: x }))} placeholder="Choose…" />
-            </div>
-            <div className="form-field">
-              <div className="form-label">Pool <span className="req">*</span><span className="help-tip" data-tip={POOL_TIP}>i</span></div>
-              <FormSelect value={r.pool} onChange={v => setRow(i, { pool: v })} options={catalog.pools.map(x => ({ value: x }))} placeholder="Choose…" />
-            </div>
-            <div className="form-field">
-              <div className="form-label">IP address <span className="req">*</span></div>
-              <input className="form-input mono" value={r.ip} onChange={e => setRow(i, { ip: e.target.value })} maxLength={64} />
-            </div>
-            <div className="form-field">
-              <div className="form-label">Port <span className="req">*</span></div>
-              <input className="form-input mono" type="number" min={1} max={65535} step={1} value={r.port} onChange={e => setRow(i, { port: e.target.value })} />
-            </div>
-            <div className="form-field">
-              <div className="form-label">Username <span className="req">*</span></div>
-              <input className="form-input mono" value={r.username} onChange={e => setRow(i, { username: e.target.value })} maxLength={64} />
-            </div>
-            <div className="form-field">
-              <div className="form-label">Password <span className="req">*</span></div>
-              <input className="form-input mono" value={r.password} onChange={e => setRow(i, { password: e.target.value })} maxLength={128} />
+            <div className="infra-grid">
+              <div className="form-field">
+                <div className="form-label">Carrier <span className="req">*</span></div>
+                <FormSelect value={r.carrier} onChange={v => setRow(i, { carrier: v })} options={catalog.carriers.map(c => ({ value: c }))} placeholder="Choose…" />
+              </div>
+              <div className="form-field">
+                <div className="form-label">Region <span className="req">*</span></div>
+                <FormSelect value={r.region} onChange={v => setRow(i, { region: v })} options={catalog.regions.map(x => ({ value: x }))} placeholder="Choose…" />
+              </div>
+              <div className="form-field">
+                <div className="form-label">Pool <span className="req">*</span><span className="help-tip" data-tip={POOL_TIP}>i</span></div>
+                <FormSelect value={r.pool} onChange={v => setRow(i, { pool: v })} options={catalog.pools.map(x => ({ value: x }))} placeholder="Choose…" />
+              </div>
             </div>
           </div>
-        </div>
+          {/* Device block — divider comes from .panel-section + .panel-section */}
+          <div className="panel-section">
+            <div className="infra-grid">
+              <div className="form-field">
+                <div className="form-label">Device ID <span className="req">*</span><span className="help-tip" data-tip={DEVICE_ID_TIP}>i</span></div>
+                <input className="form-input mono" value={r.modem} onChange={e => setRow(i, { modem: e.target.value })} maxLength={64} />
+              </div>
+            </div>
+            <div className="proxy-cred-grid" style={{ marginTop: 16 }}>
+              <div className="form-field">
+                <div className="form-label">Host <span className="req">*</span></div>
+                <input className="form-input mono" value={r.ip} onChange={e => setRow(i, { ip: e.target.value })} maxLength={64} />
+              </div>
+              <div className="form-field">
+                <div className="form-label">Port <span className="req">*</span></div>
+                <input className="form-input mono" type="number" min={1} max={65535} step={1} value={r.port} onChange={e => setRow(i, { port: e.target.value })} />
+              </div>
+              <div className="form-field">
+                <div className="form-label">Username <span className="req">*</span></div>
+                <input className="form-input mono" value={r.username} onChange={e => setRow(i, { username: e.target.value })} maxLength={64} />
+              </div>
+              <div className="form-field">
+                <div className="form-label">Password <span className="req">*</span></div>
+                <input className="form-input mono" value={r.password} onChange={e => setRow(i, { password: e.target.value })} maxLength={128} />
+              </div>
+            </div>
+            <div className="form-field" style={{ marginTop: 16 }}>
+              <div className="form-label">Rotation URL<span className="help-tip" data-tip={ROTATION_URL_TIP}>i</span></div>
+              <input className="form-input mono" value={r.rotationUrl} onChange={e => setRow(i, { rotationUrl: e.target.value })} maxLength={512} />
+            </div>
+          </div>
+        </Fragment>
       ))}
       <div className="panel-section">
         <button
@@ -259,7 +285,11 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={l.draft?.modem ?? '—'}>{l.draft?.modem ?? '—'}</span></td>
                   <td className="col-text muted">{l.draft ? `${l.draft.carrier} · ${l.draft.region}` : '—'}</td>
                   <td className="col-text muted">{l.draft?.pool ?? '—'}</td>
-                  <td className="col-text td-mono">{l.draft ? `${l.draft.ip}:${l.draft.port}` : '—'}</td>
+                  <td className="col-text td-mono">
+                    {l.draft
+                      ? <span className="cell-tip" data-tip={`${l.draft.ip}:${l.draft.port}${l.draft.rotationUrl ? ` · rotate: ${l.draft.rotationUrl}` : ''}`}>{l.draft.ip}:{l.draft.port}</span>
+                      : '—'}
+                  </td>
                   <td className="col-text td-mono">{l.draft?.username ?? '—'}</td>
                   <td className="col-status">
                     {l.draft

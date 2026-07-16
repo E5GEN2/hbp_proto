@@ -2374,6 +2374,8 @@ thead th .th-label > .help-tip {
 .identity-desc { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .identity-desc .form-textarea { flex: 1; min-height: 0; resize: none; }
 .commercial-grid, .infra-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+/* Register-proxy credentials row: Host / Port / Username / Password on one line */
+.proxy-cred-grid { display: grid; grid-template-columns: 1.5fr .8fr 1.35fr 1.35fr; gap: 16px; }
 .lifecycle-grid { display: grid; gap: 22px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
 .lifecycle-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .lifecycle-fields { display: flex; flex-direction: column; gap: 14px; }

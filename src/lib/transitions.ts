@@ -1218,35 +1218,72 @@ export type RegisterProxyInput = {
 
 const nextProxyIdInTx = (tx: Tx) => nextProxyId(tx);
 
-export async function registerProxy({ input, actor }: { input: RegisterProxyInput; actor: Actor }) {
+// Batch registration (register-proxy page: manual rows or file import).
+// All-or-nothing: any invalid item aborts the whole batch with the item
+// number in the message, so a half-imported file can't happen.
+export async function registerProxies({ inputs, actor }: { inputs: RegisterProxyInput[]; actor: Actor }) {
+  if (inputs.length === 0) throw new Error('No proxies to register');
+  if (inputs.length > 200) throw new Error('Too many proxies in one batch (max 200)');
   return prisma.$transaction(async tx => {
-    if (!input.modem.trim() || !input.ip.trim() || !input.username.trim() || !input.password.trim()) {
-      throw new Error('All proxy fields required');
+    // Carrier/region/pool are denormalized strings — resolve each against the
+    // catalog case-insensitively so imported files can't mint values the
+    // pool-first assignment matcher would never find.
+    const catalogItems = await tx.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION', 'POOL'] } } });
+    const lookup = (kind: string) => new Map(catalogItems.filter(c => c.kind === kind).map(c => [c.value.toLowerCase(), c.value]));
+    const carriers = lookup('CARRIER'), regions = lookup('REGION'), pools = lookup('POOL');
+
+    const seenEndpoints = new Set<string>();
+    const proxyIds: string[] = [];
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i];
+      const at = `Proxy #${i + 1}`;
+      if (!input.modem.trim() || !input.ip.trim() || !input.username.trim() || !input.password.trim()) {
+        throw new Error(`${at}: all proxy fields required`);
+      }
+      if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) throw new Error(`${at}: port out of range`);
+      const carrier = carriers.get(input.carrier.trim().toLowerCase());
+      if (!carrier) throw new Error(`${at}: unknown carrier «${input.carrier.trim()}»`);
+      const region = regions.get(input.region.trim().toLowerCase());
+      if (!region) throw new Error(`${at}: unknown region «${input.region.trim()}»`);
+      const pool = pools.get(input.pool.trim().toLowerCase());
+      if (!pool) throw new Error(`${at}: unknown pool «${input.pool.trim()}»`);
+
+      // Dedup key is ip:port:login — the same host:port legitimately serves
+      // several proxies distinguished by credentials (gateway setups).
+      const endpoint = `${input.ip.trim()}:${input.port}:${input.username.trim()}`;
+      if (seenEndpoints.has(endpoint)) throw new Error(`${at}: duplicate ${endpoint} in this batch`);
+      seenEndpoints.add(endpoint);
+      const existing = await tx.proxy.findFirst({
+        where: { ip: input.ip.trim(), port: input.port, username: input.username.trim() },
+        select: { id: true },
+      });
+      if (existing) throw new Error(`${at}: ${endpoint} is already registered as ${existing.id}`);
+
+      const id = await nextProxyIdInTx(tx);
+      await tx.proxy.create({
+        data: {
+          id,
+          modem: input.modem.trim(),
+          imei: input.imei?.trim() || null,
+          carrier,
+          region,
+          pool,
+          city: input.city?.trim() || null,
+          ip: input.ip.trim(),
+          port: input.port,
+          username: input.username.trim(),
+          password: input.password.trim(),
+          rotateToken: Math.random().toString(36).slice(2, 18),
+          status: 'AVAILABLE',
+          health: 'HEALTHY',
+        },
+      });
+      await log(tx, actor.id, 'PROXY.REGISTER', 'PROXY', id,
+        `Registered ${id} · ${carrier} · ${region} · ${pool} · ${input.modem.trim()}`);
+      proxyIds.push(id);
     }
-    if (input.port < 1 || input.port > 65535) throw new Error('Port out of range');
-    const id = await nextProxyIdInTx(tx);
-    await tx.proxy.create({
-      data: {
-        id,
-        modem: input.modem.trim(),
-        imei: input.imei?.trim() || null,
-        carrier: input.carrier,
-        region: input.region,
-        pool: input.pool,
-        city: input.city?.trim() || null,
-        ip: input.ip.trim(),
-        port: input.port,
-        username: input.username.trim(),
-        password: input.password.trim(),
-        rotateToken: Math.random().toString(36).slice(2, 18),
-        status: 'AVAILABLE',
-        health: 'HEALTHY',
-      },
-    });
-    await log(tx, actor.id, 'PROXY.REGISTER', 'PROXY', id,
-      `Registered ${id} · ${input.carrier} · ${input.region} · ${input.pool} · ${input.modem}`);
-    return { ok: true, proxyId: id };
-  });
+    return { ok: true, proxyIds };
+  }, { timeout: 30000 });
 }
 
 export async function addEntityNote({

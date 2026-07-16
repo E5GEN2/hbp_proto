@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
+import { fmtAdminStamp } from '@/lib/date';
 import { releaseProxyAction, markProxyFaultyAction, returnProxyToPoolAction, markProxyHealthyAction } from '@/lib/ui-actions/admin-actions';
 
 type Row = {
@@ -18,11 +19,13 @@ type Row = {
   trafficUsedMB: number;
   uptime: number;
   status: string;
+  registeredAt: Date;
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-// Canon Proxies .dt: 64 chk + 168 Proxy ID = 232 fixed; flex cols sum 26.
-const FLEX = (w: number) => `calc(100% * ${w} / 26)`;
+// Canon Proxies .dt: 64 chk + 168 Proxy ID = 232 fixed; flex cols sum 29
+// (canon 26 + 3 for the Registered date column added by product ask).
+const FLEX = (w: number) => `calc(100% * ${w} / 29)`;
 
 export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
   const router = useRouter();
@@ -77,6 +80,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <col style={{ width: FLEX(3) }} />
             <col style={{ width: FLEX(2) }} />
             <col style={{ width: FLEX(2) }} />
+            <col style={{ width: FLEX(3) }} />
             <col style={{ width: 110 }} />{/* Status — fixed anchor so the chip never clips (audit D-7) */}
           </colgroup>
           <thead><tr>
@@ -89,11 +93,12 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <th className="col-text">Hardware ID</th>
             <th className="col-num"><span className="th-label">Data 30D<span className="help-tip" data-tip="Aggregate egress traffic on this proxy over the last 30 days, in GB.">i</span></span></th>
             <th className="col-num">Uptime 30d</th>
+            <th className="col-date">Registered</th>
             <th className="col-status">Status</th>
           </tr></thead>
           <tbody>
             {proxies.length === 0 ? (
-              <tr><td colSpan={10}><div className="empty"><div className="empty-desc">No proxies match these filters.</div></div></td></tr>
+              <tr><td colSpan={11}><div className="empty"><div className="empty-desc">No proxies match these filters.</div></div></td></tr>
             ) : proxies.map(p => {
               const maint = p.status === 'MAINTENANCE';
               return (
@@ -107,6 +112,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={p.modem}>{p.modem}</span></td>
                   <td className="col-num">{maint ? '—' : `${(p.trafficUsedMB / 1024).toFixed(1)} GB`}</td>
                   <td className="col-num">{maint ? '—' : `${p.uptime}%`}</td>
+                  <td className="col-date">{fmtAdminStamp(p.registeredAt)}</td>
                   <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{cap(p.status)}</span></td>
                 </tr>
               );

@@ -29,9 +29,12 @@ type Row = {
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 // History rows describe the client's PAST assignment, so the status chip shows
 // why it ended — the proxy's live status belongs to whoever holds it now.
+// Note the order itself may still be ACTIVE: REPLACEMENT / QTY_DOWN_ON_RENEWAL
+// release a proxy mid-order, so History can hold rows of a living order.
 const HIST_REASON: Record<string, { label: string; chip: string }> = {
   ORDER_EXPIRED: { label: 'Expired', chip: 'expired' },
   CANCEL: { label: 'Cancelled', chip: 'cancelled' },
+  REPLACEMENT: { label: 'Replaced', chip: 'released' },
   QTY_DOWN_ON_RENEWAL: { label: 'Qty reduced', chip: 'released' },
   RENEWAL_CARRYOVER: { label: 'Carried over', chip: 'released' },
   MIGRATED: { label: 'Migrated', chip: 'released' },

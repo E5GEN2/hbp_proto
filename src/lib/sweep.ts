@@ -2,6 +2,9 @@ import { prisma } from './prisma';
 import { fmtDate } from './date';
 import { attemptAutoRenew } from './auto-renew';
 import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail, renewalReminderEmail } from './email';
+import { sendTelegram } from './telegram';
+import { autoBackfillEnabled } from './runtime-flags';
+import { backfillOrderProxies, refreshProvisionException } from './transitions';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -49,6 +52,7 @@ export type SweepResult = {
   cancelledOrders: number;
   autoRenewed: number;
   autoRenewFailed: number;
+  backfilled: number;
   skipped?: boolean;
 };
 
@@ -88,12 +92,13 @@ let running = false;
 
 export async function runSweep(): Promise<SweepResult> {
   const ranAt = new Date().toISOString();
-  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, skipped: true };
+  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, skipped: true };
   running = true;
+  const telegramOutbox: { chatId: string | null; text: string }[] = [];
   try {
     const now = Date.now();
     let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
-    let autoRenewed = 0, autoRenewFailed = 0;
+    let autoRenewed = 0, autoRenewFailed = 0, backfilled = 0;
 
     // ── 1. Past-due ACTIVE orders: auto-renew attempt first, then expire ────
     const dueOrders = await prisma.order.findMany({
@@ -238,6 +243,42 @@ export async function runSweep(): Promise<SweepResult> {
         `Pre-renewal reminder sent · expires ${o.expiresAt!.toISOString()} · window ${hours}h`);
     }
 
+    // ── 1d. Auto-fill under-provisioned orders from the pool ───────────────
+    //   An ACTIVE paid order can run below its bought quantity after a proxy
+    //   was marked faulty / released mid-term (report finding: released proxies
+    //   never came back to deficit orders on their own). When the master switch
+    //   is ON, top each such order back up from AVAILABLE proxies — respecting
+    //   the order's own autoProvision snapshot (from its plan). OFF by default.
+    if (await autoBackfillEnabled()) {
+      const deficits = await prisma.order.findMany({
+        where: { status: 'ACTIVE', paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] }, autoProvision: true },
+        include: {
+          plan: { select: { carrier: true, pool: true } },
+          client: { select: { id: true, telegramChatId: true } },
+          assignments: { where: { releasedAt: null }, select: { id: true } },
+        },
+      });
+      for (const o of deficits) {
+        if (o.assignments.length >= o.qty) continue; // fully provisioned
+        const nowD = new Date(now);
+        const outcome = await prisma.$transaction(async tx => {
+          const r = await backfillOrderProxies(tx, { id: o.id, qty: o.qty, region: o.region, plan: o.plan }, 'SYSTEM', nowD);
+          await refreshProvisionException(tx, o.id);
+          return r;
+        });
+        if (outcome.added > 0) {
+          backfilled += outcome.added;
+          const msg = outcome.fully
+            ? `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned — back to full ${o.qty}.`
+            : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
+          await notify(o.clientId, msg, 'INFO', `/orders/${o.id}`);
+          telegramOutbox.push({ chatId: o.client.telegramChatId, text: `✅ ${msg}` });
+          await log('ORDER.BACKFILL', 'ORDER', o.id,
+            `Auto-filled ${outcome.added} ${outcome.added === 1 ? 'proxy' : 'proxies'} from pool · now ${outcome.live}/${o.qty}`);
+        }
+      }
+    }
+
     // ── 2. Re-classify renewal buckets (ACTIVE approaching + EXPIRED aging) ─
     const classifiable = await prisma.order.findMany({
       where: { status: { in: ['ACTIVE', 'EXPIRED'] }, expiresAt: { not: null } },
@@ -277,9 +318,11 @@ export async function runSweep(): Promise<SweepResult> {
       }
     }
 
-    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed };
+    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled };
   } finally {
     running = false;
+    // External HTTP after the DB work — never inside a transaction.
+    for (const m of telegramOutbox) await sendTelegram(m.chatId, m.text);
   }
 }
 
@@ -294,7 +337,7 @@ export function startSweepLoop() {
   const tick = () => {
     runSweep()
       .then(r => {
-        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed) {
+        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed || r.backfilled) {
           console.log('[sweep]', JSON.stringify(r));
         }
       })

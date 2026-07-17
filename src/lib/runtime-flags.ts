@@ -14,6 +14,16 @@ export async function newOrdersFrozen() {
   return row?.value === true;
 }
 
+// Settings → System Flags → "Auto-fill orders from pool" (key
+// 'systemAutoProvisionOnPayment'). Master switch for the sweep's auto-backfill
+// of under-provisioned orders. OFF by default (opt-in) — turning it on lets the
+// system draw AVAILABLE proxies into deficit orders without an admin, and it
+// still respects each order's own autoProvision snapshot (from its plan).
+export async function autoBackfillEnabled() {
+  const row = await prisma.systemSetting.findUnique({ where: { key: 'systemAutoProvisionOnPayment' } });
+  return row?.value === true;
+}
+
 // Settings → Payment Providers (SystemSetting key 'providers', shape
 // { stripe: {enabled}, crypto: {enabled}, … }). A provider that was never
 // configured counts as ENABLED — these methods were always offered, so only

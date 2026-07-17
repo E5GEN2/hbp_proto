@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { underProvisionedCount } from '@/lib/provisioning';
 
 // Admin bell feed — canon prototype `notifSourceRows()`: rows are DERIVED from
 // live data so counts never lie (no stored notifications, no read state).
@@ -23,7 +24,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [excGroups, grace, awaitingPayments, refundRequests] = await Promise.all([
+  const [excGroups, grace, awaitingPayments, refundRequests, underProvisioned] = await Promise.all([
     prisma.order.groupBy({
       by: ['exception'],
       where: { exception: { not: null } },
@@ -32,10 +33,17 @@ export async function GET() {
     prisma.order.count({ where: { renewalBucket: 'GRACE' } }),
     prisma.payment.count({ where: { status: { in: ['AWAITING', 'PENDING', 'MANUAL_REVIEW'] } } }),
     prisma.payment.count({ where: { status: 'REFUND_REQUESTED' } }),
+    underProvisionedCount(),
   ]);
 
   const excCount = new Map(excGroups.map(g => [g.exception as string, g._count._all]));
   const rows: AdminNotifRow[] = [];
+
+  // Authoritative deficit signal first — ACTIVE paid orders below their bought
+  // quantity, computed from live assignments (not the drift-prone exception field).
+  if (underProvisioned) {
+    rows.push({ tone: 'danger', title: `${underProvisioned} active order${underProvisioned === 1 ? '' : 's'} missing proxies`, meta: 'Assign replacements in Orders', href: '/admin/orders?view=exceptions' });
+  }
 
   for (const e of EXC) {
     const n = excCount.get(e.key) ?? 0;

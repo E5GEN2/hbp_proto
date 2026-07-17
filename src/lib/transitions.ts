@@ -12,6 +12,7 @@ import { prisma } from './prisma';
 import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyId, nextAssignmentId } from './id';
 import { renewalUnitPrice } from './renewal';
 import { fmtDate } from './date';
+import { sendTelegram } from './telegram';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -532,13 +533,75 @@ export async function sendCredentials({
    PROXIES
    ════════════════════════════════════════════════════════════════════════ */
 
+// Set / refresh / clear an order's under-provision exception from its LIVE
+// deficit. Only touches the under-provision buckets (REPLACEMENT_PENDING and
+// the never-provisioned PAID_NOT_PROVISIONED) — an unrelated exception
+// (e.g. RENEWAL_NOT_EXTENDED) is left as-is; the derived under-provisioned
+// count remains the authoritative signal regardless. Returns the live count.
+export async function refreshProvisionException(tx: Tx, orderId: string): Promise<{ qty: number; live: number; deficit: number } | null> {
+  const o = await tx.order.findUnique({ where: { id: orderId }, select: { qty: true, status: true, exception: true } });
+  if (!o) return null;
+  const live = await tx.assignment.count({ where: { orderId, releasedAt: null } });
+  const deficit = o.qty - live;
+  const isUnderExc = o.exception === null || o.exception === 'REPLACEMENT_PENDING' || o.exception === 'PAID_NOT_PROVISIONED';
+  const active = o.status === 'ACTIVE' || o.status === 'PROVISIONING';
+  if (deficit > 0 && active) {
+    if (isUnderExc) {
+      // Preserve the never-provisioned type; otherwise flag replacement pending.
+      const exc: OrderException = o.exception === 'PAID_NOT_PROVISIONED' ? 'PAID_NOT_PROVISIONED' : 'REPLACEMENT_PENDING';
+      await tx.order.update({ where: { id: orderId }, data: { exception: exc, excInfo: `${live}/${o.qty} proxies attached — replacement pending` } });
+    }
+  } else if (deficit <= 0 && (o.exception === 'REPLACEMENT_PENDING' || o.exception === 'PAID_NOT_PROVISIONED')) {
+    await tx.order.update({ where: { id: orderId }, data: { exception: null, excInfo: null } });
+  }
+  return { qty: o.qty, live, deficit };
+}
+
+// Top up an order's live assignments toward its qty from the AVAILABLE pool
+// (pool-first: exact carrier+region+pool, then carrier+region). Used by the
+// sweep auto-backfill step. Never over-fills; returns what it added.
+export async function backfillOrderProxies(
+  tx: Tx,
+  order: { id: string; qty: number; region: string; plan: { carrier: string; pool: string } },
+  actorId: string,
+  now: Date,
+): Promise<{ added: number; fully: boolean; live: number }> {
+  const live = await tx.assignment.count({ where: { orderId: order.id, releasedAt: null } });
+  const deficit = order.qty - live;
+  if (deficit <= 0) return { added: 0, fully: true, live };
+
+  const candidates = await tx.proxy.findMany({
+    where: { carrier: order.plan.carrier, region: order.region, pool: order.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
+    take: deficit,
+  });
+  if (candidates.length < deficit) {
+    const more = await tx.proxy.findMany({
+      where: { carrier: order.plan.carrier, region: order.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
+      take: deficit - candidates.length,
+    });
+    candidates.push(...more);
+  }
+  if (candidates.length > 0) {
+    const ids = await newAssignmentIds(tx, candidates.length);
+    for (let i = 0; i < candidates.length; i++) {
+      await tx.assignment.create({
+        data: { id: ids[i], orderId: order.id, proxyId: candidates[i].id, actorId, assignedAt: now, reason: 'REPLACEMENT', reasonDetail: 'Auto-filled from pool' },
+      });
+      await tx.proxy.update({ where: { id: candidates[i].id }, data: { status: 'ASSIGNED', currentOrderId: order.id } });
+    }
+  }
+  const newLive = live + candidates.length;
+  return { added: candidates.length, fully: newLive >= order.qty, live: newLive };
+}
+
 export async function markProxyFaulty({
   proxyId, actor, reason, autoReplace,
 }: { proxyId: string; actor: Actor; reason: string; autoReplace: boolean }) {
-  return prisma.$transaction(async tx => {
+  const outbox: { chatId: string | null; text: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, include: { order: true } } },
+      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { id: true, telegramChatId: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
 
@@ -547,48 +610,46 @@ export async function markProxyFaulty({
       data: { status: 'FAULTY', health: 'OFFLINE' },
     });
 
-    // Tag any active orders with replacement-pending exception
-    for (const a of proxy.assignments) {
-      if (!a.order.exception) {
-        await tx.order.update({
-          where: { id: a.orderId },
-          data: { exception: 'REPLACEMENT_PENDING', excInfo: `Proxy ${proxyId} marked faulty: ${reason}` },
-        });
-        await notify(tx, a.order.clientId,
-          `Proxy ${proxyId} on order ${a.orderId} flagged faulty — a replacement is being arranged`,
-          'WARNING', `/orders/${a.orderId}`,
-        );
-      }
-    }
-
-    // Optionally auto-replace
+    // Optionally auto-replace: close the old assignment, bind a fresh proxy.
     let replacement: string | null = null;
+    let replacedOrderId: string | null = null;
     if (autoReplace && proxy.assignments.length > 0) {
       const a = proxy.assignments[0];
       const candidate = await tx.proxy.findFirst({
         where: { carrier: proxy.carrier, region: proxy.region, pool: proxy.pool, status: 'AVAILABLE', health: 'HEALTHY' },
       });
       if (candidate) {
-        // Close old assignment
         await tx.assignment.update({
           where: { id: a.id },
           data: { releasedAt: new Date(), reason: 'REPLACEMENT', reasonDetail: `Replaced by ${candidate.id}` },
         });
         await tx.proxy.update({ where: { id: proxyId }, data: { currentOrderId: null, status: 'RELEASED' } });
-
-        // New assignment
         const [aid] = await newAssignmentIds(tx, 1);
         await tx.assignment.create({
           data: { id: aid, orderId: a.orderId, proxyId: candidate.id, actorId: actor.id, reason: 'REPLACEMENT', reasonDetail: `Replaces ${proxyId}` },
         });
         await tx.proxy.update({ where: { id: candidate.id }, data: { status: 'ASSIGNED', currentOrderId: a.orderId } });
-
-        await tx.order.update({
-          where: { id: a.orderId },
-          data: { exception: null, excInfo: null },
-        });
         replacement = candidate.id;
-        await notify(tx, a.order.clientId, `Faulty proxy ${proxyId} replaced with ${candidate.id}`, 'SUCCESS', `/proxies/${candidate.id}`);
+        replacedOrderId = a.orderId;
+      }
+    }
+
+    // Reconcile exception + notify the client for every affected order.
+    // (Previously silent when the order already carried any exception — a
+    // second fault on the same order left the client uninformed.)
+    for (const a of proxy.assignments) {
+      if (replacedOrderId === a.orderId) {
+        // Replacement filled the gap — refresh (may clear if now full).
+        await refreshProvisionException(tx, a.orderId);
+        await notify(tx, a.order.clientId, `Faulty proxy ${proxyId} replaced with ${replacement}`, 'SUCCESS', `/proxies/${replacement}`);
+        outbox.push({ chatId: a.order.client.telegramChatId, text: `⚠️ A proxy on order ${a.orderId} failed and was automatically replaced with ${replacement}. No action needed.` });
+      } else {
+        const st = await refreshProvisionException(tx, a.orderId);
+        const frac = st ? `${st.live}/${st.qty} proxies attached` : 'replacement pending';
+        await notify(tx, a.order.clientId,
+          `Proxy ${proxyId} on order ${a.orderId} flagged faulty — a replacement is being arranged (${frac})`,
+          'WARNING', `/orders/${a.orderId}`);
+        outbox.push({ chatId: a.order.client.telegramChatId, text: `⚠️ A proxy on your order ${a.orderId} was flagged faulty. ${frac} — a replacement is being arranged.` });
       }
     }
 
@@ -596,13 +657,16 @@ export async function markProxyFaulty({
       `Faulty · ${reason}${autoReplace ? ` · auto-replace=${replacement ?? 'no candidate'}` : ''}`);
     return { ok: true, replacement };
   });
+  for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  return result;
 }
 
 export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor: Actor }) {
-  return prisma.$transaction(async tx => {
+  const outbox: { chatId: string | null; text: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, include: { order: { select: { id: true, clientId: true } } } } },
+      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { id: true, telegramChatId: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
     await tx.assignment.updateMany({
@@ -610,15 +674,27 @@ export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor:
       data: { releasedAt: new Date(), reason: 'CANCEL', reasonDetail: 'Admin released' },
     });
     await tx.proxy.update({ where: { id: proxyId }, data: { status: 'RELEASED', currentOrderId: null } });
-    // The client's proxy just vanished from their portal — say so (was silent).
+    // The client's proxy just vanished from their portal. Flag the deficit on
+    // active orders (was silently left "healthy") and tell the client.
     for (const a of proxy.assignments) {
+      const st = await refreshProvisionException(tx, a.orderId);
+      const stillActive = a.order.status === 'ACTIVE' || a.order.status === 'PROVISIONING';
+      const frac = st ? `${st.live}/${st.qty} proxies attached` : '';
       await notify(tx, a.order.clientId,
-        `Proxy ${proxyId} on order ${a.order.id} was released by support — contact us if this is unexpected`,
-        'WARNING', `/orders/${a.order.id}`);
+        stillActive
+          ? `Proxy ${proxyId} on order ${a.orderId} was released — a replacement is being arranged (${frac})`
+          : `Proxy ${proxyId} on order ${a.orderId} was released by support — contact us if this is unexpected`,
+        'WARNING', `/orders/${a.orderId}`);
+      outbox.push({ chatId: a.order.client.telegramChatId,
+        text: stillActive
+          ? `⚠️ A proxy on your order ${a.orderId} was released. ${frac} — a replacement is being arranged.`
+          : `A proxy on your order ${a.orderId} was released by support. Contact us if this is unexpected.` });
     }
     await log(tx, actor.id, 'PROXY.RELEASE', 'PROXY', proxyId, 'Manually released');
     return { ok: true };
   });
+  for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  return result;
 }
 
 // RELEASED → AVAILABLE. Same security-reset markers cancelOrder stamps when it

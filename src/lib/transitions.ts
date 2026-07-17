@@ -538,10 +538,15 @@ export async function sendCredentials({
 // the never-provisioned PAID_NOT_PROVISIONED) — an unrelated exception
 // (e.g. RENEWAL_NOT_EXTENDED) is left as-is; the derived under-provisioned
 // count remains the authoritative signal regardless. Returns the live count.
+// "Effectively serving" excludes a proxy that is FAULTY/OFFLINE: its assignment
+// is deliberately kept open (so markProxyHealthy can heal it in place), but it
+// is not actually carrying traffic, so it must count toward the deficit.
+const SERVING_PROXY = { status: { not: 'FAULTY' as const }, health: { not: 'OFFLINE' as const } };
+
 export async function refreshProvisionException(tx: Tx, orderId: string): Promise<{ qty: number; live: number; deficit: number } | null> {
   const o = await tx.order.findUnique({ where: { id: orderId }, select: { qty: true, status: true, exception: true } });
   if (!o) return null;
-  const live = await tx.assignment.count({ where: { orderId, releasedAt: null } });
+  const live = await tx.assignment.count({ where: { orderId, releasedAt: null, proxy: SERVING_PROXY } });
   const deficit = o.qty - live;
   const isUnderExc = o.exception === null || o.exception === 'REPLACEMENT_PENDING' || o.exception === 'PAID_NOT_PROVISIONED';
   const active = o.status === 'ACTIVE' || o.status === 'PROVISIONING';

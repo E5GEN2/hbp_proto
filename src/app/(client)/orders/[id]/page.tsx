@@ -31,8 +31,9 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
 
   // Under-provisioned: the order is paid & active but runs below the quantity
   // it bought (a proxy went faulty / was released mid-term). Tell the client
-  // instead of letting proxies silently vanish from the list.
-  const liveProxies = order.assignments.length;
+  // instead of letting proxies silently vanish from the list. A faulty/offline
+  // proxy keeps its assignment but isn't serving, so it counts as a deficit.
+  const liveProxies = order.assignments.filter(a => a.proxy.status !== 'FAULTY' && a.proxy.health !== 'OFFLINE').length;
   const underProvisioned = order.status === 'ACTIVE' && isPaid && liveProxies < order.qty;
 
   // Activity timeline (synthesized from order + payments)

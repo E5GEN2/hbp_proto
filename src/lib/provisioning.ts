@@ -12,7 +12,10 @@ export async function underProvisionedOrders(): Promise<UnderProvisioned[]> {
     where: { status: 'ACTIVE', paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] } },
     select: {
       id: true, qty: true, clientId: true,
-      assignments: { where: { releasedAt: null }, select: { id: true } },
+      // Effectively-serving only: a FAULTY/OFFLINE proxy keeps its assignment
+      // open (to heal in place) but is not carrying traffic, so it counts as a
+      // deficit — same rule as refreshProvisionException in transitions.ts.
+      assignments: { where: { releasedAt: null, proxy: { status: { not: 'FAULTY' }, health: { not: 'OFFLINE' } } }, select: { id: true } },
     },
   });
   return orders

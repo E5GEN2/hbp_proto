@@ -45,9 +45,13 @@ export function FilterBar({
   function resetAll() {
     setSearch('');
     const sp = new URLSearchParams();
-    // preserve `view` (tab) but drop filters
-    const view = params.get('view');
-    if (view) sp.set('view', view);
+    // Preserve page-identity params (tab + scope) but drop filters —
+    // `client`/`history` define WHICH page this is (per-client proxies view),
+    // not a filter the reset should clear.
+    for (const keep of ['view', 'client', 'history']) {
+      const v = params.get(keep);
+      if (v) sp.set(keep, v);
+    }
     start(() => router.replace(`${pathname}?${sp.toString()}`));
   }
 

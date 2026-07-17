@@ -22,14 +22,31 @@ type Row = {
   uptime: number;
   status: string;
   registeredAt: Date;
+  histReleasedAt?: Date | null;
+  histReason?: string | null;
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+// History rows describe the client's PAST assignment, so the status chip shows
+// why it ended — the proxy's live status belongs to whoever holds it now.
+// Note the order itself may still be ACTIVE: REPLACEMENT / QTY_DOWN_ON_RENEWAL
+// release a proxy mid-order, so History can hold rows of a living order.
+const HIST_REASON: Record<string, { label: string; chip: string }> = {
+  ORDER_EXPIRED: { label: 'Expired', chip: 'expired' },
+  CANCEL: { label: 'Cancelled', chip: 'cancelled' },
+  REPLACEMENT: { label: 'Replaced', chip: 'released' },
+  QTY_DOWN_ON_RENEWAL: { label: 'Qty reduced', chip: 'released' },
+  RENEWAL_CARRYOVER: { label: 'Carried over', chip: 'released' },
+  MIGRATED: { label: 'Migrated', chip: 'released' },
+  PRE_BIND_PENDING_RENEWAL: { label: 'Pre-bind', chip: 'released' },
+  RENEWAL_CANCELLED_BY_OPERATOR: { label: 'Renewal cancelled', chip: 'released' },
+  RELEASED: { label: 'Released', chip: 'released' },
+};
 // Canon Proxies .dt: 64 chk + 168 Proxy ID = 232 fixed; flex cols sum 29
 // (canon 26 + 3 for the Registered date column added by product ask).
 const FLEX = (w: number) => `calc(100% * ${w} / 29)`;
 
-export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
+export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Row[]; historyMode?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -59,7 +76,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
 
   return (
     <>
-      <div className={`bulk-bar ${selected.size > 0 ? 'visible' : ''}`}>
+      <div className={`bulk-bar ${!historyMode && selected.size > 0 ? 'visible' : ''}`}>
         <span className="bulk-count">{selected.size} selected</span>
         <div className="bulk-actions">
           {canReturn && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(returnProxyToPoolAction, 'Returned to pool')}>Return to pool</button>}
@@ -95,7 +112,7 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
             <th className="col-text">Hardware ID</th>
             <th className="col-num"><span className="th-label">Data 30D<span className="help-tip" data-tip="Aggregate egress traffic on this proxy over the last 30 days, in GB.">i</span></span></th>
             <th className="col-num">Uptime 30d</th>
-            <th className="col-date">Registered</th>
+            <th className="col-date">{historyMode ? 'Released' : 'Registered'}</th>
             <th className="col-status">Status</th>
           </tr></thead>
           <tbody>
@@ -105,7 +122,9 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
               const maint = p.status === 'MAINTENANCE';
               return (
                 <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
-                  <td className="col-chk"><span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} /></td>
+                  {/* History is read-only: bulk actions target the proxy's LIVE
+                      assignment, which may belong to another client by now. */}
+                  <td className="col-chk">{!historyMode && <span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} />}</td>
                   <td className="col-id"><Link href={`/admin/proxies/${p.id}`} className="td-link">{p.id}</Link></td>
                   <td className="col-id">{p.currentOrderId ? <Link href={`/admin/orders/${p.currentOrderId}`} className="td-link">{p.currentOrderId}</Link> : <span className="muted">—</span>}</td>
                   <td className="col-text muted"><span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span></td>
@@ -114,8 +133,10 @@ export function ProxiesBulkTable({ proxies }: { proxies: Row[] }) {
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={p.modem}>{p.modem}</span></td>
                   <td className="col-num">{maint ? '—' : `${(p.trafficUsedMB / 1024).toFixed(1)} GB`}</td>
                   <td className="col-num">{maint ? '—' : `${p.uptime}%`}</td>
-                  <td className="col-date">{fmtAdminStamp(p.registeredAt)}</td>
-                  <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{cap(p.status)}</span></td>
+                  <td className="col-date">{fmtAdminStamp(historyMode ? p.histReleasedAt : p.registeredAt)}</td>
+                  <td className="col-status">{historyMode
+                    ? (() => { const r = HIST_REASON[p.histReason ?? 'RELEASED'] ?? { label: cap((p.histReason ?? 'RELEASED').replace(/_/g, ' ')), chip: 'released' }; return <span className={`chip ${r.chip}`}>{r.label}</span>; })()
+                    : <span className={`chip ${p.status.toLowerCase()}`}>{cap(p.status)}</span>}</td>
                 </tr>
               );
             })}

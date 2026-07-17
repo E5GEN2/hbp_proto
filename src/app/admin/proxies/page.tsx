@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
@@ -14,6 +15,15 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
   const pool = searchParams.pool ?? '';
   const page = Math.max(1, parseInt(searchParams.page ?? '1', 10));
 
+  // ?client=USR-… narrows the page to one client's proxies: the default view
+  // is what currently serves them; the History tab is what used to.
+  const clientId = searchParams.client?.trim() ?? '';
+  const historyMode = !!clientId && searchParams.history === '1';
+  const clientRow = clientId
+    ? await prisma.user.findUnique({ where: { id: clientId }, select: { id: true, name: true, role: true } })
+    : null;
+  if (clientId && (!clientRow || clientRow.role !== 'CLIENT')) notFound();
+
   const baseWhere: any = {};
   if (carrier) baseWhere.carrier = carrier;
   if (region) baseWhere.region = region;
@@ -23,39 +33,73 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
       { id: { contains: q, mode: 'insensitive' } },
       { modem: { contains: q, mode: 'insensitive' } },
       { ip: { contains: q, mode: 'insensitive' } },
-      { currentOrderId: { contains: q, mode: 'insensitive' } },
+      // History rows display the client's PAST order, so search matches that
+      // assignment's order id there — currentOrderId points elsewhere by then.
+      historyMode
+        ? { assignments: { some: { releasedAt: { not: null }, order: { clientId }, orderId: { contains: q, mode: 'insensitive' } } } }
+        : { currentOrderId: { contains: q, mode: 'insensitive' } },
     ];
   }
 
+  const activeScope = clientId
+    ? { assignments: { some: { releasedAt: null, order: { clientId } } } }
+    : {};
+  // A proxy the client is CURRENTLY using stays out of History even if it also
+  // served them before (renewal re-assignment) — no row in both tabs.
+  const historyScope = {
+    assignments: {
+      some: { releasedAt: { not: null }, order: { clientId } },
+      none: { releasedAt: null, order: { clientId } },
+    },
+  };
+
   const viewWhere = (() => {
+    if (historyMode) return {};
     if (searchParams.status) return { status: searchParams.status.toUpperCase() as any };
     if (searchParams.health === 'faulty') return { OR: [{ status: 'FAULTY' as const }, { health: 'OFFLINE' as const }] };
     if (searchParams.health === 'maintenance') return { status: 'MAINTENANCE' as const };
     return {};
   })();
 
-  const where = { ...baseWhere, ...viewWhere };
+  // AND-composition keeps the search OR and a tab's own OR from clobbering
+  // each other in a spread.
+  const where = historyMode
+    ? { AND: [baseWhere, historyScope] }
+    : { AND: [baseWhere, viewWhere, activeScope] };
 
-  const [proxies, total, total_all, faulty, maint, available, assigned, catalogItems] = await Promise.all([
+  const [proxies, total, total_all, faulty, maint, available, assigned, historyCount, catalogItems] = await Promise.all([
     prisma.proxy.findMany({ where, orderBy: { id: 'asc' }, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
     prisma.proxy.count({ where }),
-    prisma.proxy.count({ where: baseWhere }),
-    prisma.proxy.count({ where: { ...baseWhere, OR: [{ status: 'FAULTY' }, { health: 'OFFLINE' }] } }),
-    prisma.proxy.count({ where: { ...baseWhere, status: 'MAINTENANCE' } }),
-    prisma.proxy.count({ where: { ...baseWhere, status: 'AVAILABLE' } }),
-    prisma.proxy.count({ where: { ...baseWhere, status: 'ASSIGNED' } }),
+    prisma.proxy.count({ where: { AND: [baseWhere, activeScope] } }),
+    prisma.proxy.count({ where: { AND: [baseWhere, { OR: [{ status: 'FAULTY' }, { health: 'OFFLINE' }] }, activeScope] } }),
+    prisma.proxy.count({ where: { AND: [baseWhere, { status: 'MAINTENANCE' }, activeScope] } }),
+    clientId ? Promise.resolve(0) : prisma.proxy.count({ where: { AND: [baseWhere, { status: 'AVAILABLE' }] } }),
+    clientId ? Promise.resolve(0) : prisma.proxy.count({ where: { AND: [baseWhere, { status: 'ASSIGNED' }] } }),
+    clientId ? prisma.proxy.count({ where: { AND: [baseWhere, historyScope] } }) : Promise.resolve(0),
     prisma.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION', 'POOL'] } } }),
   ]);
   const carriers = catalogItems.filter(c => c.kind === 'CARRIER').map(c => c.value);
   const regions = catalogItems.filter(c => c.kind === 'REGION').map(c => c.value);
   const pools = catalogItems.filter(c => c.kind === 'POOL').map(c => c.value);
 
+  // History rows carry the client's own past assignment (order, release date,
+  // reason) instead of the proxy's live pointers.
+  const histByProxy = new Map<string, { orderId: string; releasedAt: Date | null; reason: string | null }>();
+  if (historyMode && proxies.length > 0) {
+    const released = await prisma.assignment.findMany({
+      where: { proxyId: { in: proxies.map(p => p.id) }, releasedAt: { not: null }, order: { clientId } },
+      orderBy: { releasedAt: 'desc' },
+      select: { proxyId: true, orderId: true, releasedAt: true, reason: true },
+    });
+    for (const a of released) if (!histByProxy.has(a.proxyId)) histByProxy.set(a.proxyId, { orderId: a.orderId, releasedAt: a.releasedAt, reason: a.reason });
+  }
+
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(searchParams)) if (v) sp.set(k, v);
 
   function tabLink(params: Record<string, string | null>, label: string, count: number, active: boolean, emphasis = false) {
     const tsp = new URLSearchParams(sp);
-    tsp.delete('status'); tsp.delete('health'); tsp.delete('page');
+    tsp.delete('status'); tsp.delete('health'); tsp.delete('history'); tsp.delete('page');
     for (const [k, v] of Object.entries(params)) if (v) tsp.set(k, v);
     return (
       <Link href={`/admin/proxies?${tsp.toString()}`} className={`tab ${emphasis ? 'emphasis' : ''} ${active ? 'active' : ''}`}>
@@ -66,7 +110,13 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <AdminTopbar crumbs={[{ label: 'Proxies' }]} />
+      <AdminTopbar crumbs={clientRow
+        ? [
+            { label: 'Clients', href: '/admin/clients' },
+            { label: `${clientRow.id} · ${clientRow.name}`, href: `/admin/clients/${clientRow.id}` },
+            { label: 'Proxies' },
+          ]
+        : [{ label: 'Proxies' }]} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         {/* Canon (prototype.html proxies): «+ Register proxy» is the primary
             at the RIGHT END of the filter bar, not a topbar action. */}
@@ -83,18 +133,28 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
         <div className="panel">
           <div className="tabs">
             {tabLink({ health: 'faulty' }, '⚠ Health Issues', faulty, searchParams.health === 'faulty', true)}
-            {tabLink({}, 'All', total_all, !searchParams.health && !searchParams.status)}
-            {tabLink({ status: 'assigned' }, 'Assigned', assigned, searchParams.status === 'assigned')}
-            {tabLink({ status: 'available' }, 'Available', available, searchParams.status === 'available')}
+            {tabLink({}, clientId ? 'Active' : 'All', total_all, !searchParams.health && !searchParams.status && !historyMode)}
+            {/* Assigned/Available are meaningless inside one client's view —
+                everything here is assigned to them by definition. */}
+            {!clientId && tabLink({ status: 'assigned' }, 'Assigned', assigned, searchParams.status === 'assigned')}
+            {!clientId && tabLink({ status: 'available' }, 'Available', available, searchParams.status === 'available')}
             {tabLink({ health: 'maintenance' }, 'Maintenance', maint, searchParams.health === 'maintenance')}
+            {clientId ? tabLink({ history: '1' }, 'History', historyCount, historyMode) : null}
           </div>
 
-          <ProxiesBulkTable proxies={proxies.map(p => ({
-            id: p.id, currentOrderId: p.currentOrderId, carrier: p.carrier, region: p.region, pool: p.pool,
-            ip: p.ip, port: p.port, username: p.username, password: p.password,
-            modem: p.modem, trafficUsedMB: p.trafficUsedMB, uptime: p.uptime, status: p.status,
-            registeredAt: p.registeredAt,
-          }))} />
+          <ProxiesBulkTable historyMode={historyMode} proxies={proxies.map(p => {
+            const hist = historyMode ? histByProxy.get(p.id) : undefined;
+            return {
+              id: p.id,
+              currentOrderId: hist?.orderId ?? p.currentOrderId,
+              carrier: p.carrier, region: p.region, pool: p.pool,
+              ip: p.ip, port: p.port, username: p.username, password: p.password,
+              modem: p.modem, trafficUsedMB: p.trafficUsedMB, uptime: p.uptime, status: p.status,
+              registeredAt: p.registeredAt,
+              histReleasedAt: hist?.releasedAt ?? null,
+              histReason: hist ? (hist.reason ?? 'RELEASED') : null,
+            };
+          })} />
 
           <Pagination total={total} page={page} perPage={PER_PAGE} basePath="/admin/proxies" search={sp} />
         </div>

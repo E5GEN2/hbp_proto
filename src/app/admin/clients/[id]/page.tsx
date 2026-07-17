@@ -32,6 +32,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
   if (!c || c.role !== 'CLIENT') notFound();
 
   const activeOrders = c.orders.filter(o => o.status === 'ACTIVE').length;
+  const activeProxies = new Set(c.orders.flatMap(o => o.assignments.map(a => a.proxyId))).size;
   const ltv = c.payments.filter(p => p.status === 'CONFIRMED' || p.status === 'PAID').reduce((s, p) => s + Number(p.net), 0);
 
   const catalogItems = await prisma.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION'] } } });
@@ -80,6 +81,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
             </div>
           </div>
           <div className="detail-header-actions">
+            <Link href={`/admin/proxies?client=${c.id}`} className="btn">Proxies{activeProxies > 0 ? ` (${activeProxies})` : ''}</Link>
             <ClientDetailActions clientId={c.id} initial={editInitial} blocked={c.status === 'BLOCKED'} risk={c.risk} carriers={carriers} regions={regions} />
           </div>
         </div>

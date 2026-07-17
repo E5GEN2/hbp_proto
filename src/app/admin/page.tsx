@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
+import { underProvisionedCount } from '@/lib/provisioning';
 
 // Flexible .dt column widths — canon Column System (prototype.html :root docs):
 // each flex col = 100% × w / col-total; px anchors + % flexibles are then
@@ -56,9 +57,10 @@ export default async function AdminDashboardPage() {
   ]);
 
   // Read-only: Expiring Soon (24h/3d/7d) + Exceptions by type for the canon widgets
-  const [expBuckets, excBuckets] = await Promise.all([
+  const [expBuckets, excBuckets, underProvisioned] = await Promise.all([
     prisma.order.groupBy({ by: ['renewalBucket'], where: { renewalBucket: { in: ['H24', 'D3', 'D7'] } }, _count: { _all: true } }),
     prisma.order.groupBy({ by: ['exception'], where: { exception: { not: null } }, _count: { _all: true } }),
+    underProvisionedCount(),
   ]);
   const expN = (b: 'H24' | 'D3' | 'D7') => expBuckets.find(x => x.renewalBucket === b)?._count._all ?? 0;
   const excN = (e: string) => excBuckets.find(x => x.exception === e)?._count._all ?? 0;
@@ -243,6 +245,15 @@ export default async function AdminDashboardPage() {
                 <span className="panel-title">Exceptions<span className="help-tip" data-tip="Operational conditions requiring admin attention — orders stuck between lifecycle steps. Separate from each order's primary Status. Click any row to open them inside the Orders page, filtered to that exception type.">i</span></span>
                 <Link className="panel-action" href="/admin/orders?view=exceptions">Resolve →</Link>
               </div>
+              {/* Authoritative deficit signal (report finding): counts ACTIVE
+                  paid orders running below their bought quantity — the real
+                  "does this need a replacement" number, independent of the
+                  exception field which can drift after manual proxy ops. */}
+              <Link className="issue-row" href="/admin/orders?view=exceptions">
+                <span className="issue-dot" style={{ background: 'var(--danger)' }} />
+                <span className="issue-label">Active orders missing proxies</span>
+                <span className="issue-count">{underProvisioned}</span>
+              </Link>
               <Link className="issue-row" href="/admin/orders?view=exceptions">
                 <span className="issue-dot" style={{ background: 'var(--danger)' }} />
                 <span className="issue-label">Paid but not provisioned</span>

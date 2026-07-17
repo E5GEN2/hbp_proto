@@ -58,7 +58,7 @@ async function main() {
 
   // ── SYSTEM SETTINGS ──────────────────────────────────────────────────
   const settings: { key: string; value: any }[] = [
-    { key: 'systemAutoProvisionOnPayment', value: true },
+    { key: 'systemAutoProvisionOnPayment', value: false }, // auto-backfill master switch — OFF (opt-in); admin enables in Settings → Flags
     { key: 'autoReplaceOnFaulty', value: true },
     { key: 'autoReleaseAfterGrace', value: true },
     { key: 'require2FAForRefund', value: false },

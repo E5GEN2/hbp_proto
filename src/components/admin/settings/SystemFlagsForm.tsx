@@ -52,7 +52,7 @@ export function SystemFlagsForm({ initial }: {
   return (
     <div className="form-grid cols-2">
       <div className="form-field full"><div className="subsection-title">Operational flags</div></div>
-      <FlagToggle label="Auto-provision proxies on order paid" notWired tip="Persisted but not consulted yet — provisioning follows each plan's own Auto-provision switch (snapshotted onto the order at purchase)." on={state.systemAutoProvisionOnPayment} onClick={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
+      <FlagToggle label="Auto-fill under-provisioned orders from pool" tip="Master switch. When ON, the sweep tops up ACTIVE paid orders that dropped below their quantity (proxy went faulty / was released) with AVAILABLE proxies. Still respects each order's own Auto-provision snapshot from its plan, so you keep per-plan control. OFF = admins assign replacements manually." on={state.systemAutoProvisionOnPayment} onClick={() => flip('systemAutoProvisionOnPayment')} pending={pending} />
       <FlagToggle label="Auto-replace on faulty-proxy detection" notWired tip="Persisted but not consulted yet — the Mark-faulty modal has its own per-action auto-replace checkbox." on={state.autoReplaceOnFaulty} onClick={() => flip('autoReplaceOnFaulty')} pending={pending} />
       <FlagToggle label="Auto-release proxies after grace window" tip="Once grace ends, return the proxy to the pool. Disable only for custom contracts." on={state.autoReleaseAfterGrace} onClick={() => flip('autoReleaseAfterGrace')} pending={pending} />
       <FlagToggle label="Require 2FA for every refund action" notWired on={state.require2FAForRefund} onClick={() => flip('require2FAForRefund')} pending={pending} />

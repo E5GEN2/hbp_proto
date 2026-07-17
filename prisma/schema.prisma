@@ -45,6 +45,7 @@ model User {
   role                     UserRole     @default(CLIENT)
 
   telegram                 String?
+  telegramChatId           String?      // numeric Bot-API chat id, set once the client links via the bot (Start). Delivery target for incident alerts.
   country                  String?
   tier                     UserTier     @default(STANDARD)
 

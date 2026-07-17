@@ -29,10 +29,20 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   const isPaid = ['PAID', 'CONFIRMED', 'FREE'].includes(order.paymentStatus);
   const lastPay = order.payments[0] ?? null;
 
+  // Under-provisioned: the order is paid & active but runs below the quantity
+  // it bought (a proxy went faulty / was released mid-term). Tell the client
+  // instead of letting proxies silently vanish from the list. A faulty/offline
+  // proxy keeps its assignment but isn't serving, so it counts as a deficit.
+  const liveProxies = order.assignments.filter(a => a.proxy.status !== 'FAULTY' && a.proxy.health !== 'OFFLINE').length;
+  const underProvisioned = order.status === 'ACTIVE' && isPaid && liveProxies < order.qty;
+
   // Activity timeline (synthesized from order + payments)
   type Event = { at: Date; tone: string; title: string; detail?: string };
   const events: Event[] = [];
   events.push({ at: order.createdAt, tone: 'info', title: 'Order placed', detail: `${order.plan.durationDays}-day Mobile · ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} · ${money(Number(order.amount))}` });
+  if (underProvisioned) {
+    events.push({ at: order.updatedAt, tone: 'warning', title: 'Replacement in progress', detail: `${liveProxies} of ${order.qty} proxies attached — we're arranging the rest.` });
+  }
   for (const p of [...order.payments].reverse()) {
     if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, tone: 'success', title: 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
     else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
@@ -71,6 +81,18 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
               />
             </div>
           </div>
+
+          {underProvisioned && (
+            <div className="exc-banner" style={{ marginBottom: 16 }}>
+              <span className="exc-banner-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /></svg>
+              </span>
+              <div className="exc-banner-body">
+                <div className="exc-banner-title">Replacement in progress</div>
+                <div className="exc-banner-desc">{liveProxies} of {order.qty} proxies are currently attached to this order. We're arranging a replacement for the {order.qty - liveProxies === 1 ? 'other one' : 'others'} — no action needed on your side.</div>
+              </div>
+            </div>
+          )}
 
           <div className="grid-detail">
             <div className="grid-left">

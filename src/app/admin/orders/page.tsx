@@ -78,9 +78,11 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     _count: { _all: true },
   });
   const exceptionCount = await prisma.order.count({ where: { ...baseWhere, exception: { not: null } } });
+  // Respect the active search/carrier/region filter so the badge == the rows.
+  const deficitCount = await prisma.order.count({ where: { ...baseWhere, id: { in: deficitIds } } });
   const ct = (s: string) => tabCounts.find(c => c.status === s)?._count._all ?? 0;
   const tabs = [
-    { v: 'underprovisioned', l: '⚠ Missing proxies', n: deficitIds.length },
+    { v: 'underprovisioned', l: '⚠ Missing proxies', n: deficitCount },
     { v: 'exceptions',   l: '⚠ Exceptions',    n: exceptionCount },
     { v: 'all',          l: 'All',              n: tabCounts.reduce((s, c) => s + c._count._all, 0) },
     { v: 'new',          l: 'New',              n: ct('NEW') },

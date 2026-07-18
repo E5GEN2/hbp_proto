@@ -5,4 +5,4 @@
 -- widget. Reconcile existing rows; the transitions are fixed to keep the
 -- invariant going forward.
 UPDATE "proxies" SET "health" = 'HEALTHY'
-WHERE "status" = 'AVAILABLE' AND "health" <> 'HEALTHY';
+WHERE "status" IN ('AVAILABLE', 'ASSIGNED') AND "health" <> 'HEALTHY';

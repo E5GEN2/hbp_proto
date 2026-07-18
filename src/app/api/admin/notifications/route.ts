@@ -45,7 +45,7 @@ export async function GET() {
   // quantity, computed from live assignments (not the drift-prone exception
   // field). Links to the matching Orders tab so the count == the page.
   if (underProvisioned) {
-    rows.push({ tone: 'danger', title: `${underProvisioned} active order${underProvisioned === 1 ? '' : 's'} missing proxies`, meta: 'Assign replacements in Orders', href: '/admin/orders?view=underprovisioned' });
+    rows.push({ tone: 'danger', title: `${underProvisioned} paid order${underProvisioned === 1 ? '' : 's'} missing proxies`, meta: 'Assign proxies in Orders', href: '/admin/orders?view=underprovisioned' });
   }
 
   for (const e of EXC) {

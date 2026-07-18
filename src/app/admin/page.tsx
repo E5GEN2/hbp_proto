@@ -255,7 +255,7 @@ export default async function AdminDashboardPage() {
                   to the matching Orders tab (counter == page count). */}
               <Link className="issue-row" href="/admin/orders?view=underprovisioned">
                 <span className="issue-dot" style={{ background: 'var(--danger)' }} />
-                <span className="issue-label">Active orders missing proxies</span>
+                <span className="issue-label">Paid orders missing proxies</span>
                 <span className="issue-count">{underProvisioned}</span>
               </Link>
               <Link className="issue-row" href="/admin/orders?view=exceptions&exc=renewal-not-extended">

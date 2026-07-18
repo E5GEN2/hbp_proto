@@ -236,9 +236,12 @@ export async function cancelOrder({
         where: { id: a.id },
         data: { releasedAt: now, reason: 'CANCEL', reasonDetail: reason },
       });
+      // Reset health too — a cancelled order may hold a FAULTY+OFFLINE proxy
+      // (heal-in-place); without this it lands AVAILABLE+OFFLINE, invisible to
+      // auto-fill and mis-bucketed by the health widget (the coherence invariant).
       await tx.proxy.update({
         where: { id: a.proxyId },
-        data: { status: 'AVAILABLE', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
+        data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
       });
     }
 
@@ -827,15 +830,18 @@ export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: str
     } else {
       if (proxy.status !== 'MAINTENANCE') throw new Error('Proxy is not in maintenance');
       const active = proxy.assignments[0];
+      // health:'HEALTHY' keeps the AVAILABLE/ASSIGNED ⟹ HEALTHY invariant.
       await tx.proxy.update({
         where: { id: proxyId },
-        data: { status: active ? 'ASSIGNED' : 'AVAILABLE', currentOrderId: active ? active.orderId : null },
+        data: { status: active ? 'ASSIGNED' : 'AVAILABLE', health: 'HEALTHY', currentOrderId: active ? active.orderId : null },
       });
     }
     // A proxy in maintenance is still on the client's order — tell them, or the
-    // portal would keep showing it "Healthy" while service is interrupted.
+    // portal would keep showing it "Healthy" while service is interrupted. A
+    // SUSPENDED order has its access withdrawn (the proxy is hidden from the
+    // portal), so notifying about it would only confuse — skip those.
     const active = proxy.assignments[0];
-    if (active) {
+    if (active && active.order.status !== 'SUSPENDED') {
       await notify(tx, active.order.clientId,
         on
           ? `Proxy ${proxyId} on order ${active.orderId} is under maintenance — service may be briefly interrupted`

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { fmtAdminStamp } from '@/lib/date';
-import { releaseProxyAction, markProxyFaultyAction, returnProxyToPoolAction, markProxyHealthyAction } from '@/lib/ui-actions/admin-actions';
+import { releaseProxyAction, markProxyFaultyAction, returnProxyToPoolAction, markProxyHealthyAction, replaceProxyAction } from '@/lib/ui-actions/admin-actions';
 
 type Row = {
   id: string;
@@ -63,6 +63,22 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
   const canFaulty = sel.length > 0 && sel.every(p => p.status !== 'FAULTY');
   const canReturn = sel.length > 0 && sel.every(p => p.status === 'RELEASED');
   const canHealthy = sel.length > 0 && sel.every(p => p.status === 'FAULTY');
+  // Replace is single-only (prototype): one serving/faulty proxy attached to an
+  // order gets swapped for a fresh one from the pool.
+  const one = sel.length === 1 ? sel[0] : null;
+  const canReplace = !!one && ['ASSIGNED', 'FAULTY'].includes(one.status) && !!one.currentOrderId;
+
+  async function runReplace() {
+    if (!one || !one.currentOrderId) return;
+    start(async () => {
+      try {
+        const r = await replaceProxyAction(one.currentOrderId!, one.id);
+        toast('Proxy replaced', `${one.id} → ${r.replacement}`, 'success');
+      } catch (e: any) { toast('Replace failed', e?.message ?? 'No candidate', 'warning'); }
+      clear();
+      router.refresh();
+    });
+  }
 
   async function bulkRun(action: (id: string) => Promise<any>, label: string) {
     start(async () => {
@@ -81,6 +97,7 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
         <div className="bulk-actions">
           {canReturn && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(returnProxyToPoolAction, 'Returned to pool')}>Return to pool</button>}
           {canHealthy && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(markProxyHealthyAction, 'Marked healthy')}>Mark healthy</button>}
+          {canReplace && <button className="btn sm primary" disabled={pending} onClick={runReplace}>Replace</button>}
           {canRelease && <button className="btn sm" disabled={pending} onClick={() => setConfirm('release')}>Release</button>}
           {canFaulty && <button className="btn sm danger" disabled={pending} onClick={() => setConfirm('faulty')}>Mark faulty</button>}
           <button className="btn sm" onClick={clear}>Clear</button>

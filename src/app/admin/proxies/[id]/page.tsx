@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { fmtAdminStamp } from '@/lib/date';
-import { MarkFaultyButton, ReleaseProxyButton, ReturnToPoolButton, MarkHealthyButton, MaintenanceButton } from '@/components/admin/ActionButtons';
+import { MarkFaultyButton, ReleaseProxyButton, ReturnToPoolButton, MarkHealthyButton, MaintenanceButton, ReplaceProxyButton } from '@/components/admin/ActionButtons';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
@@ -52,6 +52,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
             )}
             {proxy.status === 'RELEASED' && <ReturnToPoolButton proxyId={proxy.id} />}
             {proxy.status === 'FAULTY' && <MarkHealthyButton proxyId={proxy.id} />}
+            {active && (proxy.status === 'ASSIGNED' || proxy.status === 'FAULTY') && <ReplaceProxyButton proxyId={proxy.id} orderId={active.orderId} />}
             {(proxy.status === 'ASSIGNED' || proxy.status === 'FAULTY') && <ReleaseProxyButton proxyId={proxy.id} />}
             {proxy.status !== 'FAULTY' && <MarkFaultyButton proxyId={proxy.id} />}
           </div>

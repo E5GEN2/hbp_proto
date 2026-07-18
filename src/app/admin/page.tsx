@@ -51,7 +51,10 @@ export default async function AdminDashboardPage() {
       take: 6,
     }),
     Promise.all([
-      prisma.proxy.count({ where: { OR: [{ status: 'FAULTY' }, { health: 'OFFLINE' }] } }),
+      // OFFLINE health only coexists with FAULTY status (coherence invariant),
+      // so counting FAULTY is exact — and matches the /admin/proxies?health=faulty
+      // destination this widget links to (counter == page count).
+      prisma.proxy.count({ where: { status: 'FAULTY' } }),
       prisma.proxy.count({ where: { status: 'MAINTENANCE' } }),
     ]),
   ]);
@@ -245,29 +248,25 @@ export default async function AdminDashboardPage() {
                 <span className="panel-title">Exceptions<span className="help-tip" data-tip="Operational conditions requiring admin attention — orders stuck between lifecycle steps. Separate from each order's primary Status. Click any row to open them inside the Orders page, filtered to that exception type.">i</span></span>
                 <Link className="panel-action" href="/admin/orders?view=exceptions">Resolve →</Link>
               </div>
-              {/* Authoritative deficit signal (report finding): counts ACTIVE
-                  paid orders running below their bought quantity — the real
-                  "does this need a replacement" number, independent of the
-                  exception field which can drift after manual proxy ops. */}
-              <Link className="issue-row" href="/admin/orders?view=exceptions">
+              {/* One authoritative proxy-shortage row: ACTIVE paid orders below
+                  their bought quantity. Subsumes "paid, not provisioned" (0
+                  attached) and "replacement pending" (lost one) — those are the
+                  same orders, so listing them separately double-reported. Links
+                  to the matching Orders tab (counter == page count). */}
+              <Link className="issue-row" href="/admin/orders?view=underprovisioned">
                 <span className="issue-dot" style={{ background: 'var(--danger)' }} />
                 <span className="issue-label">Active orders missing proxies</span>
                 <span className="issue-count">{underProvisioned}</span>
               </Link>
-              <Link className="issue-row" href="/admin/orders?view=exceptions">
-                <span className="issue-dot" style={{ background: 'var(--danger)' }} />
-                <span className="issue-label">Paid but not provisioned</span>
-                <span className="issue-count">{excN('PAID_NOT_PROVISIONED')}</span>
-              </Link>
-              <Link className="issue-row" href="/admin/orders?view=exceptions">
+              <Link className="issue-row" href="/admin/orders?view=exceptions&exc=renewal-not-extended">
                 <span className="issue-dot" style={{ background: 'var(--warning)' }} />
                 <span className="issue-label">Renewal paid but not extended</span>
                 <span className="issue-count">{excN('RENEWAL_NOT_EXTENDED')}</span>
               </Link>
-              <Link className="issue-row" href="/admin/orders?view=exceptions">
+              <Link className="issue-row" href="/admin/orders?view=exceptions&exc=refund-pending">
                 <span className="issue-dot" style={{ background: 'var(--violet)' }} />
-                <span className="issue-label">Replacement requested, not done</span>
-                <span className="issue-count">{excN('REPLACEMENT_PENDING')}</span>
+                <span className="issue-label">Refund review requested</span>
+                <span className="issue-count">{excN('REFUND_PENDING')}</span>
               </Link>
             </div>
 

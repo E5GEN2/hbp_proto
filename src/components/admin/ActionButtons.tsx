@@ -247,6 +247,34 @@ export function ReleaseProxyButton({ proxyId }: { proxyId: string }) {
   );
 }
 
+export function ReplaceProxyButton({ proxyId, orderId }: { proxyId: string; orderId: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>Replace</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title="Replace proxy"
+        entityLabel={`Proxy · ${proxyId}`}
+        message={`Swap ${proxyId} on order ${orderId} for a fresh healthy proxy from the same pool.`}
+        impact={[
+          'This proxy is released back to the pool (credentials rotated)',
+          'A new AVAILABLE proxy takes its slot on the order',
+          'The client is notified and gets the new credentials',
+        ]}
+        confirmLabel="Replace"
+        onConfirm={async () => {
+          const r = await A.replaceProxyAction(orderId, proxyId);
+          toast('Proxy replaced', `${proxyId} → ${r.replacement}`, 'success');
+          router.refresh();
+        }}
+      />
+    </>
+  );
+}
+
 /* ─── PLAN BUTTONS ─────────────────────────────────────────────────── */
 
 export function TogglePlanButton({ planId, active }: { planId: string; active: boolean }) {

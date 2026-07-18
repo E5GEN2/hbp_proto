@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton, ReplaceProxyButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -342,7 +342,11 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                               {meta && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{meta}</span>}
                             </td>
                             <td className="col-actor"><span className="badge-soft">{actorName.get(a.actorId) ?? a.actorId}</span></td>
-                            <td className="col-action" />
+                            <td className="col-action">
+                              {!a.releasedAt && !isCancelled && !isSuspended && (order.status === 'ACTIVE' || order.status === 'PROVISIONING') && (
+                                <ReplaceProxyButton proxyId={a.proxyId} orderId={order.id} />
+                              )}
+                            </td>
                           </tr>
                         );
                       })

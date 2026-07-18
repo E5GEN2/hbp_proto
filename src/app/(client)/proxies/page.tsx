@@ -27,6 +27,7 @@ export default async function ClientProxiesPage() {
       uptime: a.proxy.uptime,
       speedMbps: a.proxy.speedMbps,
       health: a.proxy.health.toLowerCase() as ProxyRow['health'],
+      underMaintenance: a.proxy.status === 'MAINTENANCE',
       ip: a.proxy.ip,
       port: a.proxy.port,
       username: a.proxy.username,

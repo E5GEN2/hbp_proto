@@ -666,6 +666,63 @@ export async function markProxyFaulty({
   return result;
 }
 
+// Swap ONE serving proxy on an order for a fresh healthy one from the same
+// pool. Standalone action (the prototype's "Replace" flow): the old proxy is
+// released back to the pool and a new AVAILABLE+HEALTHY proxy takes its slot,
+// so the order's live count is unchanged and the client gets new credentials.
+// Pool-first: exact carrier+region+pool, then carrier+region.
+export async function replaceProxy({ orderId, proxyId, actor }: { orderId: string; proxyId: string; actor: Actor }) {
+  const outbox: { chatId: string | null; text: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
+    const assignment = await tx.assignment.findFirst({
+      where: { orderId, proxyId, releasedAt: null },
+      include: {
+        proxy: true,
+        order: { include: { plan: { select: { carrier: true, pool: true } }, client: { select: { id: true, telegramChatId: true } } } },
+      },
+    });
+    if (!assignment) throw new Error('That proxy is not currently assigned to this order');
+    const old = assignment.proxy;
+    const ord = assignment.order;
+
+    const pick = async (where: any) => tx.proxy.findFirst({
+      where: { ...where, status: 'AVAILABLE', health: 'HEALTHY', id: { not: proxyId } },
+    });
+    const candidate =
+      (await pick({ carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool })) ??
+      (await pick({ carrier: ord.plan.carrier, region: ord.region }));
+    if (!candidate) throw new Error(`No healthy proxy available in ${ord.plan.carrier} · ${ord.region} to replace ${proxyId}`);
+
+    const now = new Date();
+    // Release the old proxy back to the pool with security-reset markers.
+    await tx.assignment.update({
+      where: { id: assignment.id },
+      data: { releasedAt: now, reason: 'REPLACEMENT', reasonDetail: `Replaced by ${candidate.id}` },
+    });
+    await tx.proxy.update({
+      where: { id: proxyId },
+      data: { status: 'RELEASED', health: 'HEALTHY', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
+    });
+    // Assign the fresh proxy into the freed slot.
+    const [aid] = await newAssignmentIds(tx, 1);
+    await tx.assignment.create({
+      data: { id: aid, orderId, proxyId: candidate.id, actorId: actor.id, assignedAt: now, reason: 'REPLACEMENT', reasonDetail: `Replaces ${proxyId}` },
+    });
+    await tx.proxy.update({ where: { id: candidate.id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
+
+    await refreshProvisionException(tx, orderId);
+    await notify(tx, ord.clientId,
+      `A proxy on order ${orderId} was replaced — ${candidate.id} is ready with fresh credentials`,
+      'SUCCESS', `/orders/${orderId}`);
+    outbox.push({ chatId: ord.client.telegramChatId,
+      text: `✅ A proxy on your order ${orderId} was replaced with a fresh one (${candidate.id}). New credentials are in your portal.` });
+    await log(tx, actor.id, 'PROXY.REPLACE', 'PROXY', proxyId, `Replaced with ${candidate.id} on order ${orderId} · old proxy released to pool`);
+    return { ok: true as const, replacement: candidate.id, released: proxyId };
+  });
+  for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  return result;
+}
+
 export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor: Actor }) {
   const outbox: { chatId: string | null; text: string }[] = [];
   const result = await prisma.$transaction(async tx => {
@@ -710,11 +767,14 @@ export async function returnProxyToPool({ proxyId, actor }: { proxyId: string; a
     if (!proxy) throw new Error('Proxy not found');
     if (proxy.status !== 'RELEASED') throw new Error(`Only RELEASED proxies can return to pool (this one is ${proxy.status})`);
     const now = new Date();
+    // Returning to the pool asserts the proxy is serviceable again — reset
+    // health too, or an OFFLINE marker left over from a prior faulty flag would
+    // leave it AVAILABLE+OFFLINE (invisible to auto-fill, mislabelled faulty).
     await tx.proxy.update({
       where: { id: proxyId },
-      data: { status: 'AVAILABLE', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
+      data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
     });
-    await log(tx, actor.id, 'PROXY.RETURN_TO_POOL', 'PROXY', proxyId, 'Returned to pool · credentials/IP rotation markers stamped');
+    await log(tx, actor.id, 'PROXY.RETURN_TO_POOL', 'PROXY', proxyId, 'Returned to pool · health reset · credentials/IP rotation markers stamped');
     return { ok: true };
   });
 }
@@ -752,10 +812,11 @@ export async function markProxyHealthy({ proxyId, actor }: { proxyId: string; ac
 // assignment (the client keeps the proxy on paper; it just stops being
 // eligible for new work); leaving restores ASSIGNED/AVAILABLE accordingly.
 export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: string; on: boolean; actor: Actor }) {
-  return prisma.$transaction(async tx => {
+  const outbox: { chatId: string | null; text: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, take: 1 } },
+      include: { assignments: { where: { releasedAt: null }, take: 1, include: { order: { include: { client: { select: { id: true, telegramChatId: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
     if (on) {
@@ -771,9 +832,25 @@ export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: str
         data: { status: active ? 'ASSIGNED' : 'AVAILABLE', currentOrderId: active ? active.orderId : null },
       });
     }
+    // A proxy in maintenance is still on the client's order — tell them, or the
+    // portal would keep showing it "Healthy" while service is interrupted.
+    const active = proxy.assignments[0];
+    if (active) {
+      await notify(tx, active.order.clientId,
+        on
+          ? `Proxy ${proxyId} on order ${active.orderId} is under maintenance — service may be briefly interrupted`
+          : `Proxy ${proxyId} on order ${active.orderId} is back in service after maintenance`,
+        on ? 'WARNING' : 'SUCCESS', `/proxies/${proxyId}`);
+      outbox.push({ chatId: active.order.client.telegramChatId,
+        text: on
+          ? `🛠 Proxy ${proxyId} on your order ${active.orderId} is under maintenance — service may be briefly interrupted. We'll notify you when it's back.`
+          : `✅ Proxy ${proxyId} on your order ${active.orderId} is back in service after maintenance.` });
+    }
     await log(tx, actor.id, 'PROXY.MAINTENANCE', 'PROXY', proxyId, on ? 'Entered maintenance' : 'Left maintenance');
     return { ok: true };
   });
+  for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  return result;
 }
 
 /* ════════════════════════════════════════════════════════════════════════

@@ -56,7 +56,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
   const viewWhere = (() => {
     if (historyMode) return {};
     if (searchParams.status) return { status: searchParams.status.toUpperCase() as any };
-    if (searchParams.health === 'faulty') return { OR: [{ status: 'FAULTY' as const }, { health: 'OFFLINE' as const }] };
+    if (searchParams.health === 'faulty') return { status: 'FAULTY' as const };
     if (searchParams.health === 'maintenance') return { status: 'MAINTENANCE' as const };
     return {};
   })();
@@ -71,7 +71,7 @@ export default async function AdminProxiesPage({ searchParams }: { searchParams:
     prisma.proxy.findMany({ where, orderBy: { id: 'asc' }, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
     prisma.proxy.count({ where }),
     prisma.proxy.count({ where: { AND: [baseWhere, activeScope] } }),
-    prisma.proxy.count({ where: { AND: [baseWhere, { OR: [{ status: 'FAULTY' }, { health: 'OFFLINE' }] }, activeScope] } }),
+    prisma.proxy.count({ where: { AND: [baseWhere, { status: 'FAULTY' }, activeScope] } }),
     prisma.proxy.count({ where: { AND: [baseWhere, { status: 'MAINTENANCE' }, activeScope] } }),
     clientId ? Promise.resolve(0) : prisma.proxy.count({ where: { AND: [baseWhere, { status: 'AVAILABLE' }] } }),
     clientId ? Promise.resolve(0) : prisma.proxy.count({ where: { AND: [baseWhere, { status: 'ASSIGNED' }] } }),

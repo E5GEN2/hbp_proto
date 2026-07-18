@@ -15,6 +15,7 @@ export type ProxyRow = {
   uptime: number;
   speedMbps: number;
   health: 'healthy' | 'degraded' | 'offline';
+  underMaintenance: boolean;
   ip: string;
   port: number;
   username: string;
@@ -291,7 +292,9 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
                   <td className="col-text muted center">{p.health === 'offline' ? '—' : `${Math.round(p.uptime ?? 0)}%`}</td>
                   <td className="col-text muted center">{p.health === 'offline' ? '—' : `${p.speedMbps ?? 0} Mbps`}</td>
                   <td className="col-status">
-                    <span className={`chip ${p.health}`}>{cap(p.health)}</span>
+                    {p.underMaintenance
+                      ? <span className="chip maintenance" data-tip="This proxy is under scheduled maintenance — service may be briefly interrupted.">Maintenance</span>
+                      : <span className={`chip ${p.health}`}>{cap(p.health)}</span>}
                   </td>
                 </tr>
               ))

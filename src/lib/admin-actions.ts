@@ -101,6 +101,13 @@ export const returnProxyToPoolAction = guarded(async function returnProxyToPoolA
   return r;
 });
 
+export const replaceProxyAction = guarded(async function replaceProxyAction(orderId: string, proxyId: string) {
+  const actor = await getAdminActor();
+  const r = await T.replaceProxy({ orderId, proxyId, actor });
+  bust();
+  return r;
+});
+
 export const markProxyHealthyAction = guarded(async function markProxyHealthyAction(proxyId: string) {
   const actor = await getAdminActor();
   const r = await T.markProxyHealthy({ proxyId, actor });

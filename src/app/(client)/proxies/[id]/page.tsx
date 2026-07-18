@@ -40,7 +40,9 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
             <div className="detail-header-left">
               <div className="detail-id">{proxy.id}</div>
               <div className="detail-chips">
-                <span className={`chip ${proxy.health.toLowerCase()}`}>{cap(proxy.health)}</span>
+                {proxy.status === 'MAINTENANCE'
+                  ? <span className="chip maintenance">Maintenance</span>
+                  : <span className={`chip ${proxy.health.toLowerCase()}`}>{cap(proxy.health)}</span>}
                 {proxy.label && <span className="chip accent">{proxy.label}</span>}
               </div>
             </div>

@@ -203,7 +203,7 @@ export async function runSweep(): Promise<SweepResult> {
             });
             await tx.proxy.update({
               where: { id: a.proxyId },
-              data: { status: 'AVAILABLE', currentOrderId: null, securityResetAt: releasedAt, passwordRotatedAt: releasedAt, ipRotatedAt: releasedAt },
+              data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: releasedAt, passwordRotatedAt: releasedAt, ipRotatedAt: releasedAt },
             });
           }
         });

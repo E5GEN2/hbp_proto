@@ -11,11 +11,13 @@ import { underProvisionedCount } from '@/lib/provisioning';
 
 export type AdminNotifRow = { tone: string; title: string; meta: string; href: string };
 
-const EXC: Array<{ key: string; tone: string; label: string }> = [
-  { key: 'PAID_NOT_PROVISIONED', tone: 'danger', label: 'paid, not provisioned' },
-  { key: 'REPLACEMENT_PENDING', tone: 'accent', label: 'replacement pending' },
-  { key: 'RENEWAL_NOT_EXTENDED', tone: 'violet', label: 'renewal not extended' },
-  { key: 'REFUND_PENDING', tone: 'warn', label: 'refund pending' },
+// Proxy-shortage exceptions (PAID_NOT_PROVISIONED, REPLACEMENT_PENDING,
+// RENEWAL_FAULTY_PROXY) are intentionally NOT listed here — they are the same
+// orders the deficit row already reports. Only genuinely distinct exceptions
+// remain. `exc` is the Orders sub-filter key (kebab) the row links to.
+const EXC: Array<{ key: string; exc: string; tone: string; label: string }> = [
+  { key: 'RENEWAL_NOT_EXTENDED', exc: 'renewal-not-extended', tone: 'violet', label: 'renewal paid, not extended' },
+  { key: 'REFUND_PENDING', exc: 'refund-pending', tone: 'warn', label: 'refund review pending' },
 ];
 
 export async function GET() {
@@ -40,9 +42,10 @@ export async function GET() {
   const rows: AdminNotifRow[] = [];
 
   // Authoritative deficit signal first — ACTIVE paid orders below their bought
-  // quantity, computed from live assignments (not the drift-prone exception field).
+  // quantity, computed from live assignments (not the drift-prone exception
+  // field). Links to the matching Orders tab so the count == the page.
   if (underProvisioned) {
-    rows.push({ tone: 'danger', title: `${underProvisioned} active order${underProvisioned === 1 ? '' : 's'} missing proxies`, meta: 'Assign replacements in Orders', href: '/admin/orders?view=exceptions' });
+    rows.push({ tone: 'danger', title: `${underProvisioned} paid order${underProvisioned === 1 ? '' : 's'} missing proxies`, meta: 'Assign proxies in Orders', href: '/admin/orders?view=underprovisioned' });
   }
 
   for (const e of EXC) {
@@ -52,7 +55,7 @@ export async function GET() {
       tone: e.tone,
       title: `${n} ${e.label}`,
       meta: 'Click to resolve in Orders',
-      href: `/admin/orders?exc=${e.key}`,
+      href: `/admin/orders?view=exceptions&exc=${e.exc}`,
     });
   }
   if (grace) {

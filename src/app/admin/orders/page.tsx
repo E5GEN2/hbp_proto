@@ -4,6 +4,7 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { OrdersBulkTable } from '@/components/admin/OrdersBulkTable';
+import { underProvisionedOrders } from '@/lib/provisioning';
 
 const PER_PAGE = 12;
 
@@ -38,16 +39,23 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     ];
   }
 
+  // Authoritative proxy-shortage signal (dashboard + bell link here): ACTIVE
+  // paid orders whose effective-live assignments are below the bought qty.
+  // Computed live, so we resolve to concrete ids and filter by them — the tab
+  // count then equals exactly what this view lists.
+  const deficitIds = (await underProvisionedOrders()).map(o => o.id);
+
   const viewWhere = (() => {
     switch (view) {
-      case 'new':          return { status: 'NEW' as const };
-      case 'awaiting':     return { paymentStatus: { in: ['AWAITING', 'PENDING'] as any }, status: { not: 'NEW' as const } };
-      case 'provisioning': return { status: 'PROVISIONING' as const };
-      case 'active':       return { status: 'ACTIVE' as const };
-      case 'expired':      return { status: 'EXPIRED' as const };
-      case 'cancelled':    return { status: 'CANCELLED' as const };
-      case 'exceptions':   return excEnum ? { exception: excEnum as any } : { exception: { not: null } };
-      default:             return {};
+      case 'new':             return { status: 'NEW' as const };
+      case 'awaiting':        return { paymentStatus: { in: ['AWAITING', 'PENDING'] as any }, status: { not: 'NEW' as const } };
+      case 'provisioning':    return { status: 'PROVISIONING' as const };
+      case 'active':          return { status: 'ACTIVE' as const };
+      case 'expired':         return { status: 'EXPIRED' as const };
+      case 'cancelled':       return { status: 'CANCELLED' as const };
+      case 'underprovisioned': return { id: { in: deficitIds } };
+      case 'exceptions':      return excEnum ? { exception: excEnum as any } : { exception: { not: null } };
+      default:                return {};
     }
   })();
 
@@ -70,8 +78,11 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     _count: { _all: true },
   });
   const exceptionCount = await prisma.order.count({ where: { ...baseWhere, exception: { not: null } } });
+  // Respect the active search/carrier/region filter so the badge == the rows.
+  const deficitCount = await prisma.order.count({ where: { ...baseWhere, id: { in: deficitIds } } });
   const ct = (s: string) => tabCounts.find(c => c.status === s)?._count._all ?? 0;
   const tabs = [
+    { v: 'underprovisioned', l: '⚠ Missing proxies', n: deficitCount },
     { v: 'exceptions',   l: '⚠ Exceptions',    n: exceptionCount },
     { v: 'all',          l: 'All',              n: tabCounts.reduce((s, c) => s + c._count._all, 0) },
     { v: 'new',          l: 'New',              n: ct('NEW') },

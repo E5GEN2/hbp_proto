@@ -15,6 +15,7 @@ export const sendCredentialsAction = unwrapAction(S.sendCredentialsAction);
 export const markProxyFaultyAction = unwrapAction(S.markProxyFaultyAction);
 export const releaseProxyAction = unwrapAction(S.releaseProxyAction);
 export const returnProxyToPoolAction = unwrapAction(S.returnProxyToPoolAction);
+export const replaceProxyAction = unwrapAction(S.replaceProxyAction);
 export const markProxyHealthyAction = unwrapAction(S.markProxyHealthyAction);
 export const setProxyMaintenanceAction = unwrapAction(S.setProxyMaintenanceAction);
 export const togglePlanActiveAction = unwrapAction(S.togglePlanActiveAction);

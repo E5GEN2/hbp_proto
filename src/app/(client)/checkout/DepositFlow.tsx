@@ -43,7 +43,8 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
         setPaymentId(r.paymentId);
         if (r.instant) {
           setStep('success');
-          router.refresh();
+          // NO router.refresh() — it remounts the wizard and wipes the success
+          // screen back to the form (same B-1 bug CheckoutFlow had).
         } else {
           setStep('processing');
         }

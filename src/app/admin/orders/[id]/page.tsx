@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton, ReplaceProxyButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton, ReplaceProxyButton, RefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -198,14 +198,29 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const cancelBtn = <CancelOrderButton key="cancel" orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />;
   const sendCredsBtn = <SendCredentialsButton key="creds" orderId={order.id} />;
 
+  // A cancelled paid order carries the refund-pending signal — resolve it HERE,
+  // where the Exceptions/bell links land, instead of a dead-end (finding B-4).
+  const refundablePay = order.exception === 'REFUND_PENDING'
+    ? order.payments.find(p => ['CONFIRMED', 'PAID', 'REFUND_REQUESTED'].includes(p.status))
+    : null;
+  // gross, not net — matches the Payments page and refundPayment's own
+  // default: the client gets the full charge back, fees are ours to eat.
+  const refundBtn = refundablePay
+    ? <RefundButton key="refund" paymentId={refundablePay.id} amount={Number(refundablePay.gross)} />
+    : null;
+
+  // The refund affordance rides the exception, not the status branch: a
+  // REFUND_PENDING signal must be resolvable wherever its link lands.
+  const withRefund = (base: ReactNode[]) => (refundBtn ? [refundBtn, ...base] : base);
+
   let actions: ReactNode[];
-  if (isCancelled) actions = [noteBtn];                                       // terminal — extend/resume invalid
-  else if (isExpired) actions = [extendBtn, noteBtn];                          // renew
-  else if (isSuspended) actions = [resumeBtn, noteBtn, cancelBtn];
-  else if (isActive) actions = [extendBtn, noteBtn, suspendBtn];              // cancel via suspend-first (canon)
-  else if (isProv && hasProxy) actions = [...(canSendCreds ? [sendCredsBtn] : []), noteBtn, suspendBtn];
-  else if (isProv && !hasProxy) actions = [...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn];
-  else actions = [...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn];    // NEW / AWAITING / PENDING_RENEWAL
+  if (isCancelled) actions = withRefund([noteBtn]);                            // terminal — extend/resume invalid
+  else if (isExpired) actions = withRefund([extendBtn, noteBtn]);              // renew
+  else if (isSuspended) actions = withRefund([resumeBtn, noteBtn, cancelBtn]);
+  else if (isActive) actions = withRefund([extendBtn, noteBtn, suspendBtn]);  // cancel via suspend-first (canon)
+  else if (isProv && hasProxy) actions = withRefund([...(canSendCreds ? [sendCredsBtn] : []), noteBtn, suspendBtn]);
+  else if (isProv && !hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]);
+  else actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]); // NEW / AWAITING / PENDING_RENEWAL
 
   const bannerCopy = order.exception ? EXC_BANNER[order.exception] : null;
   const bannerTone = bannerCopy?.tone === 'danger' ? 'danger' : bannerCopy?.tone === 'violet' ? 'violet' : '';

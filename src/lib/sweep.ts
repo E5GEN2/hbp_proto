@@ -63,7 +63,7 @@ async function autoReleaseEnabled(): Promise<boolean> {
   return row ? row.value === true : true;
 }
 
-async function notify(userId: string, title: string, kind: 'INFO' | 'WARNING', link: string) {
+async function notify(userId: string, title: string, kind: 'INFO' | 'WARNING' | 'SUCCESS', link: string) {
   await prisma.notification.create({
     data: { id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId, title, kind, link },
   });
@@ -250,28 +250,63 @@ export async function runSweep(): Promise<SweepResult> {
     //   is ON, top each such order back up from AVAILABLE proxies — respecting
     //   the order's own autoProvision snapshot (from its plan). OFF by default.
     if (await autoBackfillEnabled()) {
+      // PROVISIONING included (Phase B finding B-3): a paid-not-provisioned
+      // order — the client paid and holds NOTHING — is the deficit this flag
+      // most owes a fix to, not just mid-term ACTIVE gaps.
       const deficits = await prisma.order.findMany({
-        where: { status: 'ACTIVE', paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] }, autoProvision: true },
+        where: { status: { in: ['ACTIVE', 'PROVISIONING'] }, paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] }, autoProvision: true },
         include: {
-          plan: { select: { carrier: true, pool: true } },
+          plan: { select: { carrier: true, pool: true, durationDays: true } },
           client: { select: { id: true, telegramChatId: true } },
           assignments: { where: { releasedAt: null }, select: { id: true } },
         },
+        orderBy: { createdAt: 'asc' },
       });
+      // Zero-proxy orders first (B-2): topping 4/5 up must not starve a client
+      // who has nothing at all; ties break oldest-first via the query order.
+      deficits.sort((a, b) => Number(a.assignments.length > 0) - Number(b.assignments.length > 0));
       for (const o of deficits) {
         if (o.assignments.length >= o.qty) continue; // fully provisioned
         const nowD = new Date(now);
         const outcome = await prisma.$transaction(async tx => {
+          // Same TOCTOU guard as the expiry step (line ~156): the admin may
+          // have cancelled/suspended this order since the findMany snapshot —
+          // backfilling or activating a dead order would resurrect it to
+          // ACTIVE while its refund is pending. Re-read inside the tx and use
+          // ONLY the fresh row's state.
+          const fresh = await tx.order.findUnique({
+            where: { id: o.id },
+            select: { status: true, activatedAt: true, expiresAt: true, credentialsSentAt: true },
+          });
+          if (!fresh || (fresh.status !== 'ACTIVE' && fresh.status !== 'PROVISIONING')) return null;
           const r = await backfillOrderProxies(tx, { id: o.id, qty: o.qty, region: o.region, plan: o.plan }, 'SYSTEM', nowD);
+          // A PROVISIONING order that just reached full quota ACTIVATES — same
+          // contract as manual Assign: term clock starts now, not at pay time.
+          const activating = fresh.status === 'PROVISIONING' && r.fully;
+          if (activating) {
+            await tx.order.update({
+              where: { id: o.id },
+              data: {
+                status: 'ACTIVE',
+                activatedAt: fresh.activatedAt ?? nowD,
+                expiresAt: fresh.expiresAt ?? new Date(nowD.getTime() + o.plan.durationDays * 86_400_000),
+                credentialsSentAt: fresh.credentialsSentAt ?? nowD,
+              },
+            });
+          }
           await refreshProvisionException(tx, o.id);
-          return r;
+          return { ...r, activated: activating, firstFill: fresh.status === 'PROVISIONING' };
         });
-        if (outcome.added > 0) {
+        if (outcome && outcome.added > 0) {
           backfilled += outcome.added;
-          const msg = outcome.fully
-            ? `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned — back to full ${o.qty}.`
-            : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
-          await notify(o.clientId, msg, 'INFO', `/orders/${o.id}`);
+          const msg = outcome.activated
+            ? `Order ${o.id} activated — ${o.qty} ${o.qty === 1 ? 'proxy' : 'proxies'} ready`
+            : outcome.fully
+              ? `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned — back to full ${o.qty}.`
+              : outcome.firstFill
+                ? `Order ${o.id}: ${outcome.live}/${o.qty} proxies assigned; the rest will follow as the pool refills.`
+                : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
+          await notify(o.clientId, msg, outcome.activated ? 'SUCCESS' : 'INFO', `/orders/${o.id}`);
           telegramOutbox.push({ chatId: o.client.telegramChatId, text: `✅ ${msg}` });
           await log('ORDER.BACKFILL', 'ORDER', o.id,
             `Auto-filled ${outcome.added} ${outcome.added === 1 ? 'proxy' : 'proxies'} from pool · now ${outcome.live}/${o.qty}`);

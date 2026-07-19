@@ -79,7 +79,11 @@ export function CheckoutFlow({
       }
       setOrderId(j.orderId);
       setStep(method === 'crypto' ? 'processing' : 'success');
-      router.refresh();
+      // NO router.refresh() here: the RSC re-render remounts this component
+      // and wipes the success screen back to step 1 within ~0.5s — the client
+      // reads it as "payment failed" and buys again (Phase B finding B-1,
+      // reproduced with two identical orders). Fresh balance/capacity load on
+      // the next navigation anyway.
     } catch (e: any) {
       setErr(e.message);
       setStep('failed');
@@ -96,7 +100,7 @@ export function CheckoutFlow({
       });
       if (!r.ok) throw new Error('Confirmation failed');
       setStep('success');
-      router.refresh();
+      // Same B-1 rule as placeOrder: refresh would remount and eat the screen.
     } catch (e: any) { setErr(e.message); setStep('failed'); }
     finally { setBusy(false); }
   }

@@ -68,7 +68,7 @@ Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the po
 - Renewal during grace = plain extension (keeps the proxies); renewal after release re-provisions fresh ones.
 
 ### 8. Order cancelled
-- Path: an `ACTIVE` order cancels **suspend-first** (canon) — Suspend, then Cancel appears; NEW/PROVISIONING/SUSPENDED orders cancel directly.
+- Path: `ACTIVE` and `PROVISIONING`-with-proxies orders cancel **suspend-first** (canon) — Suspend, then Cancel appears; NEW / proxyless-PROVISIONING / SUSPENDED orders cancel directly.
 - All assignments closed; proxies → `AVAILABLE + HEALTHY` (credentials rotated) — including a formerly FAULTY proxy (no AVAILABLE+OFFLINE leak).
 - Order → `CANCELLED`; History tab (per-client) records the released assignments with reason.
 - A **paid** cancel raises `exception = REFUND_PENDING` → see §12.
@@ -82,7 +82,7 @@ Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the po
 - Order → `SUSPENDED`; proxies reserved (stay `ASSIGNED`), but **hidden from the client portal** (access withdrawn). Maintenance on such a proxy does not notify the client.
 
 ### 11. Auto-backfill (Settings → Flags: "Auto-fill under-provisioned orders from pool")
-- When ON, each sweep tops up every deficit order — `ACTIVE` **and** `PROVISIONING` — from `AVAILABLE+HEALTHY` pool proxies (pool-first). **Zero-proxy orders are served first** (a client with nothing beats topping 4/5 up), then oldest-first. FAULTY proxies are never auto-touched (heal or Replace them explicitly). When OFF (default), deficits wait for manual Assign/Replace.
+- When ON, each sweep tops up every deficit order — `ACTIVE` **and** `PROVISIONING` — from `AVAILABLE+HEALTHY` pool proxies (pool-first). **Zero-proxy orders are served first** (a client with nothing beats topping 4/5 up), then oldest-first. FAULTY proxies are never auto-touched — a slot held by a faulty proxy stays with it for heal-in-place; that deficit resolves via **Replace / Mark healthy**, not backfill. When OFF (default), deficits wait for manual Assign/Replace.
 - A `PROVISIONING` order that reaches full quota **activates**: status → `ACTIVE`, the term clock starts at activation (same contract as manual Assign), client gets «Order activated — N proxies ready».
 
 ### 12. Refund lifecycle (cancel of a paid order)

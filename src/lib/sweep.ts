@@ -269,32 +269,44 @@ export async function runSweep(): Promise<SweepResult> {
         if (o.assignments.length >= o.qty) continue; // fully provisioned
         const nowD = new Date(now);
         const outcome = await prisma.$transaction(async tx => {
+          // Same TOCTOU guard as the expiry step (line ~156): the admin may
+          // have cancelled/suspended this order since the findMany snapshot —
+          // backfilling or activating a dead order would resurrect it to
+          // ACTIVE while its refund is pending. Re-read inside the tx and use
+          // ONLY the fresh row's state.
+          const fresh = await tx.order.findUnique({
+            where: { id: o.id },
+            select: { status: true, activatedAt: true, expiresAt: true, credentialsSentAt: true },
+          });
+          if (!fresh || (fresh.status !== 'ACTIVE' && fresh.status !== 'PROVISIONING')) return null;
           const r = await backfillOrderProxies(tx, { id: o.id, qty: o.qty, region: o.region, plan: o.plan }, 'SYSTEM', nowD);
           // A PROVISIONING order that just reached full quota ACTIVATES — same
           // contract as manual Assign: term clock starts now, not at pay time.
-          if (o.status === 'PROVISIONING' && r.fully) {
+          const activating = fresh.status === 'PROVISIONING' && r.fully;
+          if (activating) {
             await tx.order.update({
               where: { id: o.id },
               data: {
                 status: 'ACTIVE',
-                activatedAt: o.activatedAt ?? nowD,
-                expiresAt: o.expiresAt ?? new Date(nowD.getTime() + o.plan.durationDays * 86_400_000),
-                credentialsSentAt: o.credentialsSentAt ?? nowD,
+                activatedAt: fresh.activatedAt ?? nowD,
+                expiresAt: fresh.expiresAt ?? new Date(nowD.getTime() + o.plan.durationDays * 86_400_000),
+                credentialsSentAt: fresh.credentialsSentAt ?? nowD,
               },
             });
           }
           await refreshProvisionException(tx, o.id);
-          return r;
+          return { ...r, activated: activating, firstFill: fresh.status === 'PROVISIONING' };
         });
-        if (outcome.added > 0) {
+        if (outcome && outcome.added > 0) {
           backfilled += outcome.added;
-          const activated = o.status === 'PROVISIONING' && outcome.fully;
-          const msg = activated
+          const msg = outcome.activated
             ? `Order ${o.id} activated — ${o.qty} ${o.qty === 1 ? 'proxy' : 'proxies'} ready`
             : outcome.fully
               ? `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned — back to full ${o.qty}.`
-              : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
-          await notify(o.clientId, msg, activated ? 'SUCCESS' : 'INFO', `/orders/${o.id}`);
+              : outcome.firstFill
+                ? `Order ${o.id}: ${outcome.live}/${o.qty} proxies assigned; the rest will follow as the pool refills.`
+                : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
+          await notify(o.clientId, msg, outcome.activated ? 'SUCCESS' : 'INFO', `/orders/${o.id}`);
           telegramOutbox.push({ chatId: o.client.telegramChatId, text: `✅ ${msg}` });
           await log('ORDER.BACKFILL', 'ORDER', o.id,
             `Auto-filled ${outcome.added} ${outcome.added === 1 ? 'proxy' : 'proxies'} from pool · now ${outcome.live}/${o.qty}`);

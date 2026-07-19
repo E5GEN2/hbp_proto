@@ -59,8 +59,9 @@ export function RefundModal({
         Payment · {paymentId}
       </div>
       <div style={{ background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 'var(--radius-md)', marginBottom: 12, fontSize: 12.5, lineHeight: 1.6 }}>
-        Refund credits the client&rsquo;s balance (`refund_credit` ledger entry).
-        The linked order will be tagged with the <code>refund-pending</code> exception until finance closes the loop. Proxies and credentials are NOT touched automatically.
+        Refund credits the client&rsquo;s balance (`refund_credit` ledger entry)
+        and closes the order&rsquo;s <code>refund-pending</code> review once no
+        other reviewable payment remains. Proxies and credentials are NOT touched automatically.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>

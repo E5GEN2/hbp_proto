@@ -193,12 +193,23 @@ export async function refundPayment({
 
     // Issuing the refund RESOLVES the refund-pending signal (Phase B finding
     // B-4: the old code re-tagged the order REFUND_PENDING *after* refunding,
-    // so «refund review pending» counted finished refunds forever).
+    // so «refund review pending» counted finished refunds forever). Clear only
+    // when NO other reviewable payment remains on the order (renewals stack
+    // several payments) — same rule as the settled-refunds migration.
     if (pay.order && pay.order.exception === 'REFUND_PENDING') {
-      await tx.order.update({
-        where: { id: pay.order.id },
-        data: { exception: null, excInfo: null },
+      const reviewable = await tx.payment.count({
+        where: {
+          orderId: pay.order.id,
+          id: { not: paymentId },
+          status: { in: ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'AWAITING', 'PENDING', 'MANUAL_REVIEW'] },
+        },
       });
+      if (reviewable === 0) {
+        await tx.order.update({
+          where: { id: pay.order.id },
+          data: { exception: null, excInfo: null },
+        });
+      }
     }
 
     await notify(tx, pay.clientId,

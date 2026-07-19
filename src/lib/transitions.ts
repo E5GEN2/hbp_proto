@@ -191,11 +191,13 @@ export async function refundPayment({
       },
     });
 
-    // Tag order with refund-pending (don't auto-cancel)
-    if (pay.order && !pay.order.exception) {
+    // Issuing the refund RESOLVES the refund-pending signal (Phase B finding
+    // B-4: the old code re-tagged the order REFUND_PENDING *after* refunding,
+    // so «refund review pending» counted finished refunds forever).
+    if (pay.order && pay.order.exception === 'REFUND_PENDING') {
       await tx.order.update({
         where: { id: pay.order.id },
-        data: { exception: 'REFUND_PENDING', excInfo: `Refund of $${refundAmount} issued — ${reason}` },
+        data: { exception: null, excInfo: null },
       });
     }
 

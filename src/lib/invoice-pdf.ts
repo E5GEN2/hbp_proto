@@ -5,6 +5,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { Prisma } from '@prisma/client';
 import { appUrl } from './app-url';
+import { money2dp } from './money';
 
 export type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: { payment: true; order: { include: { plan: true } }; client: true };
@@ -15,7 +16,8 @@ const GOLD = rgb(0.71, 0.541, 0.29);    // #B58A4A
 const MUTED = rgb(0.42, 0.4, 0.36);
 const LINE = rgb(0.88, 0.86, 0.82);
 
-const money = (n: number) => `$${n.toFixed(2)}`;
+// Ledger-grade document — always 2dp, now with en-US grouping (P1-5).
+const money = (n: number) => money2dp(n);
 const fmtDate = (d: Date) =>
   d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 

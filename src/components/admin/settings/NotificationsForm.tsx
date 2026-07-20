@@ -8,7 +8,7 @@ import { fmtAdminStamp } from '@/lib/date';
 const CLIENT_RULES = [
   { key: 'order-created',         label: 'Order created → Email receipt' },
   { key: 'payment-confirmed',     label: 'Payment confirmed → Email + Telegram' },
-  { key: 'proxy-assigned',        label: 'Proxy assigned → Email with credentials' },
+  { key: 'proxy-assigned',        label: 'Proxy assigned → Credentials available in portal' },
   { key: 'pre-renewal-72h',       label: 'Pre-renewal reminder (72h)' },
   { key: 'grace-started',         label: 'Grace period started' },
   { key: 'order-expired-final',   label: 'Order expired (final)' },

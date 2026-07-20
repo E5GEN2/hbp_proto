@@ -97,7 +97,10 @@ export function ExtendOrderModal({
             placeholder={null}
             options={[
               { value: 'comp', label: 'Comp (no charge — admin override)' },
-              { value: 'balance', label: 'Charge from client balance' },
+              // 'Charge from client balance' REMOVED (owner decision 2026-07-20):
+              // extendOrder never debited balance / minted a payment — the label
+              // silently comped the extension. Returns when real charging (with
+              // an agreed extension price formula) is implemented.
               { value: 'invoice', label: 'Issue invoice' },
             ]}
           />

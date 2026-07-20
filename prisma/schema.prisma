@@ -216,6 +216,7 @@ enum CredentialsChannel {
   EMAIL
   TELEGRAM
   BOTH
+  MANUAL // admin delivered out-of-band and recorded it ("Mark as delivered") — nothing auto-sent
 }
 
 enum RenewalBucket {
@@ -413,6 +414,13 @@ enum AssignmentReason {
   REPLACEMENT
 }
 
+// INVARIANT (migration 20260704000000_active_assignment_unique): the DB holds a
+// partial unique index  assignments_proxyId_active_key ON ("proxyId") WHERE
+// "releasedAt" IS NULL  — at most ONE open assignment per proxy (B-5). Prisma
+// cannot express partial indexes in this DSL, so the index exists ONLY in that
+// hand-written migration: never run `prisma db push` against a real DB (it
+// would silently DROP the index), and eyeball any `migrate dev` auto-diff for
+// a generated DROP INDEX "assignments_proxyId_active_key".
 model Assignment {
   id            String            @id // ASN-#####
   orderId       String

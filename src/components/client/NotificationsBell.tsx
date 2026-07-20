@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { fmtAdminStamp } from '@/lib/date';
+import { money } from '@/lib/money';
 
 type Notif = { id: string; title: string; kind: string; link: string | null; createdAt: string };
 
@@ -101,7 +102,7 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
         <span className="topbar-balance-icon">
           <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>
         </span>
-        <span className="topbar-balance-value">${balance.toLocaleString()}</span>
+        <span className="topbar-balance-value">{money(balance)}</span>
         <Link className="btn ghost topbar-balance-cta" href="/checkout?kind=deposit">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
         </Link>

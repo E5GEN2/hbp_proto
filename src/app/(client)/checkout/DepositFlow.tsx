@@ -18,7 +18,9 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCrypto = true }: { presetAmount?: number; returnTo?: string; allowCard?: boolean; allowCrypto?: boolean }) {
   const router = useRouter();
   const toast = useToast();
-  const [amount, setAmount] = useState<number | ''>(presetAmount && PRESETS.includes(presetAmount) ? presetAmount : (presetAmount ?? 50));
+  // Number.isFinite kills the NaN hole: /checkout?kind=deposit&amount=abc used
+  // to survive `?? 50` (NaN is not nullish) and render “$NaN” (P1-5).
+  const [amount, setAmount] = useState<number | ''>(Number.isFinite(presetAmount) ? (presetAmount as number) : 50);
   const [method, setMethod] = useState<'card' | 'crypto'>(allowCard ? 'card' : 'crypto');
   const noMethods = !allowCard && !allowCrypto; // both providers off — top-ups paused
   const [step, setStep] = useState<'details' | 'payment' | 'processing' | 'success'>(presetAmount ? 'payment' : 'details');

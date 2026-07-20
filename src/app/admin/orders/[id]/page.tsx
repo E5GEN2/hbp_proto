@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, SendCredentialsButton, ReplaceProxyButton, RefundButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, MarkDeliveredButton, ReplaceProxyButton, RefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -121,11 +121,14 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
 
   // Activation
   const channelLabel = order.credentialsChannel === 'TELEGRAM' ? 'Telegram' : order.credentialsChannel === 'BOTH' ? 'email + Telegram' : order.credentialsChannel === 'EMAIL' ? 'email' : null;
-  const credsMeta = channelLabel ? `credentials sent · ${channelLabel}` : 'credentials available in portal';
+  const credsMeta =
+    order.credentialsChannel === 'MANUAL' ? 'marked delivered by admin'
+    : channelLabel ? `credentials sent · ${channelLabel}` // legacy rows only — nothing writes EMAIL/TELEGRAM/BOTH today
+    : 'credentials available in portal';
   if (credsSent) {
     steps.push({ name: 'Activation', state: 'done', meta: `${fmtAdminStamp(order.credentialsSentAt)} · ${credsMeta}`, mode: fulfilMode });
   } else if (hasProxy) {
-    steps.push({ name: 'Activation', state: 'current', meta: (autoOn && !manualMode) ? 'Sending credentials…' : 'Manual required — Send credentials', mode: fulfilMode });
+    steps.push({ name: 'Activation', state: 'current', meta: (autoOn && !manualMode) ? 'Publishing credentials to portal…' : 'Manual required — deliver credentials, then Mark as delivered', mode: fulfilMode });
   } else {
     steps.push({ name: 'Activation', state: 'pending', meta: 'Awaiting proxy', mode: fulfilMode });
   }
@@ -168,7 +171,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     if (!cur) { nextTone = 'completed'; nextLabel = 'None — completed'; }
     else if (cur.name === 'Payment') { nextTone = autoOn ? '' : 'attention'; nextLabel = paymentMode === 'auto' ? 'Wait for payment' : 'Confirm payment manually (Mark paid)'; }
     else if (cur.name === 'Proxy') { nextTone = (autoOn && !manualMode) ? '' : 'attention'; nextLabel = (autoOn && !manualMode) ? 'Auto-assign proxy' : 'Assign proxy manually'; }
-    else if (cur.name === 'Activation') { nextTone = (autoOn && !manualMode) ? '' : 'attention'; nextLabel = (autoOn && !manualMode) ? 'Send credentials automatically' : 'Send credentials manually'; }
+    else if (cur.name === 'Activation') { nextTone = (autoOn && !manualMode) ? '' : 'attention'; nextLabel = (autoOn && !manualMode) ? 'Credentials publish to portal automatically' : 'Deliver credentials, then Mark as delivered'; }
   }
 
   // ─── Header chips ───────────────────────────────────────────────────
@@ -185,7 +188,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const isProv = status === 'PROVISIONING';
   const paidLike = paid;
   const fullyAssigned = activeAssignments >= (order.qty || 1);
-  const canSendCreds = (paidLike || manualMode) && fullyAssigned && !order.credentialsSentAt && !isCancelled && !isSuspended;
+  const canMarkDelivered = (paidLike || manualMode) && fullyAssigned && !order.credentialsSentAt && !isCancelled && !isSuspended;
 
   const noteBtn = <AddNoteToolbar key="note" objectType="ORDER" objectId={order.id} label="Add note" />;
   const assignBtn = (
@@ -196,7 +199,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const suspendBtn = <SuspendButton key="susp" orderId={order.id} />;
   const resumeBtn = <ResumeButton key="res" orderId={order.id} />;
   const cancelBtn = <CancelOrderButton key="cancel" orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />;
-  const sendCredsBtn = <SendCredentialsButton key="creds" orderId={order.id} />;
+  const markDeliveredBtn = <MarkDeliveredButton key="creds" orderId={order.id} />;
 
   // A cancelled paid order carries the refund-pending signal — resolve it HERE,
   // where the Exceptions/bell links land, instead of a dead-end (finding B-4).
@@ -218,7 +221,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   else if (isExpired) actions = withRefund([extendBtn, noteBtn]);              // renew
   else if (isSuspended) actions = withRefund([resumeBtn, noteBtn, cancelBtn]);
   else if (isActive) actions = withRefund([extendBtn, noteBtn, suspendBtn]);  // cancel via suspend-first (canon)
-  else if (isProv && hasProxy) actions = withRefund([...(canSendCreds ? [sendCredsBtn] : []), noteBtn, suspendBtn]);
+  else if (isProv && hasProxy) actions = withRefund([...(canMarkDelivered ? [markDeliveredBtn] : []), noteBtn, suspendBtn]);
   else if (isProv && !hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]);
   else actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]); // NEW / AWAITING / PENDING_RENEWAL
 

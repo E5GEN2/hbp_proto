@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
-import { cancelOrderAction, suspendOrderAction, resumeOrderAction, sendCredentialsAction } from '@/lib/ui-actions/admin-actions';
+import { cancelOrderAction, suspendOrderAction, resumeOrderAction, markCredentialsDeliveredAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 
@@ -49,7 +49,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
   const canCancel = sel.length > 0 && sel.every(o => ['NEW', 'AWAITING', 'PROVISIONING', 'ACTIVE', 'SUSPENDED'].includes(o.status));
   const canSuspend = sel.length > 0 && sel.every(o => o.status === 'ACTIVE');
   const canResume = sel.length > 0 && sel.every(o => o.status === 'SUSPENDED');
-  const canSendCreds = sel.length > 0 && sel.every(o => o.status === 'PROVISIONING');
+  const canMarkDelivered = sel.length > 0 && sel.every(o => o.status === 'PROVISIONING');
 
   async function bulkRun(action: (id: string) => Promise<any>, label: string) {
     start(async () => {
@@ -69,7 +69,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
       <div className={`bulk-bar ${selected.size > 0 ? 'visible' : ''}`}>
         <span className="bulk-count">{selected.size} selected</span>
         <div className="bulk-actions">
-          {canSendCreds && <button className="btn sm" disabled={pending} onClick={() => bulkRun(id => sendCredentialsAction(id, 'EMAIL'), 'Sent credentials')}>Send credentials</button>}
+          {canMarkDelivered && <button className="btn sm" disabled={pending} onClick={() => bulkRun(id => markCredentialsDeliveredAction(id), 'Marked delivered')}>Mark as delivered</button>}
           {canResume && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(resumeOrderAction, 'Resumed')}>Resume</button>}
           {canSuspend && <button className="btn sm" disabled={pending} onClick={() => setConfirm('suspend')}>Suspend</button>}
           {canCancel && <button className="btn sm danger" disabled={pending} onClick={() => setConfirm('cancel')}>Cancel</button>}

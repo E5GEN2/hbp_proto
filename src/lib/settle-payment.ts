@@ -6,6 +6,7 @@
 import { prisma } from './prisma';
 import { nextInvoiceId, nextAssignmentId } from './id';
 import { fmtDate } from './date';
+import { money } from './money';
 import { reprovisionRenewedOrder } from './transitions';
 import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
 
@@ -43,13 +44,13 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
       const invoiceId = await nextInvoiceId();
       await tx.invoice.create({ data: { id: invoiceId, paymentId: payment.id, orderId: null, clientId, amount } });
       await tx.notification.create({
-        data: { id: notifId(), userId: clientId, title: `Deposit of $${amount} added to your balance · new bal $${newBal}`, kind: 'SUCCESS', link: '/billing' },
+        data: { id: notifId(), userId: clientId, title: `Deposit of ${money(amount)} added to your balance · new bal ${money(newBal)}`, kind: 'SUCCESS', link: '/billing' },
       });
       await tx.log.create({
-        data: { actorId: clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id, detail: `Crypto deposit confirmed via ${via} · $${amount.toFixed(2)}` },
+        data: { actorId: clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id, detail: `Crypto deposit confirmed via ${via} · ${money(amount)}` },
       });
     });
-    await sendEmail({ to: clientEmail, ...depositConfirmedEmail(`$${amount.toFixed(2)}`, `$${newBal.toFixed(2)}`) });
+    await sendEmail({ to: clientEmail, ...depositConfirmedEmail(money(amount), money(newBal)) });
     return { ok: true, kind: 'deposit' };
   }
 

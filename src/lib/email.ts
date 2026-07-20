@@ -197,6 +197,32 @@ export function autoRenewFailedExpiredEmail(orderId: string) {
   };
 }
 
+// Generic incident notice (P1-4): proxy faulty/replaced/released, maintenance,
+// order suspend/resume. The ONLY email class gated by User.emailIncidents —
+// callers check the pref before queueing; transactional mail never gates.
+export function incidentEmail(subject: string, lines: string[], linkPath: string, linkLabel = 'View details') {
+  return {
+    subject,
+    html: shell(subject, lines.map(p).join('') + cta(linkLabel, appUrl(linkPath))),
+    text: `${lines.map(l => l.replace(/<[^>]+>/g, '')).join(' ')} ${appUrl(linkPath)}`,
+  };
+}
+
+// Security notice on a completed password change (transactional, never gated).
+// The Settings page promises exactly this alert — now it exists.
+export function passwordChangedEmail() {
+  return {
+    subject: 'Your Comet Proxy password was changed',
+    html: shell(
+      'Password changed',
+      p('The password for your Comet Proxy account was just changed.') +
+      p('If this was you, no action is needed. If you did NOT do this, reset your password immediately and contact support.') +
+      cta('Reset password', appUrl('/forgot')),
+    ),
+    text: `Your Comet Proxy password was changed. If this wasn't you, reset it immediately: ${appUrl('/forgot')}`,
+  };
+}
+
 export function depositConfirmedEmail(amount: string, newBalance: string) {
   return {
     subject: 'Balance top-up confirmed',

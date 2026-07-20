@@ -7,6 +7,7 @@ import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/l
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
 import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
+import { money } from '@/lib/money';
 import { npEnabled, npCreateInvoice } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
 import { appUrl } from '@/lib/app-url';
@@ -351,7 +352,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
       await tx.log.create({
         data: {
           actorId: userId, action: 'PAYMENT.PENDING', objectType: 'PAYMENT', objectId: paymentId,
-          detail: `Renewal payment for ${order.id} awaiting crypto confirmation · $${total.toFixed(2)}`,
+          detail: `Renewal payment for ${order.id} awaiting crypto confirmation · ${money(total)}`,
         },
       });
       return;
@@ -377,7 +378,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
       await tx.log.create({
         data: {
           actorId: userId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
-          detail: `Renewed via checkout · ${paymentMethod} · $${total.toFixed(2)} · re-provisioned ${repro.assignedCount}/${order.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`,
+          detail: `Renewed via checkout · ${paymentMethod} · ${money(total)} · re-provisioned ${repro.assignedCount}/${order.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`,
         },
       });
       await tx.notification.create({
@@ -409,7 +410,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
     await tx.log.create({
       data: {
         actorId: userId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
-        detail: `Renewed via checkout · ${paymentMethod} · $${total.toFixed(2)} · new expiry ${newExpiry.toISOString().slice(0, 10)}`,
+        detail: `Renewed via checkout · ${paymentMethod} · ${money(total)} · new expiry ${newExpiry.toISOString().slice(0, 10)}`,
       },
     });
     await tx.notification.create({

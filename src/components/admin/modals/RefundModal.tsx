@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { refundPaymentAction } from '@/lib/ui-actions/admin-actions';
+import { money } from '@/lib/money';
 
 const CATEGORIES = ['Customer not satisfied', 'Service not delivered', 'Goodwill', 'Duplicate charge', 'Fraud / chargeback', 'Other'] as const;
 
@@ -32,12 +33,12 @@ export function RefundModal({
     setErr(null);
     const a = parseFloat(amount);
     if (isNaN(a) || a <= 0) return setErr('Amount must be > 0');
-    if (a > maxAmount) return setErr(`Amount cannot exceed $${maxAmount.toFixed(2)}`);
+    if (a > maxAmount) return setErr(`Amount cannot exceed ${money(maxAmount)}`);
     const reason = `${category}${detail ? ' — ' + detail : ''}`;
     start(async () => {
       try {
         const r = await refundPaymentAction(paymentId, a, reason);
-        toast('Refund issued', `$${a.toFixed(2)} → client balance · new bal $${r.newBalance.toFixed(2)}`, 'success');
+        toast('Refund issued', `${money(a)} → client balance · new bal ${money(r.newBalance)}`, 'success');
         onClose();
         router.refresh();
       } catch (e: any) { setErr(e?.message ?? 'Failed'); }
@@ -51,7 +52,7 @@ export function RefundModal({
       footer={
         <>
           <button className="btn" onClick={onClose} disabled={pending}>Cancel</button>
-          <button className="btn danger" onClick={submit} disabled={pending}>{pending ? 'Refunding…' : `Refund $${amount}`}</button>
+          <button className="btn danger" onClick={submit} disabled={pending}>{pending ? 'Refunding…' : `Refund ${money(parseFloat(amount))}`}</button>
         </>
       }
     >
@@ -65,7 +66,7 @@ export function RefundModal({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
-          <label className="form-label">Refund amount (max ${maxAmount.toFixed(2)})</label>
+          <label className="form-label">Refund amount (max {money(maxAmount)})</label>
           <input className="form-input mono" type="number" min={0.01} max={maxAmount} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} />
           <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
             <button type="button" className="btn sm" onClick={() => setAmount(maxAmount.toString())}>Full</button>

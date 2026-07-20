@@ -34,7 +34,8 @@ export default async function CheckoutPage({ searchParams }: {
 
   // Deposit branch
   if (searchParams.kind === 'deposit') {
-    const presetAmount = searchParams.amount ? parseFloat(searchParams.amount) : undefined;
+    const parsedAmount = searchParams.amount ? parseFloat(searchParams.amount) : NaN;
+    const presetAmount = Number.isFinite(parsedAmount) ? parsedAmount : undefined; // garbage ?amount= must not leak NaN (P1-5)
     return (
       <>
         <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />

@@ -9,6 +9,8 @@ import { authOptions } from './auth';
 import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import { npEnabled, npCreateInvoice } from './nowpayments';
+import { sendEmail, passwordChangedEmail } from './email';
+import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
 import { appUrl } from './app-url';
 import * as T from './transitions';
@@ -111,6 +113,10 @@ export const changePasswordAction = guarded(async function changePasswordAction(
   await prisma.log.create({
     data: { actorId: clientId, action: 'AUTH.PASSWORD_CHANGE', objectType: 'AUTH', objectId: clientId, detail: 'Client changed password' },
   });
+  // Security notice — transactional (never pref-gated). The Settings page has
+  // promised this alert since day one; until P1-4 it never existed. Best-effort:
+  // a mail failure must not fail the completed password change.
+  await sendEmail({ to: me.email, ...passwordChangedEmail() });
   return { ok: true };
 });
 
@@ -154,7 +160,7 @@ export const depositAction = guarded(async function depositAction({ amount, meth
     const inv = await npCreateInvoice({
       amountUsd: amount,
       paymentId: payId,
-      description: `Balance top-up $${amount}`,
+      description: `Balance top-up ${money(amount)}`,
       successUrl: appUrl('/billing'),
       cancelUrl: appUrl('/billing'),
     });
@@ -185,13 +191,13 @@ export const depositAction = guarded(async function depositAction({ amount, meth
       await tx.invoice.create({ data: { id: invId, paymentId: payId, orderId: null, clientId, amount } });
       await tx.notification.create({
         data: { id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId: clientId,
-                title: `Deposit of $${amount} added to your balance · new bal $${newBal}`,
+                title: `Deposit of ${money(amount)} added to your balance · new bal ${money(newBal)}`,
                 kind: 'SUCCESS', link: '/billing' },
       });
     }
     await tx.log.create({
       data: { actorId: clientId, action: isInstant ? 'PAYMENT.CONFIRM' : 'PAYMENT.PENDING', objectType: 'PAYMENT', objectId: payId,
-              detail: `Deposit ${method} · $${amount}` },
+              detail: `Deposit ${method} · ${money(amount)}` },
     });
   });
 

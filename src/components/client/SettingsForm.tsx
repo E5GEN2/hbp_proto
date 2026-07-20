@@ -99,7 +99,7 @@ export function ChangePasswordForm() {
 }
 
 const EMAIL_CHANNELS: { key: 'emailRenewal' | 'emailIncidents' | 'emailMarketing'; title: string; caption: string }[] = [
-  { key: 'emailRenewal',   title: 'Renewal reminders', caption: 'Sent 24 hours before an order expires.' },
+  { key: 'emailRenewal',   title: 'Renewal reminders', caption: 'Sent before an order expires (per plan\u2019s reminder window).' },
   { key: 'emailIncidents', title: 'Service incidents', caption: 'Outages, degraded health, planned maintenance.' },
   { key: 'emailMarketing', title: 'Product updates',   caption: 'New features, releases, occasional offers. No spam.' },
 ];
@@ -134,7 +134,7 @@ export function NotifPrefsForm({ initial, email }: {
         <div className="settings-section-title">Email notifications</div>
         <div className="settings-section-desc">
           Choose which emails we send to <strong>{email}</strong>. Critical security alerts
-          (login from new device, password change) can&rsquo;t be disabled.
+          (password changes) and payment receipts can&rsquo;t be disabled.
         </div>
         <div style={{ margin: '0 -20px' }}>
           {EMAIL_CHANNELS.map(c => (

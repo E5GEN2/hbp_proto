@@ -117,9 +117,10 @@ export async function runSweep(): Promise<SweepResult> {
           const outcome = await attemptAutoRenew(o);
           if (outcome.renewed) {
             autoRenewed++;
-            if (o.client.emailRenewal) {
-              await sendEmail({ to: o.client.email, ...autoRenewedEmail(o.id, fmtDate(outcome.newExpiry), outcome.via) });
-            }
+            // Receipt for money actually charged — transactional, NEVER gated
+            // by emailRenewal (P1-4): that pref covers pre-expiry reminders,
+            // not proof that a charge happened.
+            await sendEmail({ to: o.client.email, ...autoRenewedEmail(o.id, fmtDate(outcome.newExpiry), outcome.via) });
             continue; // extended — stays ACTIVE
           }
           autoRenewFailed++;
@@ -137,9 +138,10 @@ export async function runSweep(): Promise<SweepResult> {
               await notify(o.clientId,
                 `Auto-renew failed for ${o.id} — proxies keep working until ${fmtDate(new Date(graceEnd))}. Top up your balance and we'll retry.`,
                 'WARNING', `/orders/${o.id}`);
-              if (o.client.emailRenewal) {
-                await sendEmail({ to: o.client.email, ...autoRenewFailedGraceEmail(o.id, fmtDate(new Date(graceEnd)), outcome.reason) });
-              }
+              // Action-needed payment failure ("your service will stop") —
+              // transactional (P1-4). The emailRenewal caption promises only
+              // reminders; opting out must not silence a service-loss notice.
+              await sendEmail({ to: o.client.email, ...autoRenewFailedGraceEmail(o.id, fmtDate(new Date(graceEnd)), outcome.reason) });
             }
             continue; // keep ACTIVE through the grace window
           }
@@ -171,7 +173,9 @@ export async function runSweep(): Promise<SweepResult> {
             ? `Order ${o.id} expired — proxies keep working until ${fmtDate(new Date(graceEnd))}; renew before then to keep them`
             : `Order ${o.id} expired on ${fmtDate(o.expiresAt)} — renew to get fresh proxies`,
         'WARNING', `/orders/${o.id}`);
-      if (autoRenewGaveUp && o.client.emailRenewal) {
+      // Service-loss notice (order actually expired) — transactional, ungated
+      // for the same reason as the grace-failure email above (P1-4).
+      if (autoRenewGaveUp) {
         await sendEmail({ to: o.client.email, ...autoRenewFailedExpiredEmail(o.id) });
       }
       await log('ORDER.EXPIRE', 'ORDER', o.id,
@@ -257,7 +261,7 @@ export async function runSweep(): Promise<SweepResult> {
         where: { status: { in: ['ACTIVE', 'PROVISIONING'] }, paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] }, autoProvision: true },
         include: {
           plan: { select: { carrier: true, pool: true, durationDays: true } },
-          client: { select: { id: true, telegramChatId: true } },
+          client: { select: { id: true, telegramChatId: true, telegramAll: true } },
           assignments: { where: { releasedAt: null }, select: { id: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -307,7 +311,7 @@ export async function runSweep(): Promise<SweepResult> {
                 ? `Order ${o.id}: ${outcome.live}/${o.qty} proxies assigned; the rest will follow as the pool refills.`
                 : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
           await notify(o.clientId, msg, outcome.activated ? 'SUCCESS' : 'INFO', `/orders/${o.id}`);
-          telegramOutbox.push({ chatId: o.client.telegramChatId, text: `✅ ${msg}` });
+          telegramOutbox.push({ chatId: o.client.telegramAll ? o.client.telegramChatId : null, text: `✅ ${msg}` });
           await log('ORDER.BACKFILL', 'ORDER', o.id,
             `Auto-filled ${outcome.added} ${outcome.added === 1 ? 'proxy' : 'proxies'} from pool · now ${outcome.live}/${o.qty}`);
         }

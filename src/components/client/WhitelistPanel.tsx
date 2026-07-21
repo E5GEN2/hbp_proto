@@ -18,8 +18,8 @@ export function WhitelistPanel({
   function add() {
     start(async () => {
       try {
-        await addWhitelistIpAction(proxyId, ip);
-        toast('IP whitelisted', ip, 'success');
+        const r = await addWhitelistIpAction(proxyId, ip);
+        toast('IP whitelisted', r.ip ?? ip, 'success'); // canonical stored form
         setOpen(false);
         setIp('');
         router.refresh();
@@ -72,8 +72,8 @@ export function WhitelistPanel({
         <div className="t-note" style={{ marginBottom: 10 }}>
           When whitelisting is enforced at the gateway, only the IPs you list here will be able to use this proxy.
         </div>
-        <label className="form-label">IPv4 address</label>
-        <input className="form-input mono" value={ip} onChange={e => setIp(e.target.value)} placeholder="203.0.113.42" autoFocus />
+        <label className="form-label">IP address (IPv4 / IPv6, optional /CIDR)</label>
+        <input className="form-input mono" value={ip} onChange={e => setIp(e.target.value)} placeholder="203.0.113.42 or 2001:db8::/32" autoFocus />
       </Modal>
     </div>
   );

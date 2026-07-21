@@ -10,6 +10,7 @@ import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import { npEnabled, npCreateInvoice } from './nowpayments';
 import { sendEmail, passwordChangedEmail } from './email';
+import { creditBalance, roundCents } from './balance';
 import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
 import { appUrl } from './app-url';
@@ -135,7 +136,10 @@ export const saveNotifPrefsAction = guarded(async function saveNotifPrefsAction(
   return { ok: true };
 });
 
-export const depositAction = guarded(async function depositAction({ amount, method }: { amount: number; method: 'card' | 'crypto' }) {
+export const depositAction = guarded(async function depositAction({ amount: rawAmount, method }: { amount: number; method: 'card' | 'crypto' }) {
+  // 2dp-normalize before ANY use — payment.gross, the ledger row and the
+  // credit must all carry the identical value (review find).
+  const amount = roundCents(rawAmount);
   const clientId = await getClientUserId();
   if (method === 'card' && !mockPaymentsAllowed()) throw new Error('Card top-ups are not available yet — use crypto or contact support.');
   // Admin provider toggles gate NEW charges (audit B-4)
@@ -183,8 +187,9 @@ export const depositAction = guarded(async function depositAction({ amount, meth
       },
     });
     if (isInstant) {
-      const newBal = Number(me.balance) + amount;
-      await tx.user.update({ where: { id: clientId }, data: { balance: newBal } });
+      // Atomic credit (P1-1) — the old absolute write from the pre-tx `me`
+      // read lost one of two concurrent deposits.
+      const newBal = await creditBalance(tx, clientId, amount);
       await tx.balanceLedgerEntry.create({
         data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payId, note: `Deposit ${method}` },
       });

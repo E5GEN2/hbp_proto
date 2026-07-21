@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { sendEmail, passwordChangedEmail } from '@/lib/email';
 
 const Schema = z.object({
   token: z.string().min(20).max(200),
@@ -41,6 +42,11 @@ export async function POST(req: Request) {
       },
     }),
   ]);
+
+  // Same security notice the logged-in change-password path sends (P1-4):
+  // a hijacked reset link must not complete an account takeover silently.
+  // Best-effort — the reset itself already committed.
+  await sendEmail({ to: row.user.email, ...passwordChangedEmail() });
 
   return NextResponse.json({ ok: true });
 }

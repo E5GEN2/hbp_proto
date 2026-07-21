@@ -3,7 +3,8 @@
 // chip) rendered "1 234,56" on ru-RU browsers and risked hydration mismatches.
 // Non-finite input renders as an em-dash, matching fmtDate's null convention.
 // UI convention: integers drop the cents ("$1,290"), fractions always show two
-// ("$12.50"). Never emits a sign — callers prepend their own − where needed.
+// ("$12.50"). Callers own the − sign and pass absolute values; a negative
+// input renders a leading ASCII minus ("$-5") — no caller passes one today.
 export function money(n: number | string) {
   const v = typeof n === 'string' ? parseFloat(n) : n;
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';

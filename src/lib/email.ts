@@ -82,6 +82,11 @@ function shell(title: string, bodyHtml: string) {
 </body></html>`;
 }
 
+// For interpolating free-text (admin-typed reasons) into email HTML.
+export function escapeHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function p(text: string) {
   return `<div style="font:400 14px/1.6 Arial,Helvetica,sans-serif;color:#3d3a33;margin:0 0 14px;">${text}</div>`;
 }

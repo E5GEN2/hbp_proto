@@ -24,7 +24,6 @@ export function ExtendOrderModal({
   const [mode, setMode] = useState<Mode>('same');
   const [periodDays, setPeriodDays] = useState(currentDuration);
   const [newQty, setNewQty] = useState(currentQty);
-  const [chargeMode, setChargeMode] = useState('comp');
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,19 +90,13 @@ export function ExtendOrderModal({
         </div>
         <div>
           <label className="form-label">Charge method</label>
-          <FormSelect
-            value={chargeMode}
-            onChange={setChargeMode}
-            placeholder={null}
-            options={[
-              { value: 'comp', label: 'Comp (no charge — admin override)' },
-              // 'Charge from client balance' REMOVED (owner decision 2026-07-20):
-              // extendOrder never debited balance / minted a payment — the label
-              // silently comped the extension. Returns when real charging (with
-              // an agreed extension price formula) is implemented.
-              { value: 'invoice', label: 'Issue invoice' },
-            ]}
-          />
+          {/* The old select ('balance' / 'invoice') was decorative twice over:
+              extendOrder never charges anything AND chargeMode was never even
+              sent (extendOrderAction hardcodes comp). Owner decision 2026-07-20:
+              honest static label until real extension charging is designed. */}
+          <div className="form-input" style={{ display: 'flex', alignItems: 'center', color: 'var(--muted)', cursor: 'default' }}>
+            No charge — manual / goodwill extension
+          </div>
         </div>
         {mode === 'changeQty' && (
           <div style={{ gridColumn: '1 / -1' }}>

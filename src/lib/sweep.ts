@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { fmtDate } from './date';
 import { attemptAutoRenew } from './auto-renew';
-import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail, renewalReminderEmail } from './email';
+import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail, renewalReminderEmail, incidentEmail } from './email';
 import { sendTelegram } from './telegram';
 import { autoBackfillEnabled } from './runtime-flags';
 import { backfillOrderProxies, refreshProvisionException } from './transitions';
@@ -95,6 +95,7 @@ export async function runSweep(): Promise<SweepResult> {
   if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, skipped: true };
   running = true;
   const telegramOutbox: { chatId: string | null; text: string }[] = [];
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   try {
     const now = Date.now();
     let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
@@ -261,7 +262,7 @@ export async function runSweep(): Promise<SweepResult> {
         where: { status: { in: ['ACTIVE', 'PROVISIONING'] }, paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] }, autoProvision: true },
         include: {
           plan: { select: { carrier: true, pool: true, durationDays: true } },
-          client: { select: { id: true, telegramChatId: true, telegramAll: true } },
+          client: { select: { id: true, telegramChatId: true, telegramAll: true, email: true, emailIncidents: true } },
           assignments: { where: { releasedAt: null }, select: { id: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -312,6 +313,16 @@ export async function runSweep(): Promise<SweepResult> {
                 : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
           await notify(o.clientId, msg, outcome.activated ? 'SUCCESS' : 'INFO', `/orders/${o.id}`);
           telegramOutbox.push({ chatId: o.client.telegramAll ? o.client.telegramChatId : null, text: `✅ ${msg}` });
+          // The faulty/release incident emails promise "we'll notify you when
+          // it's ready" — this backfill IS that resolution, so it must close
+          // the thread on the email channel too (review find). Only on the
+          // thread-closing event (full again / activated): partial refills can
+          // repeat every sweep tick as the pool trickles in — that would spam.
+          if (o.client.emailIncidents && (outcome.fully || outcome.activated)) {
+            emailOutbox.push({ to: o.client.email, ...incidentEmail(
+              outcome.activated ? `Order ${o.id} activated` : `Proxies restored on order ${o.id}`,
+              [`${msg}.`], `/orders/${o.id}`, 'View order') });
+          }
           await log('ORDER.BACKFILL', 'ORDER', o.id,
             `Auto-filled ${outcome.added} ${outcome.added === 1 ? 'proxy' : 'proxies'} from pool · now ${outcome.live}/${o.qty}`);
         }
@@ -362,6 +373,7 @@ export async function runSweep(): Promise<SweepResult> {
     running = false;
     // External HTTP after the DB work — never inside a transaction.
     for (const m of telegramOutbox) await sendTelegram(m.chatId, m.text);
+    for (const e of emailOutbox) await sendEmail(e);
   }
 }
 

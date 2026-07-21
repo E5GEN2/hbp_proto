@@ -52,7 +52,7 @@ export function RefundModal({
       footer={
         <>
           <button className="btn" onClick={onClose} disabled={pending}>Cancel</button>
-          <button className="btn danger" onClick={submit} disabled={pending}>{pending ? 'Refunding…' : `Refund ${money(parseFloat(amount))}`}</button>
+          <button className="btn danger" onClick={submit} disabled={pending}>{pending ? 'Refunding…' : Number.isFinite(parseFloat(amount)) ? `Refund ${money(parseFloat(amount))}` : 'Refund'}</button>
         </>
       }
     >

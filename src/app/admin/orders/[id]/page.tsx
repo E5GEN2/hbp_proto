@@ -188,7 +188,10 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const isProv = status === 'PROVISIONING';
   const paidLike = paid;
   const fullyAssigned = activeAssignments >= (order.qty || 1);
-  const canMarkDelivered = (paidLike || manualMode) && fullyAssigned && !order.credentialsSentAt && !isCancelled && !isSuspended;
+  // hasProxy (>=1 open assignment) mirrors the server gate — partial manual
+  // delivery is legitimate (bulk path always allowed it); fullyAssigned would
+  // point the step text at a button that never renders (review find).
+  const canMarkDelivered = (paidLike || manualMode) && hasProxy && !order.credentialsSentAt && !isCancelled && !isSuspended;
 
   const noteBtn = <AddNoteToolbar key="note" objectType="ORDER" objectId={order.id} label="Add note" />;
   const assignBtn = (

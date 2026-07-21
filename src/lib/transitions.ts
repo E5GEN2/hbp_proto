@@ -14,7 +14,7 @@ import { renewalUnitPrice } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram } from './telegram';
-import { sendEmail, incidentEmail } from './email';
+import { sendEmail, incidentEmail, escapeHtml } from './email';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -324,7 +324,7 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
     if (ord.client.emailIncidents) {
       emailOutbox.push({ to: ord.client.email, ...incidentEmail(
         `Order ${orderId} suspended`,
-        [`Your order <strong>${orderId}</strong> was suspended by the operator: ${reason}.`,
+        [`Your order <strong>${orderId}</strong> was suspended by the operator: ${escapeHtml(reason)}.`,
          'Proxy access is withdrawn while the order is suspended — contact support if this is unexpected.'],
         `/orders/${orderId}`, 'View order') });
     }
@@ -367,9 +367,14 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
 
     await notify(tx, ord.clientId, `Order ${orderId} resumed`, 'SUCCESS', `/orders/${orderId}`);
     if (ord.client.emailIncidents) {
+      // Mirror the log's intact branch (review find): a resume to PROVISIONING
+      // has NO proxies to restore — claiming restored access would be the
+      // exact dishonesty this wave removes.
       emailOutbox.push({ to: ord.client.email, ...incidentEmail(
         `Order ${orderId} resumed`,
-        [`Your order <strong>${orderId}</strong> was resumed — proxy access is restored.`],
+        intact
+          ? [`Your order <strong>${orderId}</strong> was resumed — proxy access is restored.`]
+          : [`Your order <strong>${orderId}</strong> was resumed — its proxies are being re-provisioned, we’ll notify you when they’re ready.`],
         `/orders/${orderId}`, 'View order') });
     }
     await log(tx, actor.id, 'ORDER.RESUME', 'ORDER', orderId, intact ? 'Resumed to ACTIVE' : 'Resumed to PROVISIONING (manual recovery needed)');
@@ -839,7 +844,10 @@ export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor:
         text: stillActive
           ? `⚠️ A proxy on your order ${a.orderId} was released. ${frac} — a replacement is being arranged.`
           : `A proxy on your order ${a.orderId} was released by support. Contact us if this is unexpected.` });
-      if (a.order.client.emailIncidents) {
+      // Faulty→release is the canonical two-step flow: mark-faulty already
+      // emailed "a replacement is being arranged" with the same fraction —
+      // a second identical email adds nothing (review find). Bell/log stay.
+      if (a.order.client.emailIncidents && proxy.status !== 'FAULTY') {
         emailOutbox.push({ to: a.order.client.email, ...incidentEmail(
           `Proxy released on order ${a.orderId}`,
           stillActive

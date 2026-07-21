@@ -103,7 +103,7 @@ Every admin mutation that affects the client portal goes through `src/lib/transi
 4. Creates a `Notification` for the affected client
 
 Available transitions:
-`markPaymentPaid` · `refundPayment` · `cancelOrder` · `suspendOrder` · `resumeOrder` · `extendOrder` · `assignProxyManually` · `sendCredentials` · `markProxyFaulty` · `releaseProxy` · `togglePlanActive` · `adjustBalance` · `blockClient` · `unblockClient`
+`markPaymentPaid` · `refundPayment` · `cancelOrder` · `suspendOrder` · `resumeOrder` · `extendOrder` · `assignProxyManually` · `markCredentialsDelivered` · `markProxyFaulty` · `releaseProxy` · `togglePlanActive` · `adjustBalance` · `blockClient` · `unblockClient`
 
 ### Data model
 30 Prisma models. Highlights:

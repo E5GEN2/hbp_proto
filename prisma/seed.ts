@@ -298,7 +298,7 @@ async function main() {
     paymentDate?: Date;
     assignProxyIds?: string[];
     credentialsSentAt?: Date | null;
-    credentialsChannel?: 'EMAIL' | 'TELEGRAM' | 'BOTH';
+    credentialsChannel?: 'EMAIL' | 'TELEGRAM' | 'BOTH' | 'MANUAL';
     exception?: any;
     excInfo?: string;
     cancelledReason?: string;
@@ -404,7 +404,7 @@ async function main() {
     paymentMethod: 'Visa •• 4242',
     assignProxyIds: veProxies.slice(0, 6).map(p => p.id),
     credentialsSentAt: past(12),
-    credentialsChannel: 'EMAIL',
+    credentialsChannel: 'MANUAL',
   });
 
   // ORD-10846 — T-Mobile 90d, qty 6, paid, active, expires in 60 days, auto-renew on
@@ -426,7 +426,7 @@ async function main() {
     paymentMethod: 'USDT-TRC20',
     assignProxyIds: twProxies.slice(0, 6).map(p => p.id),
     credentialsSentAt: past(30),
-    credentialsChannel: 'EMAIL',
+    credentialsChannel: 'MANUAL',
   });
 
   // ORD-10845 — T-Mobile 7d, expiring soon (2 days left)
@@ -460,7 +460,7 @@ async function main() {
     paymentMethod: 'Visa •• 4242',
     assignProxyIds: remainingTw.slice(0, 3).map(p => p.id),
     credentialsSentAt: past(5),
-    credentialsChannel: 'EMAIL',
+    credentialsChannel: 'MANUAL',
   });
 
   // ORD-10848 — AT&T 7d, qty 2, pending payment (new)

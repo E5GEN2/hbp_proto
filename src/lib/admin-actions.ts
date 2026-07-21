@@ -73,9 +73,9 @@ export const assignProxyAction = guarded(async function assignProxyAction(orderI
   return r;
 });
 
-export const sendCredentialsAction = guarded(async function sendCredentialsAction(orderId: string, channel: 'EMAIL' | 'TELEGRAM' | 'BOTH') {
+export const markCredentialsDeliveredAction = guarded(async function markCredentialsDeliveredAction(orderId: string) {
   const actor = await getAdminActor();
-  const r = await T.sendCredentials({ orderId, actor, channel });
+  const r = await T.markCredentialsDelivered({ orderId, actor });
   bust();
   return r;
 });

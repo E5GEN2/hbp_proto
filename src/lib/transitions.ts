@@ -12,7 +12,9 @@ import { prisma } from './prisma';
 import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyId, nextAssignmentId } from './id';
 import { renewalUnitPrice } from './renewal';
 import { fmtDate } from './date';
+import { money } from './money';
 import { sendTelegram } from './telegram';
+import { sendEmail, incidentEmail, escapeHtml } from './email';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -213,13 +215,13 @@ export async function refundPayment({
     }
 
     await notify(tx, pay.clientId,
-      `Refund of $${refundAmount} credited to your balance · ${reason}`,
+      `Refund of ${money(refundAmount)} credited to your balance · ${reason}`,
       'SUCCESS',
       pay.orderId ? `/orders/${pay.orderId}` : '/billing',
     );
 
     await log(tx, actor.id, 'PAYMENT.REFUND', 'PAYMENT', paymentId,
-      `Refund $${refundAmount} · ${reason} · actor=${actor.name ?? actor.id}`);
+      `Refund ${money(refundAmount)} · ${reason} · actor=${actor.name ?? actor.id}`);
 
     return { ok: true, newBalance };
   });
@@ -294,8 +296,12 @@ export async function cancelOrder({
 }
 
 export async function suspendOrder({ orderId, actor, reason }: { orderId: string; actor: Actor; reason: string }) {
-  return prisma.$transaction(async tx => {
-    const ord = await tx.order.findUnique({ where: { id: orderId } });
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
+    const ord = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { client: { select: { email: true, emailIncidents: true } } },
+    });
     if (!ord) throw new Error('Order not found');
     if (ord.status !== 'ACTIVE' && ord.status !== 'PROVISIONING') throw new Error(`Cannot suspend from status ${ord.status}`);
 
@@ -315,19 +321,32 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
     });
 
     await notify(tx, ord.clientId, `Order ${orderId} suspended by operator · ${reason}`, 'WARNING', `/orders/${orderId}`);
+    if (ord.client.emailIncidents) {
+      emailOutbox.push({ to: ord.client.email, ...incidentEmail(
+        `Order ${orderId} suspended`,
+        [`Your order <strong>${orderId}</strong> was suspended by the operator: ${escapeHtml(reason)}.`,
+         'Proxy access is withdrawn while the order is suspended — contact support if this is unexpected.'],
+        `/orders/${orderId}`, 'View order') });
+    }
     // Client creds are hidden on suspend, but the proxy stays bound and the
     // client may have copied them — record the standing manual-rotation duty
     // (no upstream auto-rotation). Surfaced on the admin order page + modal.
     await log(tx, actor.id, 'ORDER.SUSPEND', 'ORDER', orderId, `Suspended · ${reason} · creds hidden from client — ROTATE proxy password + IP-rotation link on the upstream manually`);
     return { ok: true };
   });
+  for (const e of emailOutbox) await sendEmail(e);
+  return result;
 }
 
 export async function resumeOrder({ orderId, actor }: { orderId: string; actor: Actor }) {
-  return prisma.$transaction(async tx => {
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
     const ord = await tx.order.findUnique({
       where: { id: orderId },
-      include: { assignments: { where: { releasedAt: null } } },
+      include: {
+        assignments: { where: { releasedAt: null } },
+        client: { select: { email: true, emailIncidents: true } },
+      },
     });
     if (!ord) throw new Error('Order not found');
     if (ord.status !== 'SUSPENDED') throw new Error('Order is not suspended');
@@ -347,9 +366,22 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
     });
 
     await notify(tx, ord.clientId, `Order ${orderId} resumed`, 'SUCCESS', `/orders/${orderId}`);
+    if (ord.client.emailIncidents) {
+      // Mirror the log's intact branch (review find): a resume to PROVISIONING
+      // has NO proxies to restore — claiming restored access would be the
+      // exact dishonesty this wave removes.
+      emailOutbox.push({ to: ord.client.email, ...incidentEmail(
+        `Order ${orderId} resumed`,
+        intact
+          ? [`Your order <strong>${orderId}</strong> was resumed — proxy access is restored.`]
+          : [`Your order <strong>${orderId}</strong> was resumed — its proxies are being re-provisioned, we’ll notify you when they’re ready.`],
+        `/orders/${orderId}`, 'View order') });
+    }
     await log(tx, actor.id, 'ORDER.RESUME', 'ORDER', orderId, intact ? 'Resumed to ACTIVE' : 'Resumed to PROVISIONING (manual recovery needed)');
     return { ok: true };
   });
+  for (const e of emailOutbox) await sendEmail(e);
+  return result;
 }
 
 export async function extendOrder({
@@ -528,19 +560,39 @@ export async function assignProxyManually({
   });
 }
 
-export async function sendCredentials({
-  orderId, actor, channel,
-}: { orderId: string; actor: Actor; channel: 'EMAIL' | 'TELEGRAM' | 'BOTH' }) {
+// P1-3 (truth-in-UI, owner decision 2026-07-20): the old "Send credentials"
+// never dispatched anything — it stamped credentialsSentAt while the toast
+// claimed an email went out. Renamed to the honest semantics: the admin hands
+// credentials over out-of-band (messenger / email themselves) and RECORDS the
+// fact. Real dispatch stays deferred (Stage-1.5 decision 7 / P2 backlog).
+// No client bell here: the "your proxies are ready" signal already fires at
+// full assignment (assignProxyManually / activation paths) — a second row for
+// admin bookkeeping would duplicate the signal (coherent-signals rule).
+export async function markCredentialsDelivered({ orderId, actor }: { orderId: string; actor: Actor }) {
   return prisma.$transaction(async tx => {
-    const ord = await tx.order.findUnique({ where: { id: orderId } });
+    const ord = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { assignments: { where: { releasedAt: null }, select: { id: true } } },
+    });
     if (!ord) throw new Error('Order not found');
-    const now = new Date();
+    // Server-side gate (the old action trusted the UI — the bulk bar allowed
+    // any PROVISIONING order, even unpaid or with zero proxies): recording a
+    // delivery that cannot have happened is exactly the dishonesty this
+    // rename removes.
+    if (['CANCELLED', 'EXPIRED', 'SUSPENDED'].includes(ord.status)) {
+      throw new Error(`Cannot mark credentials delivered on a ${ord.status.toLowerCase()} order`);
+    }
+    if (!['PAID', 'FREE', 'CONFIRMED'].includes(ord.paymentStatus) && !ord.manualProvisioning) {
+      throw new Error(`Order is not paid (payment status ${ord.paymentStatus}) — confirm the payment first`);
+    }
+    if (ord.assignments.length === 0) throw new Error('No proxies assigned — nothing to deliver yet');
+    if (ord.credentialsSentAt) throw new Error('Credentials are already marked delivered');
     await tx.order.update({
       where: { id: orderId },
-      data: { credentialsSentAt: now, credentialsChannel: channel },
+      data: { credentialsSentAt: new Date(), credentialsChannel: 'MANUAL' },
     });
-    await notify(tx, ord.clientId, `Credentials for ${orderId} sent via ${channel.toLowerCase()}`, 'INFO', `/orders/${orderId}`);
-    await log(tx, actor.id, 'ORDER.CREDENTIALS_SENT', 'ORDER', orderId, `Sent via ${channel}`);
+    await log(tx, actor.id, 'ORDER.CREDENTIALS_DELIVERED', 'ORDER', orderId,
+      'Marked delivered by admin — recorded only, nothing auto-sent');
     return { ok: true };
   });
 }
@@ -619,10 +671,11 @@ export async function markProxyFaulty({
   proxyId, actor, reason, autoReplace,
 }: { proxyId: string; actor: Actor; reason: string; autoReplace: boolean }) {
   const outbox: { chatId: string | null; text: string }[] = [];
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { id: true, telegramChatId: true } } } } } } },
+      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { id: true, telegramChatId: true, telegramAll: true, email: true, emailIncidents: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
 
@@ -663,14 +716,28 @@ export async function markProxyFaulty({
         // Replacement filled the gap — refresh (may clear if now full).
         await refreshProvisionException(tx, a.orderId);
         await notify(tx, a.order.clientId, `Faulty proxy ${proxyId} replaced with ${replacement}`, 'SUCCESS', `/proxies/${replacement}`);
-        outbox.push({ chatId: a.order.client.telegramChatId, text: `⚠️ A proxy on order ${a.orderId} failed and was automatically replaced with ${replacement}. No action needed.` });
+        outbox.push({ chatId: a.order.client.telegramAll ? a.order.client.telegramChatId : null, text: `⚠️ A proxy on order ${a.orderId} failed and was automatically replaced with ${replacement}. No action needed.` });
+        if (a.order.client.emailIncidents) {
+          emailOutbox.push({ to: a.order.client.email, ...incidentEmail(
+            `Proxy replaced on order ${a.orderId}`,
+            [`A proxy on order <strong>${a.orderId}</strong> failed and was automatically replaced with <strong>${replacement}</strong>.`,
+             'No action is needed — fresh credentials are in your portal.'],
+            `/orders/${a.orderId}`, 'View order') });
+        }
       } else {
         const st = await refreshProvisionException(tx, a.orderId);
         const frac = st ? `${st.live}/${st.qty} proxies attached` : 'replacement pending';
         await notify(tx, a.order.clientId,
           `Proxy ${proxyId} on order ${a.orderId} flagged faulty — a replacement is being arranged (${frac})`,
           'WARNING', `/orders/${a.orderId}`);
-        outbox.push({ chatId: a.order.client.telegramChatId, text: `⚠️ A proxy on your order ${a.orderId} was flagged faulty. ${frac} — a replacement is being arranged.` });
+        outbox.push({ chatId: a.order.client.telegramAll ? a.order.client.telegramChatId : null, text: `⚠️ A proxy on your order ${a.orderId} was flagged faulty. ${frac} — a replacement is being arranged.` });
+        if (a.order.client.emailIncidents) {
+          emailOutbox.push({ to: a.order.client.email, ...incidentEmail(
+            `Proxy issue on order ${a.orderId}`,
+            [`Proxy <strong>${proxyId}</strong> on order <strong>${a.orderId}</strong> was flagged faulty (${frac}).`,
+             'A replacement is being arranged — we’ll notify you when it’s ready.'],
+            `/orders/${a.orderId}`, 'View order') });
+        }
       }
     }
 
@@ -679,6 +746,7 @@ export async function markProxyFaulty({
     return { ok: true, replacement };
   });
   for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  for (const e of emailOutbox) await sendEmail(e);
   return result;
 }
 
@@ -689,12 +757,13 @@ export async function markProxyFaulty({
 // Pool-first: exact carrier+region+pool, then carrier+region.
 export async function replaceProxy({ orderId, proxyId, actor }: { orderId: string; proxyId: string; actor: Actor }) {
   const outbox: { chatId: string | null; text: string }[] = [];
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const result = await prisma.$transaction(async tx => {
     const assignment = await tx.assignment.findFirst({
       where: { orderId, proxyId, releasedAt: null },
       include: {
         proxy: true,
-        order: { include: { plan: { select: { carrier: true, pool: true } }, client: { select: { id: true, telegramChatId: true } } } },
+        order: { include: { plan: { select: { carrier: true, pool: true } }, client: { select: { id: true, telegramChatId: true, telegramAll: true, email: true, emailIncidents: true } } } },
       },
     });
     if (!assignment) throw new Error('That proxy is not currently assigned to this order');
@@ -730,21 +799,29 @@ export async function replaceProxy({ orderId, proxyId, actor }: { orderId: strin
     await notify(tx, ord.clientId,
       `A proxy on order ${orderId} was replaced — ${candidate.id} is ready with fresh credentials`,
       'SUCCESS', `/orders/${orderId}`);
-    outbox.push({ chatId: ord.client.telegramChatId,
+    outbox.push({ chatId: ord.client.telegramAll ? ord.client.telegramChatId : null,
       text: `✅ A proxy on your order ${orderId} was replaced with a fresh one (${candidate.id}). New credentials are in your portal.` });
+    if (ord.client.emailIncidents) {
+      emailOutbox.push({ to: ord.client.email, ...incidentEmail(
+        `Proxy replaced on order ${orderId}`,
+        [`A proxy on order <strong>${orderId}</strong> was replaced — <strong>${candidate.id}</strong> is ready with fresh credentials in your portal.`],
+        `/orders/${orderId}`, 'View order') });
+    }
     await log(tx, actor.id, 'PROXY.REPLACE', 'PROXY', proxyId, `Replaced with ${candidate.id} on order ${orderId} · old proxy released to pool`);
     return { ok: true as const, replacement: candidate.id, released: proxyId };
   });
   for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  for (const e of emailOutbox) await sendEmail(e);
   return result;
 }
 
 export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor: Actor }) {
   const outbox: { chatId: string | null; text: string }[] = [];
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { id: true, telegramChatId: true } } } } } } },
+      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { id: true, telegramChatId: true, telegramAll: true, email: true, emailIncidents: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
     await tx.assignment.updateMany({
@@ -763,15 +840,29 @@ export async function releaseProxy({ proxyId, actor }: { proxyId: string; actor:
           ? `Proxy ${proxyId} on order ${a.orderId} was released — a replacement is being arranged (${frac})`
           : `Proxy ${proxyId} on order ${a.orderId} was released by support — contact us if this is unexpected`,
         'WARNING', `/orders/${a.orderId}`);
-      outbox.push({ chatId: a.order.client.telegramChatId,
+      outbox.push({ chatId: a.order.client.telegramAll ? a.order.client.telegramChatId : null,
         text: stillActive
           ? `⚠️ A proxy on your order ${a.orderId} was released. ${frac} — a replacement is being arranged.`
           : `A proxy on your order ${a.orderId} was released by support. Contact us if this is unexpected.` });
+      // Faulty→release is the canonical two-step flow: mark-faulty already
+      // emailed "a replacement is being arranged" with the same fraction —
+      // a second identical email adds nothing (review find). Bell/log stay.
+      if (a.order.client.emailIncidents && proxy.status !== 'FAULTY') {
+        emailOutbox.push({ to: a.order.client.email, ...incidentEmail(
+          `Proxy released on order ${a.orderId}`,
+          stillActive
+            ? [`Proxy <strong>${proxyId}</strong> on order <strong>${a.orderId}</strong> was released (${frac}).`,
+               'A replacement is being arranged — we’ll notify you when it’s ready.']
+            : [`Proxy <strong>${proxyId}</strong> on order <strong>${a.orderId}</strong> was released by support.`,
+               'Contact us if this is unexpected.'],
+          `/orders/${a.orderId}`, 'View order') });
+      }
     }
     await log(tx, actor.id, 'PROXY.RELEASE', 'PROXY', proxyId, 'Manually released');
     return { ok: true };
   });
   for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  for (const e of emailOutbox) await sendEmail(e);
   return result;
 }
 
@@ -799,10 +890,11 @@ export async function returnProxyToPool({ proxyId, actor }: { proxyId: string; a
 // serving it (ASSIGNED) and the replacement-pending exception clears;
 // otherwise it returns to the pool as AVAILABLE.
 export async function markProxyHealthy({ proxyId, actor }: { proxyId: string; actor: Actor }) {
-  return prisma.$transaction(async tx => {
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, include: { order: true } } },
+      include: { assignments: { where: { releasedAt: null }, include: { order: { include: { client: { select: { email: true, emailIncidents: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
     if (proxy.status !== 'FAULTY') throw new Error(`Only FAULTY proxies can be marked healthy (this one is ${proxy.status})`);
@@ -817,11 +909,19 @@ export async function markProxyHealthy({ proxyId, actor }: { proxyId: string; ac
       await notify(tx, active.order.clientId,
         `Proxy ${proxyId} on order ${active.orderId} is healthy again — no replacement needed`,
         'SUCCESS', `/orders/${active.orderId}`);
+      if (active.order.client.emailIncidents) {
+        emailOutbox.push({ to: active.order.client.email, ...incidentEmail(
+          `Proxy ${proxyId} is healthy again`,
+          [`Proxy <strong>${proxyId}</strong> on order <strong>${active.orderId}</strong> is healthy again — no replacement is needed.`],
+          `/orders/${active.orderId}`, 'View order') });
+      }
     }
     await log(tx, actor.id, 'PROXY.MARK_HEALTHY', 'PROXY', proxyId,
       `Healthy again · ${active ? `back to serving ${active.orderId}` : 'returned to pool'}`);
     return { ok: true, backTo: active ? active.orderId : null };
   });
+  for (const e of emailOutbox) await sendEmail(e);
+  return result;
 }
 
 // AVAILABLE/ASSIGNED ↔ MAINTENANCE. Entering maintenance PRESERVES any open
@@ -829,10 +929,11 @@ export async function markProxyHealthy({ proxyId, actor }: { proxyId: string; ac
 // eligible for new work); leaving restores ASSIGNED/AVAILABLE accordingly.
 export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: string; on: boolean; actor: Actor }) {
   const outbox: { chatId: string | null; text: string }[] = [];
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const result = await prisma.$transaction(async tx => {
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
-      include: { assignments: { where: { releasedAt: null }, take: 1, include: { order: { include: { client: { select: { id: true, telegramChatId: true } } } } } } },
+      include: { assignments: { where: { releasedAt: null }, take: 1, include: { order: { include: { client: { select: { id: true, telegramChatId: true, telegramAll: true, email: true, emailIncidents: true } } } } } } },
     });
     if (!proxy) throw new Error('Proxy not found');
     if (on) {
@@ -860,15 +961,25 @@ export async function setProxyMaintenance({ proxyId, on, actor }: { proxyId: str
           ? `Proxy ${proxyId} on order ${active.orderId} is under maintenance — service may be briefly interrupted`
           : `Proxy ${proxyId} on order ${active.orderId} is back in service after maintenance`,
         on ? 'WARNING' : 'SUCCESS', `/proxies/${proxyId}`);
-      outbox.push({ chatId: active.order.client.telegramChatId,
+      outbox.push({ chatId: active.order.client.telegramAll ? active.order.client.telegramChatId : null,
         text: on
           ? `🛠 Proxy ${proxyId} on your order ${active.orderId} is under maintenance — service may be briefly interrupted. We'll notify you when it's back.`
           : `✅ Proxy ${proxyId} on your order ${active.orderId} is back in service after maintenance.` });
+      if (active.order.client.emailIncidents) {
+        emailOutbox.push({ to: active.order.client.email, ...incidentEmail(
+          on ? `Maintenance on proxy ${proxyId}` : `Proxy ${proxyId} back in service`,
+          on
+            ? [`Proxy <strong>${proxyId}</strong> on order <strong>${active.orderId}</strong> is under maintenance — service may be briefly interrupted.`,
+               'We’ll notify you when it’s back.']
+            : [`Proxy <strong>${proxyId}</strong> on order <strong>${active.orderId}</strong> is back in service after maintenance.`],
+          `/proxies/${proxyId}`, 'View proxy') });
+      }
     }
     await log(tx, actor.id, 'PROXY.MAINTENANCE', 'PROXY', proxyId, on ? 'Entered maintenance' : 'Left maintenance');
     return { ok: true };
   });
   for (const m of outbox) await sendTelegram(m.chatId, m.text);
+  for (const e of emailOutbox) await sendEmail(e);
   return result;
 }
 
@@ -1014,7 +1125,7 @@ export async function createPlan({ input, actor }: { input: PlanInput; actor: Ac
     });
 
     await log(tx, actor.id, 'PLAN.CREATE', 'PLAN', plan.id,
-      `Created ${plan.name} · ${plan.carrier} · ${plan.region} · ${plan.durationDays}d · $${plan.price} · quota=${plan.availableQuota}${plan.active ? ' · published to client portal' : ' · disabled'}`);
+      `Created ${plan.name} · ${plan.carrier} · ${plan.region} · ${plan.durationDays}d · ${money(Number(plan.price))} · quota=${plan.availableQuota}${plan.active ? ' · published to client portal' : ' · disabled'}`);
 
     return { ok: true, planId: plan.id };
   });
@@ -1094,12 +1205,12 @@ export async function adjustBalance({
 
     await notify(tx, userId,
       delta >= 0
-        ? `Balance credit: +$${delta} · ${reason}`
-        : `Balance debit: -$${Math.abs(delta)} · ${reason}`,
+        ? `Balance credit: +${money(delta)} · ${reason}`
+        : `Balance debit: -${money(Math.abs(delta))} · ${reason}`,
       delta >= 0 ? 'SUCCESS' : 'WARNING', '/billing',
     );
     await log(tx, actor.id, 'CLIENT.BALANCE_ADJUST', 'CLIENT', userId,
-      `${delta >= 0 ? '+' : ''}$${delta} · ${reason}${note ? ' · ' + note : ''} → balance=$${newBalance}`);
+      `${delta >= 0 ? '+' : '-'}${money(Math.abs(delta))} · ${reason}${note ? ' · ' + note : ''} → balance=${money(newBalance)}`);
     return { ok: true, newBalance };
   });
 }
@@ -1374,7 +1485,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
       `/orders/${orderId}`,
     );
     await log(tx, actor.id, 'ORDER.CREATE', 'ORDER', orderId,
-      `Admin-created · ${client.name} (${client.id}) · ${plan.name} · qty ${input.qty} · ${input.paymentMethod} · $${total.toFixed(2)} · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`);
+      `Admin-created · ${client.name} (${client.id}) · ${plan.name} · qty ${input.qty} · ${input.paymentMethod} · ${money(total)} · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`);
 
     return { ok: true, orderId };
   });
@@ -1636,7 +1747,7 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
       },
     });
     await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
-      `Client renewal · $${price} from balance · new expiry ${fmtDate(newExpiry)}`);
+      `Client renewal · ${money(price)} from balance · new expiry ${fmtDate(newExpiry)}`);
     await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${orderId}`);
     return { ok: true, redirect: null, newExpiry: newExpiry.toISOString() };
   });

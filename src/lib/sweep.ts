@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { fmtDate } from './date';
 import { attemptAutoRenew } from './auto-renew';
-import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail, renewalReminderEmail } from './email';
+import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailedExpiredEmail, renewalReminderEmail, incidentEmail } from './email';
 import { sendTelegram } from './telegram';
 import { autoBackfillEnabled } from './runtime-flags';
 import { backfillOrderProxies, refreshProvisionException } from './transitions';
@@ -95,6 +95,7 @@ export async function runSweep(): Promise<SweepResult> {
   if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, skipped: true };
   running = true;
   const telegramOutbox: { chatId: string | null; text: string }[] = [];
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   try {
     const now = Date.now();
     let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
@@ -117,9 +118,10 @@ export async function runSweep(): Promise<SweepResult> {
           const outcome = await attemptAutoRenew(o);
           if (outcome.renewed) {
             autoRenewed++;
-            if (o.client.emailRenewal) {
-              await sendEmail({ to: o.client.email, ...autoRenewedEmail(o.id, fmtDate(outcome.newExpiry), outcome.via) });
-            }
+            // Receipt for money actually charged — transactional, NEVER gated
+            // by emailRenewal (P1-4): that pref covers pre-expiry reminders,
+            // not proof that a charge happened.
+            await sendEmail({ to: o.client.email, ...autoRenewedEmail(o.id, fmtDate(outcome.newExpiry), outcome.via) });
             continue; // extended — stays ACTIVE
           }
           autoRenewFailed++;
@@ -137,9 +139,10 @@ export async function runSweep(): Promise<SweepResult> {
               await notify(o.clientId,
                 `Auto-renew failed for ${o.id} — proxies keep working until ${fmtDate(new Date(graceEnd))}. Top up your balance and we'll retry.`,
                 'WARNING', `/orders/${o.id}`);
-              if (o.client.emailRenewal) {
-                await sendEmail({ to: o.client.email, ...autoRenewFailedGraceEmail(o.id, fmtDate(new Date(graceEnd)), outcome.reason) });
-              }
+              // Action-needed payment failure ("your service will stop") —
+              // transactional (P1-4). The emailRenewal caption promises only
+              // reminders; opting out must not silence a service-loss notice.
+              await sendEmail({ to: o.client.email, ...autoRenewFailedGraceEmail(o.id, fmtDate(new Date(graceEnd)), outcome.reason) });
             }
             continue; // keep ACTIVE through the grace window
           }
@@ -171,7 +174,9 @@ export async function runSweep(): Promise<SweepResult> {
             ? `Order ${o.id} expired — proxies keep working until ${fmtDate(new Date(graceEnd))}; renew before then to keep them`
             : `Order ${o.id} expired on ${fmtDate(o.expiresAt)} — renew to get fresh proxies`,
         'WARNING', `/orders/${o.id}`);
-      if (autoRenewGaveUp && o.client.emailRenewal) {
+      // Service-loss notice (order actually expired) — transactional, ungated
+      // for the same reason as the grace-failure email above (P1-4).
+      if (autoRenewGaveUp) {
         await sendEmail({ to: o.client.email, ...autoRenewFailedExpiredEmail(o.id) });
       }
       await log('ORDER.EXPIRE', 'ORDER', o.id,
@@ -257,7 +262,7 @@ export async function runSweep(): Promise<SweepResult> {
         where: { status: { in: ['ACTIVE', 'PROVISIONING'] }, paymentStatus: { in: ['PAID', 'CONFIRMED', 'FREE'] }, autoProvision: true },
         include: {
           plan: { select: { carrier: true, pool: true, durationDays: true } },
-          client: { select: { id: true, telegramChatId: true } },
+          client: { select: { id: true, telegramChatId: true, telegramAll: true, email: true, emailIncidents: true } },
           assignments: { where: { releasedAt: null }, select: { id: true } },
         },
         orderBy: { createdAt: 'asc' },
@@ -307,7 +312,17 @@ export async function runSweep(): Promise<SweepResult> {
                 ? `Order ${o.id}: ${outcome.live}/${o.qty} proxies assigned; the rest will follow as the pool refills.`
                 : `Order ${o.id}: ${outcome.added} replacement ${outcome.added === 1 ? 'proxy' : 'proxies'} assigned (${outcome.live}/${o.qty}); the rest will follow as the pool refills.`;
           await notify(o.clientId, msg, outcome.activated ? 'SUCCESS' : 'INFO', `/orders/${o.id}`);
-          telegramOutbox.push({ chatId: o.client.telegramChatId, text: `✅ ${msg}` });
+          telegramOutbox.push({ chatId: o.client.telegramAll ? o.client.telegramChatId : null, text: `✅ ${msg}` });
+          // The faulty/release incident emails promise "we'll notify you when
+          // it's ready" — this backfill IS that resolution, so it must close
+          // the thread on the email channel too (review find). Only on the
+          // thread-closing event (full again / activated): partial refills can
+          // repeat every sweep tick as the pool trickles in — that would spam.
+          if (o.client.emailIncidents && (outcome.fully || outcome.activated)) {
+            emailOutbox.push({ to: o.client.email, ...incidentEmail(
+              outcome.activated ? `Order ${o.id} activated` : `Proxies restored on order ${o.id}`,
+              [`${msg}.`], `/orders/${o.id}`, 'View order') });
+          }
           await log('ORDER.BACKFILL', 'ORDER', o.id,
             `Auto-filled ${outcome.added} ${outcome.added === 1 ? 'proxy' : 'proxies'} from pool · now ${outcome.live}/${o.qty}`);
         }
@@ -358,6 +373,7 @@ export async function runSweep(): Promise<SweepResult> {
     running = false;
     // External HTTP after the DB work — never inside a transaction.
     for (const m of telegramOutbox) await sendTelegram(m.chatId, m.text);
+    for (const e of emailOutbox) await sendEmail(e);
   }
 }
 

@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import * as A from '@/lib/ui-actions/admin-actions';
 import { useToast } from '@/components/ui/Toast';
+import { money } from '@/lib/money';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { MarkPaidModal } from './modals/MarkPaidModal';
 import { RefundModal } from './modals/RefundModal';
@@ -110,13 +111,15 @@ export function ExtendButton({
   );
 }
 
-export function SendCredentialsButton({ orderId }: { orderId: string }) {
+// P1-3: honest label — this records that the admin delivered credentials
+// out-of-band; nothing is auto-sent (real dispatch is a Phase-2 pipeline).
+export function MarkDeliveredButton({ orderId }: { orderId: string }) {
   const toast = useToast();
-  const { call, pending, err } = useAction(A.sendCredentialsAction);
+  const { call, pending, err } = useAction(A.markCredentialsDeliveredAction);
   return (
     <>
-      <button className="btn primary" onClick={async () => { try { await call(orderId, 'EMAIL'); toast('Credentials sent', orderId + ' · email', 'success'); } catch {} }} disabled={pending}>
-        {pending ? '…' : 'Send credentials'}
+      <button className="btn primary" onClick={async () => { try { await call(orderId); toast('Marked as delivered', orderId, 'success'); } catch {} }} disabled={pending}>
+        {pending ? '…' : 'Mark as delivered'}
       </button>
       {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
     </>
@@ -361,7 +364,7 @@ export function AdjustBalanceButton({ userId }: { userId: string }) {
           if (isNaN(d) || d === 0) throw new Error('Amount must be a non-zero number');
           if (!reason.trim()) throw new Error('Reason required');
           const r = await A.adjustBalanceAction(userId, d, reason.trim(), note.trim() || undefined);
-          toast(d >= 0 ? `Credited $${d}` : `Debited $${Math.abs(d)}`, `New balance: $${r.newBalance}`, 'success');
+          toast(d >= 0 ? `Credited ${money(d)}` : `Debited ${money(Math.abs(d))}`, `New balance: ${money(r.newBalance)}`, 'success');
           router.refresh();
         }}
       />

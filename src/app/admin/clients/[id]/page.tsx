@@ -179,7 +179,9 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
               <div className="kv">
                 <div className="preference-row"><span className="pref-label">Preferred carrier</span><span className="pref-control">{c.preferredCarrier ?? '—'}</span></div>
                 <div className="preference-row"><span className="pref-label">Preferred region</span><span className="pref-control">{c.preferredRegion ?? '—'}</span></div>
-                <div className="preference-row"><span className="pref-label">Email notifications</span><span className="pref-control"><span className={`toggle-v2${c.emailRenewal ? ' on' : ''}`} /></span></div>
+                <div className="preference-row"><span className="pref-label">Renewal emails</span><span className="pref-control"><span className={`toggle-v2${c.emailRenewal ? ' on' : ''}`} /></span></div>
+                <div className="preference-row"><span className="pref-label">Incident emails</span><span className="pref-control"><span className={`toggle-v2${c.emailIncidents ? ' on' : ''}`} /></span></div>
+                <div className="preference-row"><span className="pref-label">Marketing emails</span><span className="pref-control"><span className={`toggle-v2${c.emailMarketing ? ' on' : ''}`} /></span></div>
                 <div className="preference-row"><span className="pref-label">Telegram alerts</span><span className="pref-control"><span className={`toggle-v2${c.telegramAll ? ' on' : ''}`} /></span></div>
                 <div className="preference-row"><span className="pref-label">Pre-renewal reminder</span><span className="pref-control">{c.preRenewalReminderHours}h</span></div>
               </div>

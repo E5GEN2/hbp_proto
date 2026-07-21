@@ -12,6 +12,7 @@ import { nextPaymentId, nextInvoiceId } from './id';
 import { renewalUnitPrice } from './renewal';
 import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
+import { money } from './money';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
@@ -57,16 +58,16 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           orderBy: [{ isDefault: 'desc' }, { addedAt: 'desc' }],
         });
         if (!card) {
-          throw new AutoRenewFail(`insufficient balance ($${balance.toFixed(2)} of $${price.toFixed(2)}) and no card on file`);
+          throw new AutoRenewFail(`insufficient balance (${money(balance)} of ${money(price)}) and no card on file`);
         }
         if (!mockPaymentsAllowed()) {
-          throw new AutoRenewFail(`insufficient balance ($${balance.toFixed(2)} of $${price.toFixed(2)}) — card charging is not available yet`);
+          throw new AutoRenewFail(`insufficient balance (${money(balance)} of ${money(price)}) — card charging is not available yet`);
         }
         cardLabel = `card •• ${card.last4 ?? '????'}`;
       }
 
       via = cardPart > 0
-        ? (balancePart > 0 ? `balance $${balancePart.toFixed(2)} + ${cardLabel} $${cardPart.toFixed(2)}` : `${cardLabel}`)
+        ? (balancePart > 0 ? `balance ${money(balancePart)} + ${cardLabel} ${money(cardPart)}` : `${cardLabel}`)
         : 'balance';
 
       const fees = cardPart > 0 ? Math.round(cardPart * 3) / 100 : 0;
@@ -117,7 +118,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       await tx.log.create({
         data: {
           actorId: null, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
-          detail: `Auto-renewed by sweep · ${via} · $${price.toFixed(2)} · new expiry ${newExpiry.toISOString().slice(0, 10)}`,
+          detail: `Auto-renewed by sweep · ${via} · ${money(price)} · new expiry ${newExpiry.toISOString().slice(0, 10)}`,
         },
       });
       await tx.notification.create({

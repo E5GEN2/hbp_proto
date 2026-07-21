@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
-import { cancelOrderAction, suspendOrderAction, resumeOrderAction, sendCredentialsAction } from '@/lib/ui-actions/admin-actions';
+import { cancelOrderAction, suspendOrderAction, resumeOrderAction, markCredentialsDeliveredAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 
@@ -49,16 +49,19 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
   const canCancel = sel.length > 0 && sel.every(o => ['NEW', 'AWAITING', 'PROVISIONING', 'ACTIVE', 'SUSPENDED'].includes(o.status));
   const canSuspend = sel.length > 0 && sel.every(o => o.status === 'ACTIVE');
   const canResume = sel.length > 0 && sel.every(o => o.status === 'SUSPENDED');
-  const canSendCreds = sel.length > 0 && sel.every(o => o.status === 'PROVISIONING');
+  // Mirror the server gate as far as Row data allows (paid-like); the
+  // assignment-count check stays server-side and surfaces via the bulk toast.
+  const canMarkDelivered = sel.length > 0 && sel.every(o => o.status === 'PROVISIONING' && ['PAID', 'FREE', 'CONFIRMED'].includes(o.paymentStatus));
 
   async function bulkRun(action: (id: string) => Promise<any>, label: string) {
     start(async () => {
       let succeeded = 0, failed = 0;
+      let firstErr: string | null = null;
       for (const o of sel) {
-        try { await action(o.id); succeeded++; } catch { failed++; }
+        try { await action(o.id); succeeded++; } catch (e: any) { failed++; firstErr ??= e?.message ?? null; }
       }
       toast(`${label} · ${succeeded}/${sel.length} done${failed ? ` · ${failed} failed` : ''}`,
-        '', failed ? 'warning' : 'success');
+        failed && firstErr ? firstErr : '', failed ? 'warning' : 'success');
       clear();
       router.refresh();
     });
@@ -69,7 +72,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
       <div className={`bulk-bar ${selected.size > 0 ? 'visible' : ''}`}>
         <span className="bulk-count">{selected.size} selected</span>
         <div className="bulk-actions">
-          {canSendCreds && <button className="btn sm" disabled={pending} onClick={() => bulkRun(id => sendCredentialsAction(id, 'EMAIL'), 'Sent credentials')}>Send credentials</button>}
+          {canMarkDelivered && <button className="btn sm" disabled={pending} onClick={() => bulkRun(id => markCredentialsDeliveredAction(id), 'Marked delivered')}>Mark as delivered</button>}
           {canResume && <button className="btn sm primary" disabled={pending} onClick={() => bulkRun(resumeOrderAction, 'Resumed')}>Resume</button>}
           {canSuspend && <button className="btn sm" disabled={pending} onClick={() => setConfirm('suspend')}>Suspend</button>}
           {canCancel && <button className="btn sm danger" disabled={pending} onClick={() => setConfirm('cancel')}>Cancel</button>}

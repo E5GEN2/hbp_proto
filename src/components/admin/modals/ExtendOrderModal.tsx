@@ -31,7 +31,6 @@ export function ExtendOrderModal({
       setMode('same');
       setPeriodDays(currentDuration);
       setNewQty(currentQty);
-      setChargeMode('comp');
       setErr(null);
     }
   }, [open, currentDuration, currentQty]);

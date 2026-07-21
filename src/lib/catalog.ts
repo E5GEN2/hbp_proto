@@ -15,6 +15,14 @@ export const FEATURES_BY_DURATION: Record<number, string[]> = {
 
 export const tierFeatures = (d: number): string[] => FEATURES_BY_DURATION[d] || FEATURES_BY_DURATION[30];
 
+// Client-facing plan name — THE one canon (owner decision 2026-07-21, P2-2 /
+// S15-6): "30 days · Mobile". The internal Plan.name is admin-only and must
+// never reach the client portal; compact widget rows append `· region`
+// themselves. Derived, not stored — cannot go stale when a plan is edited.
+export function planDisplayName(durationDays: number): string {
+  return `${durationLabel(durationDays)} · Mobile`;
+}
+
 export function durationLabel(days: number): string {
   if (days === 1) return '1 day';
   if (days < 30) return `${days} days`;

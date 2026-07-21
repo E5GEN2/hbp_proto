@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { planDisplayName } from '@/lib/catalog';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -39,7 +40,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   // Activity timeline (synthesized from order + payments)
   type Event = { at: Date; tone: string; title: string; detail?: string };
   const events: Event[] = [];
-  events.push({ at: order.createdAt, tone: 'info', title: 'Order placed', detail: `${order.plan.durationDays}-day Mobile · ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} · ${money(Number(order.amount))}` });
+  events.push({ at: order.createdAt, tone: 'info', title: 'Order placed', detail: `${planDisplayName(order.plan.durationDays)} · ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} · ${money(Number(order.amount))}` });
   if (underProvisioned) {
     events.push({ at: order.updatedAt, tone: 'warning', title: 'Replacement in progress', detail: `${liveProxies} of ${order.qty} proxies attached — we're arranging the rest.` });
   }
@@ -99,7 +100,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">Order snapshot</span></div>
                 <div className="panel-body">
-                  <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{order.plan.durationDays}-day Mobile</span></div>
+                  <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(order.plan.durationDays)}</span></div>
                   <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{order.plan.carrier} · {order.region}</span></div>
                   <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{order.qty} {order.qty === 1 ? 'proxy' : 'proxies'}</span></div>
                   <div className="kv-row"><span className="kv-label">Amount</span><span className="kv-val mono">{money(Number(order.amount))}</span></div>

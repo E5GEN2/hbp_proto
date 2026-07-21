@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { money } from '@/lib/money';
 import { useToast } from '@/components/ui/Toast';
-import { durationLabel, tierFeatures } from '@/lib/catalog';
+import { durationLabel, tierFeatures, planDisplayName } from '@/lib/catalog';
 import { FormSelect } from '@/components/ui/FormSelect';
 
 type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number };
@@ -112,7 +112,7 @@ export function CheckoutFlow({
 
   const summaryRows = (
     <div className="panel-body flush">
-      <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{label} · Mobile</span></div>
+      <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(duration)}</span></div>
       <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
       <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
       <div className="kv-row"><span className="kv-label">Price per proxy</span><span className="kv-val">{money(plan.price)}</span></div>

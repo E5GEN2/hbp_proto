@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { planDisplayName } from '@/lib/catalog';
 import { notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -72,7 +73,7 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
                 <div className="panel-header"><span className="panel-title">Info</span></div>
                 <div className="panel-body">
                   <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val"><Link href={`/orders/${myAssignment.order.id}`} className="mono td-link">{myAssignment.order.id}</Link></span></div>
-                  <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{myAssignment.order.plan.name}</span></div>
+                  <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(myAssignment.order.plan.durationDays)}</span></div>
                   <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
                   <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val mono">{fmtAdminStamp(myAssignment.order.expiresAt)}{d != null && d > 0 ? ` · ${d}d left` : ''}</span></div>
                   <div className="kv-row" style={{ alignItems: 'center' }}>

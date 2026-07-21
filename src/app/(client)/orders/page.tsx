@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { planDisplayName } from '@/lib/catalog';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -18,7 +19,7 @@ export default async function ClientOrdersPage({ searchParams }: { searchParams:
 
   const rows: OrderRow[] = orders.map(o => ({
     id: o.id,
-    planLabel: `${o.plan.durationDays}-day Mobile`,
+    planLabel: planDisplayName(o.plan.durationDays),
     region: o.region,
     qty: o.qty,
     amount: Number(o.amount),

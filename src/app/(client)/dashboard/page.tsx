@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { planDisplayName } from '@/lib/catalog';
 import type { ReactNode } from 'react';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -53,7 +54,7 @@ export default async function ClientDashboard() {
   type Ev = { at: Date; dot: string; title: ReactNode; detail: ReactNode };
   const events: Ev[] = [];
   for (const o of orders) {
-    const planLbl = `Mobile ${o.plan.durationDays}d ${o.plan.carrier}`;
+    const planLbl = `${planDisplayName(o.plan.durationDays)} · ${o.region}`;
     // Terminal cancel note first — the placed/paid history stays below it.
     if (o.status === 'CANCELLED') {
       const reason = o.cancelledReason ? ` — ${o.cancelledReason.charAt(0).toLowerCase()}${o.cancelledReason.slice(1)}` : '';
@@ -144,7 +145,7 @@ export default async function ClientDashboard() {
                       <div className="empty" style={{ padding: '32px 20px' }}><div className="empty-desc">No orders yet.</div></div>
                     ) : recentOrders.map(o => (
                       <Link key={o.id} className="widget-row" href={`/orders/${o.id}`}>
-                        <span className="widget-label"><span className="td-link">{o.id}</span> · {o.plan.durationDays}d Mobile · {o.region}</span>
+                        <span className="widget-label"><span className="td-link">{o.id}</span> · {planDisplayName(o.plan.durationDays)} · {o.region}</span>
                         <span className="widget-meta"><span className={`chip ${statusClass(o.status)}`}>{statusLabel(o.status)}</span></span>
                       </Link>
                     ))}
@@ -161,7 +162,7 @@ export default async function ClientDashboard() {
                       return (
                         <Link key={o.id} className="widget-row" href={`/orders/${o.id}`}>
                           <span className={`widget-dot ${tone}`} />
-                          <span className="widget-label">{o.plan.durationDays}d Mobile · {o.region}</span>
+                          <span className="widget-label">{planDisplayName(o.plan.durationDays)} · {o.region}</span>
                           <span className="widget-meta">{d}d left</span>
                         </Link>
                       );

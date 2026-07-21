@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { planDisplayName } from '@/lib/catalog';
 import { notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import type { Prisma } from '@prisma/client';
@@ -93,7 +94,7 @@ export default async function CheckoutPage({ searchParams }: {
               <div className="processing-amount">{money(Number(resumeOrder.amount))}</div>
               <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 20px' }}>
                 <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val mono">{resumeOrder.id}</span></div>
-                <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{resumeOrder.plan.durationDays} days · Mobile</span></div>
+                <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(resumeOrder.plan.durationDays)}</span></div>
                 <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{resumeOrder.region}</span></div>
                 <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{resumeOrder.qty}</span></div>
               </div>

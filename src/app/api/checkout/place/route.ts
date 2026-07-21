@@ -8,6 +8,7 @@ import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/ru
 import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
+import { debitBalance, InsufficientBalance } from '@/lib/balance';
 import { npEnabled, npCreateInvoice } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
 import { appUrl } from '@/lib/app-url';
@@ -233,8 +234,10 @@ export async function POST(req: Request) {
         data: { id: invoiceId, paymentId, orderId, clientId: userId, amount: total },
       });
       if (paymentMethod === 'balance') {
-        const newBal = Number(user.balance) - total;
-        await tx.user.update({ where: { id: userId }, data: { balance: newBal } });
+        // Guarded in-tx debit (P1-1): the pre-check at the top of the route
+        // read the balance OUTSIDE this tx — two concurrent checkouts could
+        // both pass it and double-spend.
+        const newBal = await debitBalance(tx, userId, total);
         await tx.balanceLedgerEntry.create({
           data: { userId, op: 'ORDER_DEBIT', amount: total * -1, balanceAfter: newBal, refOrderId: orderId, refPaymentId: paymentId },
         });
@@ -268,6 +271,9 @@ export async function POST(req: Request) {
   } catch (e: any) {
     if (e?.message === 'CAPACITY_EXHAUSTED') {
       return NextResponse.json({ error: 'Capacity unavailable for requested quantity' }, { status: 400 });
+    }
+    if (e instanceof InsufficientBalance) {
+      return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
     }
     throw e;
   }
@@ -331,6 +337,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
     }
   }
 
+  try {
   await prisma.$transaction(async tx => {
     await tx.payment.create({
       data: {
@@ -361,8 +368,8 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
     const invoiceId = await nextInvoiceId();
     await tx.invoice.create({ data: { id: invoiceId, paymentId, orderId: order.id, clientId: userId, amount: total } });
     if (paymentMethod === 'balance') {
-      const newBal = userBalance - total;
-      await tx.user.update({ where: { id: userId }, data: { balance: newBal } });
+      // Guarded in-tx debit (P1-1) — userBalance was captured before this tx.
+      const newBal = await debitBalance(tx, userId, total);
       await tx.balanceLedgerEntry.create({
         data: { userId, op: 'ORDER_DEBIT', amount: -total, balanceAfter: newBal, refOrderId: order.id, refPaymentId: paymentId, note: `Renewal of ${order.id}` },
       });
@@ -421,6 +428,16 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
       },
     });
   });
+
+  } catch (e: any) {
+    // The in-tx guarded debit replaced the pre-tx balance check (P1-1) — a
+    // concurrent spend between the two reads now fails cleanly instead of
+    // silently double-spending.
+    if (e instanceof InsufficientBalance) {
+      return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
+    }
+    throw e;
+  }
 
   return NextResponse.json({ ok: true, orderId: order.id, renewed: isInstant, ...(paymentUrl ? { paymentUrl } : {}) });
 }

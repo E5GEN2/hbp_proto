@@ -7,6 +7,7 @@ import { prisma } from './prisma';
 import { nextInvoiceId, nextAssignmentId } from './id';
 import { fmtDate } from './date';
 import { money } from './money';
+import { creditBalance } from './balance';
 import { reprovisionRenewedOrder } from './transitions';
 import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
 
@@ -34,10 +35,9 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
     let newBal = 0;
     await prisma.$transaction(async tx => {
       await tx.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: now } });
-      const me = await tx.user.findUnique({ where: { id: clientId } });
+      const me = await tx.user.findUnique({ where: { id: clientId }, select: { id: true } });
       if (!me) throw new Error(`User ${clientId} not found for deposit ${payment.id}`);
-      newBal = Number(me.balance) + amount;
-      await tx.user.update({ where: { id: clientId }, data: { balance: newBal } });
+      newBal = await creditBalance(tx, clientId, amount); // atomic (P1-1)
       await tx.balanceLedgerEntry.create({
         data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payment.id, note: `Deposit crypto (${via})` },
       });

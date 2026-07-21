@@ -10,6 +10,7 @@ import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import { npEnabled, npCreateInvoice } from './nowpayments';
 import { sendEmail, passwordChangedEmail } from './email';
+import { creditBalance } from './balance';
 import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
 import { appUrl } from './app-url';
@@ -183,8 +184,9 @@ export const depositAction = guarded(async function depositAction({ amount, meth
       },
     });
     if (isInstant) {
-      const newBal = Number(me.balance) + amount;
-      await tx.user.update({ where: { id: clientId }, data: { balance: newBal } });
+      // Atomic credit (P1-1) — the old absolute write from the pre-tx `me`
+      // read lost one of two concurrent deposits.
+      const newBal = await creditBalance(tx, clientId, amount);
       await tx.balanceLedgerEntry.create({
         data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payId, note: `Deposit ${method}` },
       });

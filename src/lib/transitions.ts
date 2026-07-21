@@ -15,6 +15,7 @@ import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram } from './telegram';
 import { sendEmail, incidentEmail, escapeHtml } from './email';
+import { creditBalance, debitBalance, InsufficientBalance } from './balance';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -178,9 +179,8 @@ export async function refundPayment({
       data: { status: 'REFUNDED', refundedAmount: refundAmount, refundedAt: now },
     });
 
-    // Credit balance ledger
-    const newBalance = Number(pay.client.balance) + refundAmount;
-    await tx.user.update({ where: { id: pay.clientId }, data: { balance: newBalance } });
+    // Credit balance ledger — atomic increment (P1-1)
+    const newBalance = await creditBalance(tx, pay.clientId, refundAmount);
     await tx.balanceLedgerEntry.create({
       data: {
         userId: pay.clientId,
@@ -1190,12 +1190,19 @@ export async function adjustBalance({
   userId, actor, delta, reason, note,
 }: { userId: string; actor: Actor; delta: number; reason: string; note?: string }) {
   return prisma.$transaction(async tx => {
-    const u = await tx.user.findUnique({ where: { id: userId } });
+    const u = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!u) throw new Error('User not found');
-    const newBalance = Number(u.balance) + delta;
-    if (newBalance < 0) throw new Error('Adjustment would create negative balance');
-
-    await tx.user.update({ where: { id: userId }, data: { balance: newBalance } });
+    // Atomic (P1-1): the negative-result guard rides the debit UPDATE itself.
+    let newBalance: number;
+    if (delta >= 0) {
+      newBalance = await creditBalance(tx, userId, delta);
+    } else {
+      try { newBalance = await debitBalance(tx, userId, -delta); }
+      catch (e) {
+        if (e instanceof InsufficientBalance) throw new Error('Adjustment would create negative balance');
+        throw e;
+      }
+    }
     await tx.balanceLedgerEntry.create({
       data: {
         userId, op: 'MANUAL_ADJUST', amount: delta, balanceAfter: newBalance,
@@ -1716,12 +1723,18 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   // Balance covers — direct extend + new payment + invoice
   return prisma.$transaction(async tx => {
     const now = new Date();
-    const newBalance = balance - price;
-    await tx.user.update({ where: { id: clientId }, data: { balance: newBalance } });
-    await tx.balanceLedgerEntry.create({
-      data: { userId: clientId, op: 'ORDER_DEBIT', amount: -price, balanceAfter: newBalance, refOrderId: orderId, note: `Renewal of ${orderId}` },
-    });
     const payId = await nextPaymentIdInTx(tx);
+    // Guarded in-tx debit (P1-1): the snapshot read above ran OUTSIDE this tx —
+    // a concurrent spend could have drained the balance since.
+    let newBalance: number;
+    try { newBalance = await debitBalance(tx, clientId, price); }
+    catch (e) {
+      if (e instanceof InsufficientBalance) throw new Error('Insufficient balance — the balance changed, please retry');
+      throw e;
+    }
+    await tx.balanceLedgerEntry.create({
+      data: { userId: clientId, op: 'ORDER_DEBIT', amount: -price, balanceAfter: newBalance, refOrderId: orderId, refPaymentId: payId, note: `Renewal of ${orderId}` },
+    });
     await tx.payment.create({
       data: {
         id: payId, orderId, clientId,

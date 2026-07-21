@@ -13,6 +13,7 @@ import { renewalUnitPrice } from './renewal';
 import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
 import { money } from './money';
+import { debitBalance, InsufficientBalance } from './balance';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
@@ -88,8 +89,15 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       });
 
       if (balancePart > 0) {
-        const newBal = Math.round((balance - balancePart) * 100) / 100;
-        await tx.user.update({ where: { id: order.clientId }, data: { balance: newBal } });
+        // Guarded in-tx debit (P1-1): balancePart came from the read above —
+        // if a concurrent spend drained the account in between, fail the
+        // attempt cleanly and let the next sweep tick retry.
+        let newBal: number;
+        try { newBal = await debitBalance(tx, order.clientId, balancePart); }
+        catch (e) {
+          if (e instanceof InsufficientBalance) throw new AutoRenewFail('balance changed during charge — will retry');
+          throw e;
+        }
         await tx.balanceLedgerEntry.create({
           data: {
             userId: order.clientId, op: 'ORDER_DEBIT', amount: -balancePart, balanceAfter: newBal,

@@ -15,7 +15,7 @@ import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram } from './telegram';
 import { sendEmail, incidentEmail, escapeHtml } from './email';
-import { creditBalance, debitBalance, InsufficientBalance } from './balance';
+import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -162,7 +162,7 @@ export async function refundPayment({
   return prisma.$transaction(async tx => {
     const pay = await tx.payment.findUnique({
       where: { id: paymentId },
-      include: { order: true, client: true },
+      include: { order: true },
     });
     if (!pay) throw new Error('Payment not found');
     // CONFIRMED/PAID = admin-initiated refund; REFUND_REQUESTED = executing a
@@ -171,7 +171,7 @@ export async function refundPayment({
       throw new Error(`Cannot refund from status ${pay.status}`);
     }
 
-    const refundAmount = amount ?? Number(pay.gross);
+    const refundAmount = roundCents(amount ?? Number(pay.gross));
     const now = new Date();
 
     await tx.payment.update({
@@ -1189,6 +1189,9 @@ export async function deletePlan({ planId, actor }: { planId: string; actor: Act
 export async function adjustBalance({
   userId, actor, delta, reason, note,
 }: { userId: string; actor: Actor; delta: number; reason: string; note?: string }) {
+  // Normalize the admin-typed amount ONCE — helper and ledger row must see
+  // the identical 2dp value or SUM(ledger) drifts from balance (review find).
+  delta = delta >= 0 ? roundCents(delta) : -roundCents(-delta);
   return prisma.$transaction(async tx => {
     const u = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!u) throw new Error('User not found');
@@ -1746,17 +1749,23 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     const invId = await nextInvoiceIdInTx(tx);
     await tx.invoice.create({ data: { id: invId, paymentId: payId, orderId, clientId, amount: price } });
 
-    const base = o.expiresAt && o.expiresAt > now ? o.expiresAt : now;
+    // Fresh in-tx re-read (review find): the snapshot `o` predates this tx —
+    // a concurrent renewal would have moved expiresAt (stale base = swallowed
+    // paid period), and a concurrent cancel must abort the charge entirely.
+    const freshOrd = await tx.order.findUnique({ where: { id: orderId }, select: { status: true, expiresAt: true, activatedAt: true, exception: true } });
+    if (!freshOrd) throw new Error('Order not found');
+    if (freshOrd.status === 'CANCELLED') throw new Error('Order was cancelled — renewal aborted');
+    const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
     const newExpiry = new Date(base.getTime() + o.plan.durationDays * 86_400_000);
     await tx.order.update({
       where: { id: orderId },
       data: {
         expiresAt: newExpiry,
-        status: o.status === 'EXPIRED' ? 'ACTIVE' : o.status,
-        activatedAt: o.activatedAt ?? now,
+        status: freshOrd.status === 'EXPIRED' ? 'ACTIVE' : freshOrd.status,
+        activatedAt: freshOrd.activatedAt ?? now,
         renewalBucket: 'RENEWED',
         lastReminderAt: null,
-        exception: o.exception === 'RENEWAL_NOT_EXTENDED' ? null : o.exception,
+        exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
       },
     });
     await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,

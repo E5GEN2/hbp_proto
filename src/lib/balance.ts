@@ -26,8 +26,26 @@ export class InsufficientBalance extends Error {
   constructor() { super('Insufficient balance'); this.name = 'InsufficientBalance'; }
 }
 
+// Normalize to whole cents BEFORE the SQL sees the value: the columns are
+// Decimal(12,2) and round independently per column — a sub-cent amount (e.g.
+// admin-typed 16.995) would round one way in the balance decrement and the
+// other way in the ledger row, permanently drifting SUM(ledger) vs balance
+// by a cent (review find). Callers that accept RAW user input must normalize
+// their local variable with roundCents() too, so the ledger row they write
+// carries the exact value the helper applied.
+export function roundCents(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function cents(amount: number): number {
+  const v = roundCents(amount);
+  if (!Number.isFinite(v) || v <= 0) throw new Error(`Invalid balance amount: ${amount}`);
+  return v;
+}
+
 /** Atomically credit `amount` (> 0) to the user. Returns the fresh balance. */
-export async function creditBalance(tx: Tx, userId: string, amount: number): Promise<number> {
+export async function creditBalance(tx: Tx, userId: string, rawAmount: number): Promise<number> {
+  const amount = cents(rawAmount);
   const u = await tx.user.update({
     where: { id: userId },
     data: { balance: { increment: amount } },
@@ -41,7 +59,8 @@ export async function creditBalance(tx: Tx, userId: string, amount: number): Pro
  * concurrent spend can never push the balance negative. Throws
  * InsufficientBalance when the row no longer covers the amount.
  */
-export async function debitBalance(tx: Tx, userId: string, amount: number): Promise<number> {
+export async function debitBalance(tx: Tx, userId: string, rawAmount: number): Promise<number> {
+  const amount = cents(rawAmount);
   const r = await tx.user.updateMany({
     where: { id: userId, balance: { gte: amount } },
     data: { balance: { decrement: amount } },

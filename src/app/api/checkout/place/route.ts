@@ -375,11 +375,18 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
       });
     }
 
+    // Fresh in-tx re-read (review find): `order` predates this tx — a
+    // concurrent one-click renewal / auto-renew tick may have already moved
+    // expiresAt, and the stale base would swallow that paid period.
+    const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, activatedAt: true, exception: true } });
+    if (!freshOrd) throw new Error('Order not found');
+    if (freshOrd.status === 'CANCELLED') throw new Error('Order was cancelled — renewal aborted');
+
     // An EXPIRED order has had its proxies auto-released to the pool — a bare
     // term shift would reactivate it with nothing assigned. Re-provision
     // (fresh proxies pool-first; short pool -> PAID_NOT_PROVISIONED with the
     // clock held for manual Assign).
-    const repro = order.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, userId, now) : null;
+    const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, userId, now) : null;
     if (repro) {
       await tx.order.update({ where: { id: order.id }, data: repro.data });
       await tx.log.create({
@@ -400,17 +407,17 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
       return;
     }
 
-    const base = order.expiresAt && order.expiresAt > now ? order.expiresAt : now;
+    const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
     const newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
     await tx.order.update({
       where: { id: order.id },
       data: {
         expiresAt: newExpiry,
-        status: order.status === 'EXPIRED' ? 'ACTIVE' : order.status,
-        activatedAt: order.activatedAt ?? now,
+        status: freshOrd.status === 'EXPIRED' ? 'ACTIVE' : freshOrd.status,
+        activatedAt: freshOrd.activatedAt ?? now,
         renewalBucket: 'RENEWED',
         lastReminderAt: null,
-        exception: order.exception === 'RENEWAL_NOT_EXTENDED' ? null : order.exception,
+        exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
       },
     });
 

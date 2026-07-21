@@ -10,7 +10,7 @@ import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import { npEnabled, npCreateInvoice } from './nowpayments';
 import { sendEmail, passwordChangedEmail } from './email';
-import { creditBalance } from './balance';
+import { creditBalance, roundCents } from './balance';
 import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
 import { appUrl } from './app-url';
@@ -136,7 +136,10 @@ export const saveNotifPrefsAction = guarded(async function saveNotifPrefsAction(
   return { ok: true };
 });
 
-export const depositAction = guarded(async function depositAction({ amount, method }: { amount: number; method: 'card' | 'crypto' }) {
+export const depositAction = guarded(async function depositAction({ amount: rawAmount, method }: { amount: number; method: 'card' | 'crypto' }) {
+  // 2dp-normalize before ANY use — payment.gross, the ledger row and the
+  // credit must all carry the identical value (review find).
+  const amount = roundCents(rawAmount);
   const clientId = await getClientUserId();
   if (method === 'card' && !mockPaymentsAllowed()) throw new Error('Card top-ups are not available yet — use crypto or contact support.');
   // Admin provider toggles gate NEW charges (audit B-4)

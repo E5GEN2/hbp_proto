@@ -39,12 +39,23 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   const price = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
   const paymentId = await nextPaymentId();
   const now = new Date();
-  const base = order.expiresAt && order.expiresAt > now ? order.expiresAt : now;
-  const newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
+  let newExpiry = now; // real value assigned in-tx from the FRESH expiry base
   let via = 'balance';
 
   try {
     await prisma.$transaction(async tx => {
+      // Fresh in-tx re-read (review find): the sweep snapshot may be stale —
+      // a client renewal committed in between moved expiresAt, and extending
+      // from the stale base would swallow the period they just paid for. The
+      // status guard mirrors the sweep's expiry-step TOCTOU re-read: never
+      // charge an order that stopped being ACTIVE since the snapshot.
+      const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
+      if (!freshOrd || freshOrd.status !== 'ACTIVE') {
+        throw new AutoRenewFail(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);
+      }
+      const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+      newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
+
       const me = await tx.user.findUnique({ where: { id: order.clientId } });
       if (!me) throw new AutoRenewFail('client account not found');
 
@@ -95,7 +106,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
         let newBal: number;
         try { newBal = await debitBalance(tx, order.clientId, balancePart); }
         catch (e) {
-          if (e instanceof InsufficientBalance) throw new AutoRenewFail('balance changed during charge — will retry');
+          if (e instanceof InsufficientBalance) throw new AutoRenewFail('balance changed during charge');
           throw e;
         }
         await tx.balanceLedgerEntry.create({
@@ -119,7 +130,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           renewalBucket: 'RENEWED',
           lastReminderAt: null,
           autoRenewLastAttemptAt: null,
-          exception: order.exception === 'RENEWAL_NOT_EXTENDED' ? null : order.exception,
+          exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
         },
       });
 

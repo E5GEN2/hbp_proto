@@ -63,8 +63,7 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
   //    them auto-released to the pool, so it re-provisions like a new order
   //    (fresh term from now; short pool → PAID_NOT_PROVISIONED, clock held). ──
   if (order.paymentStatus !== 'AWAITING') {
-    const base = order.expiresAt && order.expiresAt > now ? order.expiresAt : now;
-    let newExpiry: Date | null = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
+    let newExpiry: Date | null = null; // assigned in-tx from the FRESH expiry base
     let reproShort = false;
     await prisma.$transaction(async tx => {
       await tx.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: now } });
@@ -73,7 +72,13 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
         data: { id: invoiceId, paymentId: payment.id, orderId: order.id, clientId: order.clientId, amount: Number(payment.gross) },
       });
 
-      const repro = order.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, 'ADM-SYS', now) : null;
+      // Fresh in-tx re-read (review find): `order` predates this tx — extend
+      // from the CURRENT expiry or a concurrent renewal's period gets eaten.
+      // No cancel-abort here: the crypto money is already on-chain — settle
+      // regardless and let the refund flow handle a cancelled order.
+      const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
+      if (!freshOrd) throw new Error(`Order ${order.id} vanished during settle`);
+      const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, 'ADM-SYS', now) : null;
       if (repro) {
         reproShort = !repro.fullyAssigned;
         newExpiry = repro.fullyAssigned ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
@@ -96,14 +101,16 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
         return;
       }
 
+      const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+      newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
       await tx.order.update({
         where: { id: order.id },
         data: {
           expiresAt: newExpiry,
-          status: order.status === 'EXPIRED' ? 'ACTIVE' : order.status,
+          status: freshOrd.status === 'EXPIRED' ? 'ACTIVE' : freshOrd.status,
           renewalBucket: 'RENEWED',
           lastReminderAt: null,
-          exception: order.exception === 'RENEWAL_NOT_EXTENDED' ? null : order.exception,
+          exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
         },
       });
       await tx.log.create({

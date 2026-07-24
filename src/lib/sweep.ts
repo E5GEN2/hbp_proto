@@ -368,6 +368,13 @@ export async function runSweep(): Promise<SweepResult> {
       }
     }
 
+    // ── 4. Purge expired email-verification rows ───────────────────────────
+    //   issueVerification is create-only (the durable resend cap counts rows),
+    //   so abandoned/expired challenges never self-delete — they only go inert.
+    //   Reap them here to bound table growth (already-verified users' rows are
+    //   deleted at completeVerification time).
+    await prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lt: new Date(now) } } });
+
     return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled };
   } finally {
     running = false;

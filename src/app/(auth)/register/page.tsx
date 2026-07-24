@@ -4,11 +4,12 @@ import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { passwordChecklist, passwordPolicyError } from '@/lib/password-policy';
+import { safeReturn } from '@/lib/safe-return';
 
 function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const ret = params.get('return') ?? '/dashboard';
+  const ret = safeReturn(params.get('return')) ?? '/dashboard';
   const fromSite = params.get('from') === 'site';
   const loginHref = `/login?return=${encodeURIComponent(ret)}${fromSite ? '&from=site' : ''}`;
 
@@ -27,7 +28,7 @@ function RegisterForm() {
     const r = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, email, password, return: ret }),
     });
     const j = await r.json().catch(() => ({} as any));
     if (!r.ok) {
@@ -43,7 +44,13 @@ function RegisterForm() {
     }
     // Email confirmation comes first (owner items 2-3); the chosen plan
     // survives the detour — /verify hands ?return back after the code.
-    router.push(j.verify ? `/verify?return=${encodeURIComponent(ret)}` : ret);
+    if (j.verify) {
+      const q = new URLSearchParams({ return: ret });
+      if (j.sent === false) q.set('sent', '0'); // honest "couldn't send" on a mail outage
+      router.push(`/verify?${q.toString()}`);
+    } else {
+      router.push(ret);
+    }
     router.refresh();
   }
 

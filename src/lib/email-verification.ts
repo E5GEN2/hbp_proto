@@ -54,7 +54,11 @@ export async function completeVerification(userId: string, tokenRowId: number): 
   });
   const flipped = flip.count > 0;
   await prisma.$transaction([
-    prisma.emailVerificationToken.update({ where: { id: tokenRowId }, data: { usedAt: new Date() } }),
+    // updateMany, not update: a concurrent winner's deleteMany below may have
+    // already removed this row (two live challenges since issue is create-only)
+    // — updateMany returns count 0 instead of throwing P2025 → no 500 for the
+    // losing confirmation.
+    prisma.emailVerificationToken.updateMany({ where: { id: tokenRowId, usedAt: null }, data: { usedAt: new Date() } }),
     prisma.emailVerificationToken.deleteMany({ where: { userId, usedAt: null } }),
     ...(flipped
       ? [prisma.log.create({

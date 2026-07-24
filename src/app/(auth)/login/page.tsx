@@ -3,11 +3,13 @@ import { useState, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { getSession } from 'next-auth/react';
+import { safeReturn } from '@/lib/safe-return';
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const ret = params.get('return') ?? '/';
+  const ret = safeReturn(params.get('return')) ?? '/';
   const fromSite = params.get('from') === 'site';
   const carry = fromSite ? '&from=site' : '';
   const registerHref = `/register?return=${encodeURIComponent(ret)}${carry}`;
@@ -25,12 +27,20 @@ function LoginForm() {
     setErr(null);
     setLoading(true);
     const res = await signIn('credentials', { redirect: false, email, password });
-    setLoading(false);
     if (res?.error) {
+      setLoading(false);
       setErr('Sign-in failed. Check your credentials.');
       return;
     }
-    router.push(ret);
+    // A client who registered but never confirmed their email still gets
+    // routed through /verify — and the chosen plan (ret) survives the gate.
+    const s = await getSession();
+    setLoading(false);
+    if (s?.user && s.user.role === 'CLIENT' && !s.user.emailVerified) {
+      router.push(`/verify?return=${encodeURIComponent(ret)}`);
+    } else {
+      router.push(ret);
+    }
     router.refresh();
   }
 

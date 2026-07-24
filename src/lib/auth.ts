@@ -84,8 +84,9 @@ export const authOptions: NextAuthOptions = {
         session.user.role = u.role;
         // Same freshness as the block check — a verification flip is visible
         // on the very next request, no token rotation needed. Do NOT null the
-        // session for unverified users: /verify needs a live session.
-        session.user.emailVerified = !!u.emailVerifiedAt;
+        // session for unverified users: /verify needs a live session. Admins
+        // are implicitly verified (they have no verify flow).
+        session.user.emailVerified = isAdminRole(u.role) || !!u.emailVerifiedAt;
       }
       return session;
     },

@@ -7,11 +7,13 @@ import { sendEmail, welcomeEmail, emailEnabled } from '@/lib/email';
 import { clientIp, hitRateLimit } from '@/lib/rate-limit';
 import { passwordPolicyError } from '@/lib/password-policy';
 import { issueVerification } from '@/lib/email-verification';
+import { safeReturn } from '@/lib/safe-return';
 
 const Schema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email().toLowerCase(),
   password: z.string().min(8).max(128),
+  return: z.string().max(512).optional(), // purchase intent — threaded into the magic link
 });
 
 const ATTEMPT_LIMIT = 10; // POSTs per IP per 10 minutes
@@ -38,6 +40,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { name, email, password } = parse.data;
+  const returnPath = safeReturn(parse.data.return);
 
   // Owner item 1: 8+ chars, an uppercase letter, a digit — one shared policy
   // for every place a new password is accepted.
@@ -93,13 +96,18 @@ export async function POST(req: Request) {
       },
     })
     .catch(() => {});
+  let sent = true;
   if (requireVerification) {
     // The welcome email moves to AFTER verification (confirm route) — the
     // first mail a new client sees is the code/link they actually need.
-    await issueVerification(id, email);
+    sent = await issueVerification(id, email, returnPath);
   } else {
+    // Fail-open path: no mail key, so the portal can't gate on an email that
+    // can never arrive (same stance as /forgot's 503). Loud in the logs so a
+    // rotated/missing key in production doesn't silently skip the gate.
+    console.warn(`[register] RESEND_API_KEY unset — ${id} auto-verified (email verification disabled)`);
     await sendEmail({ to: email, ...welcomeEmail(name) });
   }
 
-  return NextResponse.json({ ok: true, userId: id, verify: requireVerification });
+  return NextResponse.json({ ok: true, userId: id, verify: requireVerification, sent });
 }

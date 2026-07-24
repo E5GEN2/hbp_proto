@@ -8,7 +8,7 @@ import { sendEmail, passwordChangedEmail } from '@/lib/email';
 
 const Schema = z.object({
   token: z.string().min(20).max(200),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password must be at most 128 characters'),
 });
 
 export async function POST(req: Request) {

@@ -87,6 +87,7 @@ export function ChangePasswordForm() {
         <div className="settings-field">
           <label className="settings-field-label">New password</label>
           <input className="form-input" type="password" autoComplete="new-password" value={a} onChange={e => setA(e.target.value)} />
+          <div className="form-help" style={{ marginTop: 4 }}>{PASSWORD_POLICY_HINT}</div>
         </div>
         <div className="settings-field">
           <label className="settings-field-label">Confirm new password</label>

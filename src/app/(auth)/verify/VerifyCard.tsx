@@ -5,19 +5,21 @@ import Link from 'next/link';
 
 const RESEND_COOLDOWN_S = 60;
 
-export function VerifyCard({ email, token, ret, hasSession, alreadyVerified }: {
+export function VerifyCard({ email, token, ret, hasSession, alreadyVerified, sendFailed }: {
   email: string | null;
   token: string | null;
   ret: string;
   hasSession: boolean;
   alreadyVerified: boolean;
+  sendFailed?: boolean;
 }) {
   const router = useRouter();
   const [code, setCode] = useState('');
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(sendFailed ? 'We couldn’t send the email — press “Resend code” to try again.' : null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [wrongAccount, setWrongAccount] = useState(false); // link for a different account than the current session
   const [cooldown, setCooldown] = useState(0);
   const tokenFired = useRef(false);
 
@@ -34,17 +36,24 @@ export function VerifyCard({ email, token, ret, hasSession, alreadyVerified }: {
       });
       setBusy(false);
       if (r.ok) {
+        const j = await r.json().catch(() => ({} as any));
         setDone(true);
-        if (hasSession) {
+        // The link verifies the TOKEN's account. If this browser is signed in
+        // as someone else, don't push them into a portal that isn't the one
+        // that got verified — hand them to sign-in instead.
+        const mismatch = hasSession && email && j.email && j.email !== email;
+        if (hasSession && !mismatch) {
           router.push(ret);
           router.refresh();
+        } else if (mismatch) {
+          setWrongAccount(true);
         }
       } else {
         const j = await r.json().catch(() => ({}));
         setErr(j.error ?? 'Verification failed');
       }
     })();
-  }, [token, hasSession, ret, router]);
+  }, [token, hasSession, email, ret, router]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -76,7 +85,11 @@ export function VerifyCard({ email, token, ret, hasSession, alreadyVerified }: {
     setErr(null);
     setInfo(null);
     setBusy(true);
-    const r = await fetch('/api/auth/verify/send', { method: 'POST' });
+    const r = await fetch('/api/auth/verify/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ return: ret }),
+    });
     setBusy(false);
     if (r.ok) {
       setInfo('New code sent — check your inbox.');
@@ -87,9 +100,9 @@ export function VerifyCard({ email, token, ret, hasSession, alreadyVerified }: {
     }
   }
 
-  // Link opened in a browser without the session (e.g. phone) — show the
-  // outcome and hand over to sign-in; the session flow redirects instead.
-  if (done && !hasSession) {
+  // Link verified an account this browser isn't signed into (or no session) —
+  // show the outcome and hand over to sign-in.
+  if ((done && !hasSession) || wrongAccount) {
     return (
       <div className="auth-card">
         <div className="auth-title">Email verified ✓</div>

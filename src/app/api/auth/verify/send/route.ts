@@ -8,12 +8,15 @@ import { prisma } from '@/lib/prisma';
 import { emailEnabled } from '@/lib/email';
 import { clientIp, hitRateLimit } from '@/lib/rate-limit';
 import { issueVerification } from '@/lib/email-verification';
+import { safeReturn } from '@/lib/safe-return';
 
 const RESEND_LIMIT = 5; // per IP per 10 minutes
 const RESEND_WINDOW_MS = 10 * 60 * 1000;
 const MAX_ISSUES_PER_HOUR = 3; // per user, DB-counted
 
 export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const returnPath = safeReturn(body?.return);
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'CLIENT') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -44,7 +47,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const sent = await issueVerification(session.user.id, session.user.email);
+  const sent = await issueVerification(session.user.id, session.user.email, returnPath);
   if (!sent) {
     return NextResponse.json({ error: 'Could not send the email — please try again.' }, { status: 502 });
   }

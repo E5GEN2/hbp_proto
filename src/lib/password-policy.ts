@@ -25,3 +25,16 @@ export function passwordChecklist(pw: string) {
     digit: /\d/.test(pw),
   };
 }
+
+// Policy-compliant temporary password for admin-created accounts. Web Crypto
+// (globalThis.crypto) not the node `crypto` builtin — transitions.ts is pulled
+// into the edge instrumentation bundle where the builtin doesn't resolve (same
+// reason id.ts uses it). Guaranteed to pass passwordPolicyError by construction.
+export function generateTempPassword(): string {
+  const buf = new Uint8Array(12);
+  globalThis.crypto.getRandomValues(buf);
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789'; // no ambiguous 0/O/1/l
+  const body = Array.from(buf, b => alphabet[b % alphabet.length]).join('');
+  // Prefix guarantees an uppercase letter and a digit regardless of body draw.
+  return `A${(buf[0] % 10)}${body}`;
+}

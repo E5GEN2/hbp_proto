@@ -6,7 +6,8 @@
 // The code path is the brute-force surface (~20 bits): per-user and per-IP
 // rate buckets run BEFORE any DB read, and the row's `attempts` counter is
 // consumed atomically (updateMany WHERE attempts < cap) so redeploys can't
-// reset the real cap.
+// reset the real cap. Only ONE welcome email / audit row per account is sent —
+// completeVerification flips the flag atomically and reports the winner.
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getServerSession } from 'next-auth';
@@ -21,9 +22,13 @@ const Schema = z.union([
   z.object({ token: z.string().min(20).max(200) }),
 ]);
 
-const ATTEMPT_LIMIT_USER = 5; // code entries per user per 15 min
+const ATTEMPT_LIMIT_USER = 15; // code entries per user per 15 min (above the
+                               // per-challenge cap of 5, so a freshly resent
+                               // code still grants its full 5 tries — the
+                               // durable per-row counter is the real bound)
 const ATTEMPT_LIMIT_IP = 20; // code entries per IP per 15 min
-const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const TOKEN_LIMIT_IP = 60; // magic-link lookups per IP per 15 min (unauth DoS bound)
+const WINDOW_MS = 15 * 60 * 1000;
 
 function tooMany(retryAfterSec: number) {
   return NextResponse.json(
@@ -38,18 +43,28 @@ export async function POST(req: Request) {
 
   // ── Magic link: self-authenticating, sessionless ─────────────────────────
   if ('token' in parse.data) {
+    const tokenWait = hitRateLimit(`verify:token:${clientIp(req)}`, TOKEN_LIMIT_IP, WINDOW_MS);
+    if (tokenWait) return tooMany(tokenWait);
+
     const row = await prisma.emailVerificationToken.findUnique({
       where: { tokenHash: sha256(parse.data.token) },
       include: { user: { select: { id: true, name: true, email: true, status: true, emailVerifiedAt: true } } },
     });
-    if (!row || row.usedAt || row.expiresAt < new Date() || row.user.status === 'BLOCKED') {
+    if (!row || row.user.status === 'BLOCKED') {
       return NextResponse.json({ error: 'This verification link is invalid or has expired — request a new code from the verification page.' }, { status: 400 });
     }
-    if (!row.user.emailVerifiedAt) {
-      await completeVerification(row.user.id, row.id);
-      await sendEmail({ to: row.user.email, ...welcomeEmail(row.user.name) });
+    // Re-clicking one's own already-used link right after success must read as
+    // success, not a scary "invalid" (the caller already holds the one-time
+    // token, so this leaks nothing).
+    if (row.user.emailVerifiedAt) {
+      return NextResponse.json({ ok: true, already: true, email: row.user.email });
     }
-    return NextResponse.json({ ok: true });
+    if (row.usedAt || row.expiresAt < new Date()) {
+      return NextResponse.json({ error: 'This verification link is invalid or has expired — request a new code from the verification page.' }, { status: 400 });
+    }
+    const flipped = await completeVerification(row.user.id, row.id);
+    if (flipped) await sendEmail({ to: row.user.email, ...welcomeEmail(row.user.name) });
+    return NextResponse.json({ ok: true, email: row.user.email });
   }
 
   // ── 6-digit code: needs the signed-in (unverified) session ───────────────
@@ -59,9 +74,9 @@ export async function POST(req: Request) {
   }
   if (session.user.emailVerified) return NextResponse.json({ ok: true, already: true });
 
-  const ipWait = hitRateLimit(`verify:attempt:${clientIp(req)}`, ATTEMPT_LIMIT_IP, ATTEMPT_WINDOW_MS);
+  const ipWait = hitRateLimit(`verify:attempt:${clientIp(req)}`, ATTEMPT_LIMIT_IP, WINDOW_MS);
   if (ipWait) return tooMany(ipWait);
-  const userWait = hitRateLimit(`verify:attempt:${session.user.id}`, ATTEMPT_LIMIT_USER, ATTEMPT_WINDOW_MS);
+  const userWait = hitRateLimit(`verify:attempt:${session.user.id}`, ATTEMPT_LIMIT_USER, WINDOW_MS);
   if (userWait) return tooMany(userWait);
 
   const row = await prisma.emailVerificationToken.findFirst({
@@ -85,7 +100,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Incorrect code — check the email and try again.' }, { status: 400 });
   }
 
-  await completeVerification(session.user.id, row.id);
-  await sendEmail({ to: session.user.email, ...welcomeEmail(session.user.name) });
+  const flipped = await completeVerification(session.user.id, row.id);
+  if (flipped) await sendEmail({ to: session.user.email, ...welcomeEmail(session.user.name) });
   return NextResponse.json({ ok: true });
 }

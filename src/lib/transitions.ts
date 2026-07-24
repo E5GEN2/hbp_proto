@@ -16,7 +16,7 @@ import { money } from './money';
 import { sendTelegram } from './telegram';
 import { sendEmail, incidentEmail, escapeHtml } from './email';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
-import { passwordPolicyError } from './password-policy';
+import { passwordPolicyError, generateTempPassword } from './password-policy';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -1284,13 +1284,12 @@ export async function createClient({ input, actor }: { input: NewClientInput; ac
     const dup = await tx.user.findUnique({ where: { email } });
     if (dup) throw new Error('Email already in use');
     const id = await nextUserIdInTx(tx);
-    // Generated temp passwords satisfy the account policy (8+/upper/digit);
-    // admin-typed ones are validated against the same shared rule.
-    const password = input.password?.trim() || `V${Math.floor(Math.random() * 10)}${Math.random().toString(36).slice(2, 12)}`;
-    if (input.password?.trim()) {
-      const policyErr = passwordPolicyError(password);
-      if (policyErr) throw new Error(policyErr);
-    }
+    // Generated temp passwords satisfy the account policy (8+/upper/digit) by
+    // construction with crypto entropy; admin-typed ones go through the same
+    // shared rule. The assert holds for BOTH branches.
+    const password = input.password?.trim() || generateTempPassword();
+    const policyErr = passwordPolicyError(password);
+    if (policyErr) throw new Error(policyErr);
     const passwordHash = await bcrypt.hash(password, 10);
     await tx.user.create({
       data: {

@@ -3,6 +3,7 @@ import { useState, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { passwordChecklist, passwordPolicyError } from '@/lib/password-policy';
 
 function RegisterForm() {
   const router = useRouter();
@@ -20,14 +21,16 @@ function RegisterForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    const policyErr = passwordPolicyError(password);
+    if (policyErr) { setErr(policyErr); return; }
     setLoading(true);
     const r = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name, email, password }),
     });
+    const j = await r.json().catch(() => ({} as any));
     if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
       setErr(j.error ?? 'Registration failed');
       setLoading(false);
       return;
@@ -38,9 +41,18 @@ function RegisterForm() {
       setErr('Account created but sign-in failed');
       return;
     }
-    router.push(ret);
+    // Email confirmation comes first (owner items 2-3); the chosen plan
+    // survives the detour — /verify hands ?return back after the code.
+    router.push(j.verify ? `/verify?return=${encodeURIComponent(ret)}` : ret);
     router.refresh();
   }
+
+  const checks = passwordChecklist(password);
+  const Check = ({ ok, label }: { ok: boolean; label: string }) => (
+    <span style={{ color: ok ? 'var(--success)' : 'var(--muted)', fontSize: 11.5, marginRight: 12 }}>
+      {ok ? '✓' : '·'} {label}
+    </span>
+  );
 
   return (
     <div className="auth-card">
@@ -57,6 +69,11 @@ function RegisterForm() {
         <div className="form-row">
           <label className="form-label">Password</label>
           <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+          <div style={{ marginTop: 6 }}>
+            <Check ok={checks.length} label="8+ characters" />
+            <Check ok={checks.upper} label="Uppercase letter" />
+            <Check ok={checks.digit} label="Digit" />
+          </div>
         </div>
         {err && <div className="form-help error">{err}</div>}
         <button className="btn primary lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 24 }}>

@@ -3,8 +3,10 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { nextUserId } from '@/lib/id';
-import { sendEmail, welcomeEmail } from '@/lib/email';
+import { sendEmail, welcomeEmail, emailEnabled } from '@/lib/email';
 import { clientIp, hitRateLimit } from '@/lib/rate-limit';
+import { passwordPolicyError } from '@/lib/password-policy';
+import { issueVerification } from '@/lib/email-verification';
 
 const Schema = z.object({
   name: z.string().min(2).max(80),
@@ -37,6 +39,11 @@ export async function POST(req: Request) {
   }
   const { name, email, password } = parse.data;
 
+  // Owner item 1: 8+ chars, an uppercase letter, a digit — one shared policy
+  // for every place a new password is accepted.
+  const policyErr = passwordPolicyError(password);
+  if (policyErr) return NextResponse.json({ error: policyErr }, { status: 400 });
+
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
@@ -52,8 +59,14 @@ export async function POST(req: Request) {
   const id = await nextUserId();
   const passwordHash = await bcrypt.hash(password, 10);
 
+  // Owner items 2-3: the portal opens only after the email is confirmed.
+  // Without a mail key there is no way to deliver the code — verification
+  // honestly disables itself (auto-verified) instead of locking every new
+  // client out forever; same stance as /forgot's 503.
+  const requireVerification = emailEnabled();
+
   await prisma.user.create({
-    data: { id, name, email, passwordHash, role: 'CLIENT', balance: 0 },
+    data: { id, name, email, passwordHash, role: 'CLIENT', balance: 0, emailVerifiedAt: requireVerification ? null : new Date() },
   });
 
   // Seed locked balance payment method
@@ -80,7 +93,13 @@ export async function POST(req: Request) {
       },
     })
     .catch(() => {});
-  await sendEmail({ to: email, ...welcomeEmail(name) });
+  if (requireVerification) {
+    // The welcome email moves to AFTER verification (confirm route) — the
+    // first mail a new client sees is the code/link they actually need.
+    await issueVerification(id, email);
+  } else {
+    await sendEmail({ to: email, ...welcomeEmail(name) });
+  }
 
-  return NextResponse.json({ ok: true, userId: id });
+  return NextResponse.json({ ok: true, userId: id, verify: requireVerification });
 }

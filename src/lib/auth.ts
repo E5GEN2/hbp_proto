@@ -11,6 +11,7 @@ declare module 'next-auth' {
       email: string;
       name: string;
       role: UserRole;
+      emailVerified: boolean;
     };
   }
   interface User {
@@ -76,11 +77,15 @@ export const authOptions: NextAuthOptions = {
         // apply without waiting for token expiry.
         const u = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { status: true, role: true },
+          select: { status: true, role: true, emailVerifiedAt: true },
         });
         if (!u || u.status === 'BLOCKED') return null as any;
         session.user.id = token.id;
         session.user.role = u.role;
+        // Same freshness as the block check — a verification flip is visible
+        // on the very next request, no token rotation needed. Do NOT null the
+        // session for unverified users: /verify needs a live session.
+        session.user.emailVerified = !!u.emailVerifiedAt;
       }
       return session;
     },

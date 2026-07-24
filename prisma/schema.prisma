@@ -42,6 +42,10 @@ model User {
   name                     String
   email                    String       @unique
   passwordHash             String
+  // NULL = email not confirmed yet (client is gated to /verify). Set by the
+  // 6-digit code / magic link flow; pre-feature accounts and admin-created
+  // clients are stamped at creation (admin vouches; migration backfills).
+  emailVerifiedAt          DateTime?
   role                     UserRole     @default(CLIENT)
 
   telegram                 String?
@@ -96,6 +100,7 @@ model User {
   logsAsActor              Log[]        @relation("LogActor")
   checkoutDraft            CheckoutDraft?
   passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
 
   @@index([role])
   @@index([status])
@@ -116,6 +121,27 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+// Email-ownership proof at signup. ONE row carries BOTH credentials of the
+// same challenge: codeHash = SHA-256 of the 6-digit code (typed in /verify)
+// and tokenHash = SHA-256 of the 32-byte magic-link token — they are issued
+// together and die together. `attempts` is the load-bearing brute-force cap
+// for the ~20-bit code (in-memory rate buckets reset on redeploy).
+model EmailVerificationToken {
+  id         Int       @id @default(autoincrement())
+  userId     String
+  tokenHash  String    @unique
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
 }
 
 // ─── CATALOG / PLANS ───────────────────────────────────────────────────────

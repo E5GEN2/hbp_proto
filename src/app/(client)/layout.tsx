@@ -13,6 +13,9 @@ export default async function ClientLayout({ children }: { children: React.React
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');
   if (isAdminRole(session.user.role)) redirect('/admin');
+  // Unverified clients never reach the portal shell (owner items 2-3).
+  // Verification is one-way, so layout-level gating is safe on soft nav.
+  if (!session.user.emailVerified) redirect('/verify');
 
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },

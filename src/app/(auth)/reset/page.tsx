@@ -1,6 +1,7 @@
 'use client';
 import { useState, Suspense } from 'react';
 import Link from 'next/link';
+import { passwordPolicyError, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 function ResetForm() {
@@ -38,6 +39,8 @@ function ResetForm() {
       setErr('Passwords don’t match');
       return;
     }
+    const policyErr = passwordPolicyError(password);
+    if (policyErr) { setErr(policyErr); return; }
     setLoading(true);
     try {
       const r = await fetch('/api/auth/reset', {
@@ -62,6 +65,7 @@ function ResetForm() {
           <label className="form-label">New password</label>
           <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)}
             minLength={8} required autoFocus autoComplete="new-password" />
+          <div className="form-help" style={{ marginTop: 4 }}>{PASSWORD_POLICY_HINT}</div>
         </div>
         <div className="form-row">
           <label className="form-label">Repeat new password</label>

@@ -11,6 +11,7 @@ async function getClientUserId() {
   const session = await getServerSession(authOptions);
   if (!session) throw new Error('Not signed in');
   if (session.user.role !== 'CLIENT') throw new Error('Client-only');
+  if (!session.user.emailVerified) throw new Error('Verify your email to continue');
   return session.user.id;
 }
 

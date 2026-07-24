@@ -13,6 +13,7 @@ function LoginForm() {
   const registerHref = `/register?return=${encodeURIComponent(ret)}${carry}`;
   const forgotHref = `/forgot${fromSite ? '?from=site' : ''}`;
   const justReset = params.get('reset') === '1';
+  const justVerified = params.get('verified') === '1';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,6 +43,11 @@ function LoginForm() {
       {justReset && (
         <div className="form-help" style={{ color: 'var(--success)', marginTop: 12 }}>
           Password updated — sign in with your new password.
+        </div>
+      )}
+      {justVerified && (
+        <div className="form-help" style={{ color: 'var(--success)', marginTop: 12 }}>
+          Email verified — sign in to continue.
         </div>
       )}
       <form className="auth-form" onSubmit={onSubmit}>

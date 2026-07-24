@@ -111,7 +111,7 @@ async function main() {
   ];
   for (const a of admins) {
     await prisma.user.create({
-      data: { ...a, passwordHash: hash('admin1234'), country: 'US' },
+      data: { ...a, passwordHash: hash('admin1234'), country: 'US', emailVerifiedAt: new Date() },
     });
   }
 
@@ -122,6 +122,7 @@ async function main() {
       name: 'Demo User',
       email: 'demo@example.com',
       passwordHash: hash('demo1234'),
+      emailVerifiedAt: new Date(),
       role: 'CLIENT',
       country: 'US',
       tier: 'VIP',
@@ -146,6 +147,7 @@ async function main() {
         name: c.name,
         email: c.email,
         passwordHash: hash('demo1234'),
+        emailVerifiedAt: new Date(),
         role: 'CLIENT',
         tier: c.tier,
         status: c.status,

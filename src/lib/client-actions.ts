@@ -10,6 +10,7 @@ import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
 import { npEnabled, npCreateInvoice } from './nowpayments';
 import { sendEmail, passwordChangedEmail } from './email';
+import { passwordPolicyError } from './password-policy';
 import { creditBalance, roundCents } from './balance';
 import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
@@ -20,6 +21,7 @@ async function getClientUserId() {
   const session = await getServerSession(authOptions);
   if (!session) throw new Error('Not signed in');
   if (session.user.role !== 'CLIENT') throw new Error('This action is for client accounts only');
+  if (!session.user.emailVerified) throw new Error('Verify your email to continue');
   return session.user.id;
 }
 
@@ -101,7 +103,8 @@ export const saveProfileAction = guarded(async function saveProfileAction(input:
 });
 
 export const changePasswordAction = guarded(async function changePasswordAction(currentPassword: string, newPassword: string) {
-  if (!newPassword || newPassword.length < 8) throw new Error('Password must be at least 8 characters');
+  const policyErr = passwordPolicyError(newPassword ?? '');
+  if (policyErr) throw new Error(policyErr);
   const clientId = await getClientUserId();
   // Re-authenticate before changing: a left-open or hijacked session must not
   // be able to take over the account by silently swapping the password (B-7).

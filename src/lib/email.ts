@@ -112,6 +112,25 @@ export function passwordResetEmail(link: string) {
   };
 }
 
+// Signup email-ownership proof (owner revision 2026-07-22): one email carries
+// BOTH ways to confirm — the 6-digit code (typed on /verify) and the magic
+// link. Transactional — never pref-gated.
+export function emailVerificationEmail(code: string, link: string, ttlMinutes: number) {
+  return {
+    subject: 'Verify your Comet Proxy email',
+    html: shell(
+      'Confirm your email',
+      p('Enter this code on the verification page to activate your account:') +
+      `<div style="font:700 30px/1.2 'SF Mono',Menlo,Consolas,monospace;letter-spacing:8px;color:${INK};background:#f4f2ee;border:1px solid #e6e1d8;border-radius:10px;padding:16px 20px;text-align:center;margin:0 0 14px;">${code}</div>` +
+      p('Or simply click the button:') +
+      cta('Verify email', link) +
+      p(`The code and link expire in <strong>${ttlMinutes} minutes</strong>. If the button doesn't work, copy this address into your browser:<br><a href="${link}" style="color:${GOLD};word-break:break-all;">${link}</a>`) +
+      p('If you didn’t create a Comet Proxy account, you can safely ignore this email.'),
+    ),
+    text: `Your Comet Proxy verification code: ${code}\nOr verify by link: ${link}\nThe code and link expire in ${ttlMinutes} minutes. If you didn't sign up, ignore this email.`,
+  };
+}
+
 export function welcomeEmail(name: string) {
   return {
     subject: 'Welcome to Comet Proxy',

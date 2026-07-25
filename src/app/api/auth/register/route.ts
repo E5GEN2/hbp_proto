@@ -3,13 +3,17 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { nextUserId } from '@/lib/id';
-import { sendEmail, welcomeEmail } from '@/lib/email';
+import { sendEmail, welcomeEmail, emailEnabled } from '@/lib/email';
 import { clientIp, hitRateLimit } from '@/lib/rate-limit';
+import { passwordPolicyError } from '@/lib/password-policy';
+import { issueVerification } from '@/lib/email-verification';
+import { safeReturn } from '@/lib/safe-return';
 
 const Schema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email().toLowerCase(),
   password: z.string().min(8).max(128),
+  return: z.string().max(512).optional(), // purchase intent — threaded into the magic link
 });
 
 const ATTEMPT_LIMIT = 10; // POSTs per IP per 10 minutes
@@ -36,6 +40,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { name, email, password } = parse.data;
+  const returnPath = safeReturn(parse.data.return);
+
+  // Owner item 1: 8+ chars, an uppercase letter, a digit — one shared policy
+  // for every place a new password is accepted.
+  const policyErr = passwordPolicyError(password);
+  if (policyErr) return NextResponse.json({ error: policyErr }, { status: 400 });
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -52,8 +62,14 @@ export async function POST(req: Request) {
   const id = await nextUserId();
   const passwordHash = await bcrypt.hash(password, 10);
 
+  // Owner items 2-3: the portal opens only after the email is confirmed.
+  // Without a mail key there is no way to deliver the code — verification
+  // honestly disables itself (auto-verified) instead of locking every new
+  // client out forever; same stance as /forgot's 503.
+  const requireVerification = emailEnabled();
+
   await prisma.user.create({
-    data: { id, name, email, passwordHash, role: 'CLIENT', balance: 0 },
+    data: { id, name, email, passwordHash, role: 'CLIENT', balance: 0, emailVerifiedAt: requireVerification ? null : new Date() },
   });
 
   // Seed locked balance payment method
@@ -80,7 +96,18 @@ export async function POST(req: Request) {
       },
     })
     .catch(() => {});
-  await sendEmail({ to: email, ...welcomeEmail(name) });
+  let sent = true;
+  if (requireVerification) {
+    // The welcome email moves to AFTER verification (confirm route) — the
+    // first mail a new client sees is the code/link they actually need.
+    sent = await issueVerification(id, email, returnPath);
+  } else {
+    // Fail-open path: no mail key, so the portal can't gate on an email that
+    // can never arrive (same stance as /forgot's 503). Loud in the logs so a
+    // rotated/missing key in production doesn't silently skip the gate.
+    console.warn(`[register] RESEND_API_KEY unset — ${id} auto-verified (email verification disabled)`);
+    await sendEmail({ to: email, ...welcomeEmail(name) });
+  }
 
-  return NextResponse.json({ ok: true, userId: id });
+  return NextResponse.json({ ok: true, userId: id, verify: requireVerification, sent });
 }

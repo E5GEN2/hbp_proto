@@ -57,6 +57,7 @@ async function main() {
       data: {
         id, name: c.name, email: c.email,
         passwordHash: hash(c.password),
+        emailVerifiedAt: new Date(),
         role: 'CLIENT',
         tier: c.tier, country: c.country, telegram: c.telegram,
         balance: c.balance, acquisition: c.acquisition,

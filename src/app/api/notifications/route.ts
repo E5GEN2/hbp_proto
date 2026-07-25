@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session.user.emailVerified) return NextResponse.json({ error: 'Verify your email to continue' }, { status: 403 });
   const userId = session.user.id;
 
   const [notifs, user] = await Promise.all([
@@ -25,6 +26,7 @@ export async function GET() {
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session.user.emailVerified) return NextResponse.json({ error: 'Verify your email to continue' }, { status: 403 });
   await prisma.user.update({
     where: { id: session.user.id },
     data: { notifLastReadAt: new Date() },

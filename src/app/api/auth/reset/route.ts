@@ -3,11 +3,12 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { passwordPolicyError } from '@/lib/password-policy';
 import { sendEmail, passwordChangedEmail } from '@/lib/email';
 
 const Schema = z.object({
   token: z.string().min(20).max(200),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password must be at most 128 characters'),
 });
 
 export async function POST(req: Request) {
@@ -16,6 +17,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { token, password } = parse.data;
+
+  // Same policy as registration — a weak password must not arrive through
+  // "forgot password" (owner item 1).
+  const policyErr = passwordPolicyError(password);
+  if (policyErr) return NextResponse.json({ error: policyErr }, { status: 400 });
 
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const row = await prisma.passwordResetToken.findUnique({

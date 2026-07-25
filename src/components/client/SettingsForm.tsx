@@ -1,4 +1,5 @@
 'use client';
+import { passwordPolicyError, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
@@ -64,7 +65,8 @@ export function ChangePasswordForm() {
 
   function submit() {
     if (!cur) return toast('Current password required', '', 'warning');
-    if (a.length < 8) return toast('Too short', 'Min 8 characters', 'warning');
+    const policyErr = passwordPolicyError(a);
+    if (policyErr) return toast('Weak password', policyErr, 'warning');
     if (a !== b) return toast('Passwords don\'t match', '', 'warning');
     start(async () => {
       try {
@@ -85,6 +87,7 @@ export function ChangePasswordForm() {
         <div className="settings-field">
           <label className="settings-field-label">New password</label>
           <input className="form-input" type="password" autoComplete="new-password" value={a} onChange={e => setA(e.target.value)} />
+          <div className="form-help" style={{ marginTop: 4 }}>{PASSWORD_POLICY_HINT}</div>
         </div>
         <div className="settings-field">
           <label className="settings-field-label">Confirm new password</label>

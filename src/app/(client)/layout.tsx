@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientSidebar } from '@/components/client/Sidebar';
 import { MobileNavProvider } from '@/components/ui/MobileNav';
 import { TipFloater } from '@/components/ui/TipFloater';
+import { TelegramCta } from '@/components/client/TelegramCta';
 
 // All client pages need session + DB at request time
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,11 @@ export default async function ClientLayout({ children }: { children: React.React
           {children}
         </div>
       </MobileNavProvider>
+      {/* Floating support CTA on EVERY portal page (owner request) — was
+          checkout-only in the prototype. position:fixed, so tree placement
+          doesn't matter; it just needs to sit inside .theme-client for the
+          accent tokens. */}
+      <TelegramCta />
     </div>
   );
 }

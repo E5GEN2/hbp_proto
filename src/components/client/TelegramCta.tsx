@@ -1,5 +1,6 @@
-// Floating "Need help? Chat on Telegram" CTA — canon `.telegram-cta`,
-// shown only on checkout routes (rendered via checkout/layout.tsx).
+// Floating "Need help? Chat on Telegram" CTA — canon `.telegram-cta`.
+// Rendered from (client)/layout.tsx so it appears on EVERY client-portal
+// page (owner request; was checkout-only in the prototype).
 // Same support handle as the Support page.
 const TELEGRAM_URL = 'https://t.me/proxysupport';
 

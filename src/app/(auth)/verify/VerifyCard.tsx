@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 const RESEND_COOLDOWN_S = 60;
@@ -13,7 +12,6 @@ export function VerifyCard({ email, token, ret, hasSession, alreadyVerified, sen
   alreadyVerified: boolean;
   sendFailed?: boolean;
 }) {
-  const router = useRouter();
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string | null>(sendFailed ? 'We couldn’t send the email — press “Resend code” to try again.' : null);
   const [info, setInfo] = useState<string | null>(null);
@@ -29,31 +27,41 @@ export function VerifyCard({ email, token, ret, hasSession, alreadyVerified, sen
     tokenFired.current = true;
     (async () => {
       setBusy(true);
-      const r = await fetch('/api/auth/verify/confirm', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      setBusy(false);
-      if (r.ok) {
-        const j = await r.json().catch(() => ({} as any));
-        setDone(true);
-        // The link verifies the TOKEN's account. If this browser is signed in
-        // as someone else, don't push them into a portal that isn't the one
-        // that got verified — hand them to sign-in instead.
-        const mismatch = hasSession && email && j.email && j.email !== email;
-        if (hasSession && !mismatch) {
-          router.push(ret);
-          router.refresh();
-        } else if (mismatch) {
-          setWrongAccount(true);
+      try {
+        const r = await fetch('/api/auth/verify/confirm', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        if (r.ok) {
+          const j = await r.json().catch(() => ({} as any));
+          setDone(true);
+          // The link verifies the TOKEN's account. If this browser is signed in
+          // as someone else, don't push them into a portal that isn't the one
+          // that got verified — hand them to sign-in instead.
+          const mismatch = hasSession && email && j.email && j.email !== email;
+          if (hasSession && !mismatch) {
+            // Hard navigation, not router.push+refresh: verification just
+            // changed the session, and a full load cleanly re-establishes it
+            // in ONE request — the push+refresh pair fired 2+ RSC fetches, so a
+            // single flaky-edge blip mid-transition dead-ended in the error
+            // boundary (owner-reported). window.location survives that.
+            window.location.assign(ret);
+            return;
+          } else if (mismatch) {
+            setWrongAccount(true);
+          }
+        } else {
+          const j = await r.json().catch(() => ({}));
+          setErr(j.error ?? 'Verification failed');
         }
-      } else {
-        const j = await r.json().catch(() => ({}));
-        setErr(j.error ?? 'Verification failed');
+      } catch {
+        setErr('Network error — check your connection and try again.');
+      } finally {
+        setBusy(false);
       }
     })();
-  }, [token, hasSession, email, ret, router]);
+  }, [token, hasSession, email, ret]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -65,19 +73,26 @@ export function VerifyCard({ email, token, ret, hasSession, alreadyVerified, sen
     e.preventDefault();
     setErr(null);
     setBusy(true);
-    const r = await fetch('/api/auth/verify/confirm', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code }),
-    });
-    setBusy(false);
-    if (r.ok) {
-      setDone(true);
-      router.push(ret);
-      router.refresh();
-    } else {
+    try {
+      const r = await fetch('/api/auth/verify/confirm', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (r.ok) {
+        // Hard navigation (not router.push+refresh): the session just became
+        // verified; a single full load re-establishes it cleanly and is far
+        // more resilient to a flaky edge than a multi-fetch soft transition
+        // that dead-ends in the error boundary (owner-reported).
+        window.location.assign(ret);
+        return;
+      }
       const j = await r.json().catch(() => ({}));
       setErr(j.error ?? 'Verification failed');
+    } catch {
+      setErr('Network error — check your connection and try again.');
+    } finally {
+      setBusy(false);
     }
   }
 

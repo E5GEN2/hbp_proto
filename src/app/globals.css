@@ -2513,18 +2513,6 @@ html:has(.theme-admin) { --border: #353c4f; }
 /* Same pin for the client sidebar's Comet mark (loaded by (client)/layout.tsx). */
 .sidebar-logo svg text,
 .sidebar-logo svg tspan { font-family: "Source Sans 3", sans-serif; }
-/* Sidebar logo pill — same recipe as the site header pill (.site-logo-host
-   .topbar__logo) minus the backdrop blur (the sidebar bg is solid). Equal
-   padding on all four sides (owner ask) — the SVG viewBox is cropped to the
-   ink bbox, so CSS padding IS the visual inset. */
-.sidebar-logo-pill {
-  display: inline-flex; padding: 8px;
-  background: rgba(250,248,244,.78);
-  border: 1px solid rgba(201,194,181,.55);
-  border-radius: 999px;
-  box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 8px 28px -16px rgba(17,24,39,.18);
-}
-.sidebar-logo-pill svg { display: block; }
 
 /* Back-to-site link (only when arriving from the marketing site) */
 .auth-backlink {

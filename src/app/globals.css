@@ -160,9 +160,12 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
      .panel-section .panel-title (no gap) restores the margin below. */
   margin-right: 0;
   flex-shrink: 0;
-  /* Canon nudges the marker up 1px to optically center it against the
-     uppercase text (vertical-align:middle alone leaves it a hair low). */
-  position: relative; top: -1px;
+  /* No nudge here: the canon's -1px offset compensates INLINE
+     vertical-align:middle (which hangs the dot a hair low off the baseline).
+     In our flex row align-items:center already centers the dot on the text
+     box, so the inherited nudge pushed it 1px HIGH (owner report). The
+     block-context .panel-section .panel-title keeps the canon nudge below. */
+  position: relative; top: 0;
 }
 /* Admin panel-title marker follows the canon blue accent halo. The base rule
    above hardcodes the gold client-portal halo, which left a blue dot with a
@@ -1419,8 +1422,15 @@ thead th .th-label > .help-tip {
 .notif-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .notif-title { font-size: 12px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .notif-meta { font-size: 11px; color: var(--muted); }
-/* Client feed: read rows recede, unread stay full-strength */
-.notif-item.read .notif-title { color: var(--text-secondary); font-weight: 500; }
+/* Client feed: read rows recede, unread stay full-strength. Owner revision:
+   the old read-state (text-secondary title) was nearly indistinguishable from
+   unread — now UNREAD rows carry a warm accent tint and read rows drop to
+   muted, so the boundary is obvious at a glance. Scoped to .theme-client:
+   admin queue rows have no read concept and must not get the tint. */
+.theme-client .notif-item:not(.static):not(.read) { background-color: var(--accent-subtle); }
+.theme-client .notif-item:not(.static):not(.read):hover { background-color: var(--bg-hover); }
+.notif-item.read .notif-title { color: var(--muted); font-weight: 500; }
+.notif-item.read .notif-meta { color: var(--text-disabled); }
 .notif-item.read .notif-dot-strip { background: var(--border-strong); }
 .notif-popover-footer {
   padding: 10px 16px; border-top: 1px solid var(--border-subtle);
@@ -2422,8 +2432,9 @@ html:has(.theme-admin) { --border: #353c4f; }
    idiom so flex panel-headers keep their current geometry. */
 .panel-section .panel-title { display: block; margin-bottom: 14px; line-height: 1.5; }
 /* Block context has no flex gap — the marker's own margin carries the canon
-   8px dot→title distance here (see .panel-title::before). */
-.panel-section .panel-title::before { margin-right: 8px; }
+   8px dot→title distance here, and the inline flow needs the canon -1px
+   optical nudge (see .panel-title::before). */
+.panel-section .panel-title::before { margin-right: 8px; top: -1px; }
 .panel-section .form-grid { padding: 0; gap: 12px 14px; }
 .panel-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .panel-title-row .panel-title { margin-bottom: 0; }
@@ -2502,6 +2513,18 @@ html:has(.theme-admin) { --border: #353c4f; }
 /* Same pin for the client sidebar's Comet mark (loaded by (client)/layout.tsx). */
 .sidebar-logo svg text,
 .sidebar-logo svg tspan { font-family: "Source Sans 3", sans-serif; }
+/* Sidebar logo pill — same recipe as the site header pill (.site-logo-host
+   .topbar__logo) minus the backdrop blur (the sidebar bg is solid). Equal
+   padding on all four sides (owner ask) — the SVG viewBox is cropped to the
+   ink bbox, so CSS padding IS the visual inset. */
+.sidebar-logo-pill {
+  display: inline-flex; padding: 8px;
+  background: rgba(250,248,244,.78);
+  border: 1px solid rgba(201,194,181,.55);
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 8px 28px -16px rgba(17,24,39,.18);
+}
+.sidebar-logo-pill svg { display: block; }
 
 /* Back-to-site link (only when arriving from the marketing site) */
 .auth-backlink {

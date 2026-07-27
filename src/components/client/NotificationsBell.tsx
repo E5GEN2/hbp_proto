@@ -68,9 +68,10 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
     if (openRef.current) { close(); return; }
     const rect = btnRef.current!.getBoundingClientRect();
     // Owner revision: equal breathing room on both sides — 10px below the
-    // bell AND 10px off the viewport's right edge (the canon bell-right
-    // alignment left ~3× more space on the right than on top).
-    setPos({ top: rect.bottom + 10, right: 10 });
+    // TOPBAR's bottom edge (anchoring to the bell put the popover's top edge
+    // over the bar's border) AND 10px off the viewport's right edge.
+    const bar = btnRef.current!.closest('.topbar')?.getBoundingClientRect();
+    setPos({ top: Math.max(rect.bottom, bar?.bottom ?? 0) + 10, right: 10 });
     fetchAll();
     openRef.current = true;
     setOpen(true);

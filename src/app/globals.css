@@ -153,7 +153,12 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 4px 1px rgba(181,138,74,.85), 0 0 8px rgba(181,138,74,.4);
-  margin-right: 8px;
+  /* Canon (admin prototype) dot→title distance is 8px. Our .panel-title is a
+     flex row with gap:8px, where the ::before is a flex item — so a canon-copied
+     margin-right:8px STACKED with the gap gave 16px (measured live vs canon
+     8px). The gap alone provides the canon 8px here; the block-context
+     .panel-section .panel-title (no gap) restores the margin below. */
+  margin-right: 0;
   flex-shrink: 0;
   /* Canon nudges the marker up 1px to optically center it against the
      uppercase text (vertical-align:middle alone leaves it a hair low). */
@@ -1286,6 +1291,12 @@ thead th .th-label > .help-tip {
   user-select: none;
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-secondary); }
+/* Owner override (client portal): hover keeps the resting text colour — only
+   the background responds. The darken-on-hover from client-panel.html read as
+   letters "flashing black" on the light theme. Admin keeps its canon hover.
+   :not(.active) — this selector out-specifies .nav-item.active, so without it
+   hovering the ACTIVE item would dim var(--text) down to muted. */
+.theme-client .nav-item:not(.active):hover { color: var(--muted); }
 .nav-item.active { background: var(--surface-3); color: var(--text); font-weight: 600; }
 .nav-item.active::before {
   content: "";
@@ -1318,6 +1329,10 @@ thead th .th-label > .help-tip {
 .sidebar-footer .avatar { background: var(--accent-dim); color: var(--accent); }
 .user-name { font: 500 12.5px var(--font-sans); color: var(--text); line-height: 1.2; }
 .user-email { font: 400 11px var(--font-sans); color: var(--muted); line-height: 1.2; }
+/* Never crowd the sign-out button — one line each, ellipsized. */
+.sidebar-footer .user-name, .sidebar-footer .user-email {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .icon-btn {
   width: 32px; height: 32px;
   border-radius: var(--radius-md);
@@ -1360,6 +1375,17 @@ thead th .th-label > .help-tip {
   --row-divider-inset: 16px;
 }
 .theme-client .notif-popover { box-shadow: 0 14px 34px rgba(0,0,0,.18); }
+/* Client popover — owner revision (dashboard review): +20% width over the
+   canon 340px, and the body caps at ~10 standard rows before scrolling
+   (row ≈ 54px → 540px), clamped so it never runs off short viewports.
+   ADMIN popover intentionally keeps the canon 340/360 geometry. */
+.theme-client .notif-popover { width: 408px; }
+.theme-client .notif-popover-body {
+  max-height: min(540px, calc(100vh - 160px));
+  /* dvh where supported — vh over-counts the visible area under iOS Safari
+     toolbars, which would push the footer off-screen. */
+  max-height: min(540px, calc(100dvh - 160px));
+}
 .notif-popover-header {
   padding: 12px 16px; border-bottom: 1px solid var(--border-subtle);
   display: flex; align-items: center; justify-content: space-between;
@@ -1391,7 +1417,7 @@ thead th .th-label > .help-tip {
 .notif-item.success .notif-dot-strip { background: var(--success); }
 .notif-item.info    .notif-dot-strip { background: var(--info); }
 .notif-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.notif-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.notif-title { font-size: 12px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .notif-meta { font-size: 11px; color: var(--muted); }
 /* Client feed: read rows recede, unread stay full-strength */
 .notif-item.read .notif-title { color: var(--text-secondary); font-weight: 500; }
@@ -1747,6 +1773,9 @@ thead th .th-label > .help-tip {
   display: inline-flex; align-items: center; justify-content: center;
 }
 .buy-cta-icon svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* The badge is a live link now (owner ask) — give it a clear hover state. */
+a.buy-cta-icon { cursor: pointer; transition: background .12s, color .12s; }
+a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
 .buy-cta-title { font: 650 15px var(--font-sans); color: var(--text); }
 .buy-cta-text { font: 400 13px/1.45 var(--font-sans); color: var(--muted); max-width: 260px; }
 .buy-cta-panel .btn.primary { width: 100%; }
@@ -2392,6 +2421,9 @@ html:has(.theme-admin) { --border: #353c4f; }
    /1 which shrank section headings to an 11px box. Scoped to the section-label
    idiom so flex panel-headers keep their current geometry. */
 .panel-section .panel-title { display: block; margin-bottom: 14px; line-height: 1.5; }
+/* Block context has no flex gap — the marker's own margin carries the canon
+   8px dot→title distance here (see .panel-title::before). */
+.panel-section .panel-title::before { margin-right: 8px; }
 .panel-section .form-grid { padding: 0; gap: 12px 14px; }
 .panel-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .panel-title-row .panel-title { margin-bottom: 0; }
@@ -2467,6 +2499,9 @@ html:has(.theme-admin) { --border: #353c4f; }
    pushes "proxies" past the viewBox edge (clip on the right). */
 .site-logo-host .topbar__logo text,
 .site-logo-host .topbar__logo tspan { font-family: "Source Sans 3", sans-serif; }
+/* Same pin for the client sidebar's Comet mark (loaded by (client)/layout.tsx). */
+.sidebar-logo svg text,
+.sidebar-logo svg tspan { font-family: "Source Sans 3", sans-serif; }
 
 /* Back-to-site link (only when arriving from the marketing site) */
 .auth-backlink {

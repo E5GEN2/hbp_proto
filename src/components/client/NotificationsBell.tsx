@@ -67,7 +67,10 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
   function toggle() {
     if (openRef.current) { close(); return; }
     const rect = btnRef.current!.getBoundingClientRect();
-    setPos({ top: rect.bottom + 10, right: Math.max(8, window.innerWidth - rect.right) });
+    // Owner revision: equal breathing room on both sides — 10px below the
+    // bell AND 10px off the viewport's right edge (the canon bell-right
+    // alignment left ~3× more space on the right than on top).
+    setPos({ top: rect.bottom + 10, right: 10 });
     fetchAll();
     openRef.current = true;
     setOpen(true);
@@ -147,7 +150,9 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
               );
             })}
           </div>
-          {notifs.length > 0 && (
+          {/* Owner revision: the action only shows while there is something
+              to mark — with zero unread it would be a dead button. */}
+          {notifs.length > 0 && unread > 0 && (
             <div className="notif-popover-footer" onClick={() => { close(); router.refresh(); }}>Mark all read</div>
           )}
         </div>

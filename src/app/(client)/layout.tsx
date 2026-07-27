@@ -26,6 +26,16 @@ export default async function ClientLayout({ children }: { children: React.React
 
   return (
     <div className="theme-client portal-canvas" style={{ minHeight: '100vh', display: 'flex' }}>
+      {/* Same font the marketing/auth pages load — the sidebar Comet logo SVG
+          text is set in Source Sans 3; without it the mark falls back to a
+          wider system font and the wordmark clips on the right (same fix as
+          (auth)/layout.tsx). */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
       <MobileNavProvider>
         <TipFloater />
         <ClientSidebar user={{ name: me.name, email: me.email, tier: me.tier }} />

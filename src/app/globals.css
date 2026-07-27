@@ -1593,7 +1593,10 @@ thead th .th-label > .help-tip {
 }
 .topbar-balance-cta svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 .kpi-strip    { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.card-2col    { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Owner override (dashboard review): column gaps match the KPI strip's 12px
+   (canon had 16 here vs 12 on the strip — unified per owner). Both classes
+   are client-dashboard-only. */
+.card-2col    { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .plan-cards   { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .grid-detail  { display: grid; grid-template-columns: 1fr var(--aside-w); gap: 16px; align-items: start; }
 .orders-grid  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 20px; }
@@ -1744,7 +1747,7 @@ thead th .th-label > .help-tip {
 }
 .widget-meta { font: 400 12px var(--font-sans); color: var(--muted); }
 
-.dash-2col-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.dash-2col-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
 
 .timeline { padding: 20px; display: flex; flex-direction: column; position: relative; }
 .timeline.activity-scroll { max-height: 254px; overflow-y: auto; }

@@ -44,17 +44,15 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
     <aside className={`sidebar${open ? ' mobile-open' : ''}`}>
       <div className="sidebar-logo">
         {/* Comet Proxy logo — owner decision: the marketing-site mark replaces
-            the canon pulsing-dot + "PROXY" wordmark, wrapped in the same pill
-            as the site header. viewBox is cropped to the measured content
-            bbox (26..551 × 56..144, font-loaded getBBox) so the pill's CSS
-            padding IS the visual inset — equal on all four sides (owner ask).
-            The divider line is stroke 3 (not the marketing 1): at this scale
-            (~0.3×) a 1-unit stroke renders sub-pixel and vanishes. */}
+            the canon pulsing-dot + "PROXY" wordmark (bare, no pill — the pill
+            variant was tried and rejected). viewBox is cropped to the measured
+            content bbox (26..551 × 56..144, font-loaded getBBox). The divider
+            line is stroke 3 (not the marketing 1): at this scale (~0.3×) a
+            1-unit stroke renders sub-pixel and vanishes. */}
         {/* letterSpacing/textTransform: the .sidebar-logo wordmark styles
             (uppercase, .12em tracking) inherit into SVG text — reset them so
             the "proxies" tail keeps the marketing lowercase + metrics. */}
-        <span className="sidebar-logo-pill">
-        <svg viewBox="26 56 525 88" style={{ height: 27, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label="Comet Proxy">
+        <svg viewBox="26 56 525 88" style={{ height: 28, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label="Comet Proxy">
           <defs>
             <radialGradient id="sbBubbleCream" cx="50%" cy="50%" r="50%">
               <stop offset="0" stopColor="#B58A4A" stopOpacity="0.30" />
@@ -76,7 +74,6 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
           <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" strokeWidth="3" opacity="0.25" />
           <text x="232" y="118" fontFamily="Source Sans 3, sans-serif" fontSize="50"><tspan fontWeight="600" letterSpacing="1" fill="#111827">COMET</tspan><tspan fontWeight="400" letterSpacing="0" fill="#111827"> proxies</tspan></text>
         </svg>
-        </span>
       </div>
       <nav className="nav">
         {NAV.map(n => (

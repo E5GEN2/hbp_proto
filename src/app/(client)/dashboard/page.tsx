@@ -122,7 +122,9 @@ export default async function ClientDashboard() {
             <Link className="kpi-card" href="/orders">
               <div className="kpi-label">Expiring soon</div>
               <div className="kpi-value">{expiringSoon.length}</div>
-              <div className={`kpi-accent-bar ${expiringSoon.length > 0 ? 'red' : 'green'}`} />
+              {/* Owner decision (item 1): fixed card-identity red, like the canon
+                  strip's green/blue/red — not conditional on the count. */}
+              <div className="kpi-accent-bar red" />
             </Link>
           </div>
 

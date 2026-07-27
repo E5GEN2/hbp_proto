@@ -9,6 +9,7 @@ import { PlanShowcase } from '@/components/client/PlanShowcase';
 import { collapseLiveByDuration } from '@/lib/plan-tiers';
 import { money } from '@/lib/money';
 import { daysLeft, fmtAdminStamp } from '@/lib/date';
+import { byRecency, LIFECYCLE } from '@/lib/timeline';
 
 const PAID = ['PAID', 'CONFIRMED', 'FREE'];
 
@@ -51,54 +52,55 @@ export default async function ClientDashboard() {
   const recentOrders = orders.slice(0, 5);
 
   // ── Activity feed (synthesized from orders / refunds / proxy health) ──
-  type Ev = { at: Date; dot: string; title: ReactNode; detail: ReactNode };
+  type Ev = { at: Date; seq: number; dot: string; title: ReactNode; detail: ReactNode };
   const events: Ev[] = [];
   for (const o of orders) {
     const planLbl = `${planDisplayName(o.plan.durationDays)} · ${o.region}`;
     // Terminal cancel note first — the placed/paid history stays below it.
     if (o.status === 'CANCELLED') {
       const reason = o.cancelledReason ? ` — ${o.cancelledReason.charAt(0).toLowerCase()}${o.cancelledReason.slice(1)}` : '';
-      events.push({ at: o.cancelledAt ?? o.createdAt, dot: 'muted',
+      events.push({ at: o.cancelledAt ?? o.createdAt, seq: LIFECYCLE.cancelled, dot: 'muted',
         title: <>Order <span className="td-link">{o.id}</span> cancelled</>,
         detail: `${planLbl} · ${money(Number(o.amount))}${reason}.` });
     }
     if (PAID.includes(o.paymentStatus)) {
       if (o.activatedAt) {
-        events.push({ at: o.activatedAt, dot: 'violet',
+        events.push({ at: o.activatedAt, seq: LIFECYCLE.provisioned, dot: 'violet',
           title: <>Order <span className="td-link">{o.id}</span> provisioned</>,
           detail: `${o.qty} mobile ${o.qty === 1 ? 'proxy' : 'proxies'} in ${o.region}.` });
       }
-      events.push({ at: o.createdAt, dot: 'success',
+      events.push({ at: o.createdAt, seq: LIFECYCLE.paid, dot: 'success',
         title: <>Order <span className="td-link">{o.id}</span> paid</>,
         detail: `${planLbl} · ${money(Number(o.amount))}.` });
     } else if (o.paymentStatus === 'AWAITING' || o.paymentStatus === 'PENDING') {
-      events.push({ at: o.createdAt, dot: 'warning',
+      events.push({ at: o.createdAt, seq: LIFECYCLE.awaiting, dot: 'warning',
         title: <>Order <span className="td-link">{o.id}</span> placed</>,
         detail: `${planLbl} · ${money(Number(o.amount))} — awaiting payment.` });
     } else if (o.paymentStatus === 'FAILED') {
-      events.push({ at: o.createdAt, dot: 'danger',
+      events.push({ at: o.createdAt, seq: LIFECYCLE.failed, dot: 'danger',
         title: <>Payment failed on <span className="td-link">{o.id}</span></>,
         detail: `${planLbl} · ${money(Number(o.amount))} — retry from Billing.` });
     } else if (o.paymentStatus === 'CANCELLED') {
       // Placement entry for an order cancelled before payment — no
       // "awaiting payment" tail, the cancel note above closes the story.
-      events.push({ at: o.createdAt, dot: 'muted',
+      events.push({ at: o.createdAt, seq: LIFECYCLE.placed, dot: 'muted',
         title: <>Order <span className="td-link">{o.id}</span> placed</>,
         detail: `${planLbl} · ${money(Number(o.amount))}.` });
     }
   }
   for (const p of refundedPayments) {
-    events.push({ at: p.refundedAt ?? p.createdAt, dot: 'muted',
+    events.push({ at: p.refundedAt ?? p.createdAt, seq: LIFECYCLE.refunded, dot: 'muted',
       title: <>Payment <span className="td-link">{p.id}</span> refunded</>,
       detail: `${money(Number(p.refundedAmount ?? p.gross))} returned to ${p.method}.` });
   }
   for (const a of faulty) {
     const px = a.proxy;
-    events.push({ at: a.assignedAt ?? new Date(), dot: px.health === 'OFFLINE' ? 'danger' : 'warning',
+    events.push({ at: a.assignedAt ?? new Date(), seq: LIFECYCLE.alert, dot: px.health === 'OFFLINE' ? 'danger' : 'warning',
       title: <>Health alert on <span className="td-link">{px.id}</span></>,
       detail: <>Status flipped to <span className={`chip ${px.health.toLowerCase()}`}>{px.health.toLowerCase()}</span>{px.health === 'OFFLINE' ? ' — replacement available.' : '.'}</> });
   }
-  events.sort((a, b) => b.at.getTime() - a.at.getTime());
+  // Newest first — bucket by second, break ties by lifecycle stage. See lib/timeline.ts.
+  events.sort(byRecency);
 
   return (
     <>

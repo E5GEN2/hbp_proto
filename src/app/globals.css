@@ -1782,6 +1782,36 @@ thead th .th-label > .help-tip {
 .table-wrap.dt-scroll::-webkit-scrollbar-track { background: transparent; }
 .table-wrap.dt-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+/* Slim canon scrollbar (prototype §.content / .timeline.activity-scroll: 6px,
+   transparent track, --border thumb, 3px radius). The app had only styled
+   .table-wrap.dt-scroll, so activity feeds and the main scroll fell back to the
+   fat default OS scrollbar. Apply the canon bar to every scroll surface inside
+   both app shells AND to <html> — the shells are minHeight:100vh, so the PAGE
+   scroll container is the document itself, outside both shells.
+   #settingsTabs keeps its own hidden-scrollbar rule (ID specificity wins).
+   WEBKIT-ONLY on purpose: in Chrome 121+ a non-auto standard scrollbar-width/
+   scrollbar-color DISABLES all ::-webkit-scrollbar styling, which would break
+   the canon 6px look here and on the existing .dt-scroll tables — so the
+   standard properties are confined to Firefox via the @supports guard below. */
+.theme-admin ::-webkit-scrollbar, .theme-client ::-webkit-scrollbar,
+html::-webkit-scrollbar { width: 6px; height: 6px; }
+.theme-admin ::-webkit-scrollbar-track, .theme-client ::-webkit-scrollbar-track,
+html::-webkit-scrollbar-track { background: transparent; }
+.theme-admin ::-webkit-scrollbar-thumb, .theme-client ::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* var(--border) at html resolves to the :root (light) value; :has() flips it
+   to the admin dark border when the admin shell is on the page (only html/
+   body-level usage is affected — the shells re-declare --border for their own
+   subtree). */
+html:has(.theme-admin) { --border: #353c4f; }
+/* Firefox has no ::-webkit-scrollbar — give it the standard properties. The
+   guard is false in Chrome/Safari, keeping the exact webkit styling above. */
+@supports not selector(::-webkit-scrollbar) {
+  html, .theme-admin, .theme-admin *, .theme-client, .theme-client * {
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+}
+
 /* Transactions table — canon client-panel.html:2579: tighter 10px 8px
    cells with 16px edges inside the half-width panel (th row = 32px). */
 .billing-grid .table-wrap { overflow-x: auto; }

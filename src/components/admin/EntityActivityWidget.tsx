@@ -38,7 +38,9 @@ export async function EntityActivityWidget({
 
   const logs = await prisma.log.findMany({
     where,
-    orderBy: { at: 'desc' },
+    // Newest first. `id` (a time-prefixed cuid) is a deterministic secondary
+    // key so logs sharing the same `at` never render in an arbitrary order.
+    orderBy: [{ at: 'desc' }, { id: 'desc' }],
     take: 30,
     include: { actor: { select: { name: true } } },
   });

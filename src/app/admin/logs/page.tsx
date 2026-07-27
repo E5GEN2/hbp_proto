@@ -76,7 +76,10 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
 
   const [logs, total, admins, grouped] = await Promise.all([
     prisma.log.findMany({
-      where, orderBy: { at: 'desc' },
+      // Newest first. `id` (a time-prefixed cuid) is a deterministic secondary
+      // key so same-`at` logs keep a stable order across renders and pages
+      // (the feed is paginated — ties without it could straddle page breaks).
+      where, orderBy: [{ at: 'desc' }, { id: 'desc' }],
       include: { actor: { select: { id: true, name: true, role: true, initials: true } } },
       skip: (page - 1) * PER_PAGE, take: PER_PAGE,
     }),

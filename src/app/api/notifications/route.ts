@@ -11,12 +11,16 @@ export async function GET() {
 
   const [notifs, user] = await Promise.all([
     prisma.notification.findMany({
-      where: { userId },
+      // Owner rules for the client bell (admin ops-bell is queue-derived and
+      // exempt): the feed never shows entries older than 7 days and caps at
+      // 50 rows. The sweep purges >7d rows for real; this filter keeps the
+      // window honest between sweep ticks.
+      where: { userId, createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
       // Newest first. Notification ids are `n<Date.now()>-…` (fixed-width ms
       // prefix), so `id` desc is a deterministic, chronological tie-break for
       // notifications created in the same transaction with equal createdAt.
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 20,
+      take: 50,
     }),
     prisma.user.findUnique({ where: { id: userId }, select: { notifLastReadAt: true, balance: true } }),
   ]);

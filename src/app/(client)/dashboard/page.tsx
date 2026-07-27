@@ -60,43 +60,43 @@ export default async function ClientDashboard() {
     if (o.status === 'CANCELLED') {
       const reason = o.cancelledReason ? ` — ${o.cancelledReason.charAt(0).toLowerCase()}${o.cancelledReason.slice(1)}` : '';
       events.push({ at: o.cancelledAt ?? o.createdAt, seq: LIFECYCLE.cancelled, dot: 'muted',
-        title: <>Order <span className="td-link">{o.id}</span> cancelled</>,
+        title: <>Order <Link href={`/orders/${o.id}`} className="td-link">{o.id}</Link> cancelled</>,
         detail: `${planLbl} · ${money(Number(o.amount))}${reason}.` });
     }
     if (PAID.includes(o.paymentStatus)) {
       if (o.activatedAt) {
         events.push({ at: o.activatedAt, seq: LIFECYCLE.provisioned, dot: 'violet',
-          title: <>Order <span className="td-link">{o.id}</span> provisioned</>,
+          title: <>Order <Link href={`/orders/${o.id}`} className="td-link">{o.id}</Link> provisioned</>,
           detail: `${o.qty} mobile ${o.qty === 1 ? 'proxy' : 'proxies'} in ${o.region}.` });
       }
       events.push({ at: o.createdAt, seq: LIFECYCLE.paid, dot: 'success',
-        title: <>Order <span className="td-link">{o.id}</span> paid</>,
+        title: <>Order <Link href={`/orders/${o.id}`} className="td-link">{o.id}</Link> paid</>,
         detail: `${planLbl} · ${money(Number(o.amount))}.` });
     } else if (o.paymentStatus === 'AWAITING' || o.paymentStatus === 'PENDING') {
       events.push({ at: o.createdAt, seq: LIFECYCLE.awaiting, dot: 'warning',
-        title: <>Order <span className="td-link">{o.id}</span> placed</>,
+        title: <>Order <Link href={`/orders/${o.id}`} className="td-link">{o.id}</Link> placed</>,
         detail: `${planLbl} · ${money(Number(o.amount))} — awaiting payment.` });
     } else if (o.paymentStatus === 'FAILED') {
       events.push({ at: o.createdAt, seq: LIFECYCLE.failed, dot: 'danger',
-        title: <>Payment failed on <span className="td-link">{o.id}</span></>,
+        title: <>Payment failed on <Link href={`/orders/${o.id}`} className="td-link">{o.id}</Link></>,
         detail: `${planLbl} · ${money(Number(o.amount))} — retry from Billing.` });
     } else if (o.paymentStatus === 'CANCELLED') {
       // Placement entry for an order cancelled before payment — no
       // "awaiting payment" tail, the cancel note above closes the story.
       events.push({ at: o.createdAt, seq: LIFECYCLE.placed, dot: 'muted',
-        title: <>Order <span className="td-link">{o.id}</span> placed</>,
+        title: <>Order <Link href={`/orders/${o.id}`} className="td-link">{o.id}</Link> placed</>,
         detail: `${planLbl} · ${money(Number(o.amount))}.` });
     }
   }
   for (const p of refundedPayments) {
     events.push({ at: p.refundedAt ?? p.createdAt, seq: LIFECYCLE.refunded, dot: 'muted',
-      title: <>Payment <span className="td-link">{p.id}</span> refunded</>,
+      title: <>Payment <Link href="/billing" className="td-link">{p.id}</Link> refunded</>,
       detail: `${money(Number(p.refundedAmount ?? p.gross))} returned to ${p.method}.` });
   }
   for (const a of faulty) {
     const px = a.proxy;
     events.push({ at: a.assignedAt ?? new Date(), seq: LIFECYCLE.alert, dot: px.health === 'OFFLINE' ? 'danger' : 'warning',
-      title: <>Health alert on <span className="td-link">{px.id}</span></>,
+      title: <>Health alert on <Link href={`/proxies/${px.id}`} className="td-link">{px.id}</Link></>,
       detail: <>Status flipped to <span className={`chip ${px.health.toLowerCase()}`}>{px.health.toLowerCase()}</span>{px.health === 'OFFLINE' ? ' — replacement available.' : '.'}</> });
   }
   // Newest first — bucket by second, break ties by lifecycle stage. See lib/timeline.ts.
@@ -193,9 +193,11 @@ export default async function ClientDashboard() {
                   </div>
                 </div>
                 <div className="buy-cta-panel">
-                  <div className="buy-cta-icon">
+                  {/* The plus badge is an active control (owner ask) — same
+                      destination as the Browse-plans CTA below. */}
+                  <Link href="/catalog" className="buy-cta-icon" aria-label="Browse plans">
                     <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-                  </div>
+                  </Link>
                   <div className="buy-cta-title">Need more proxies?</div>
                   <div className="buy-cta-text">Browse plans and pick the right tier for your next project.</div>
                   <Link href="/catalog" className="btn primary">Browse plans</Link>

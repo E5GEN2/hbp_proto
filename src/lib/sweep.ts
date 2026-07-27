@@ -375,6 +375,12 @@ export async function runSweep(): Promise<SweepResult> {
     //   deleted at completeVerification time).
     await prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lt: new Date(now) } } });
 
+    // ── 5. Client-bell retention (owner rule): notifications live 7 days ────
+    //   The Notification table only feeds the client bell (/api/notifications);
+    //   the admin ops-bell derives from live queues and stores nothing, so this
+    //   purge cannot touch admin signals.
+    await prisma.notification.deleteMany({ where: { createdAt: { lt: new Date(now - 7 * 86_400_000) } } });
+
     return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled };
   } finally {
     running = false;

@@ -5,13 +5,15 @@ import { signOut } from 'next-auth/react';
 import { signalStructural } from '@/lib/nav-history';
 import { MobileNavBackdrop, useMobileNav } from '@/components/ui/MobileNav';
 
-// Canon nav icons (client-panel.html ICONS) — stroke style inherited via .nav-item svg
+// Nav icons — owner decision (dashboard review): client pictograms mirror the
+// ADMIN panel's icon set (components/admin/Sidebar.tsx ICONS) for the matching
+// sections. Billing uses the admin "payments" card, Settings the admin cog.
 const ICONS: Record<string, JSX.Element> = {
-  dashboard: <><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>,
-  proxies: <><rect x="3" y="4" width="18" height="6" rx="2" /><rect x="3" y="14" width="18" height="6" rx="2" /><path d="M7 7h.01M7 17h.01" /></>,
-  orders: <><path d="M21 12a9 9 0 11-3-6.7" /><path d="M21 4v5h-5" /></>,
-  billing: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></>,
-  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></>,
+  dashboard: <><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>,
+  proxies: <><rect width="20" height="8" x="2" y="2" rx="2" /><rect width="20" height="8" x="2" y="14" rx="2" /><line x1="6" x2="6.01" y1="6" y2="6" /><line x1="6" x2="6.01" y1="18" y2="18" /></>,
+  orders: <><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></>,
+  billing: <><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></>,
+  settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></>,
 };
 
 function NavIcon({ name }: { name: string }) {
@@ -41,8 +43,35 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
     <MobileNavBackdrop />
     <aside className={`sidebar${open ? ' mobile-open' : ''}`}>
       <div className="sidebar-logo">
-        <span className="sidebar-logo-dot" />
-        <span>Proxy</span>
+        {/* Comet Proxy logo — owner decision: the marketing-site mark replaces
+            the canon pulsing-dot + "PROXY" wordmark. Self-contained copy of
+            the marketing #cometMark (unique gradient id — no cross-page
+            collision), same viewBox/crop as the marketing topbar logo. */}
+        {/* letterSpacing/textTransform: the .sidebar-logo wordmark styles
+            (uppercase, .12em tracking) inherit into SVG text — reset them so
+            the "proxies" tail keeps the marketing lowercase + metrics. */}
+        <svg viewBox="6 40 558 120" style={{ height: 36, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label="Comet Proxy">
+          <defs>
+            <radialGradient id="sbBubbleCream" cx="50%" cy="50%" r="50%">
+              <stop offset="0" stopColor="#B58A4A" stopOpacity="0.30" />
+              <stop offset="0.72" stopColor="#B58A4A" stopOpacity="0.16" />
+              <stop offset="0.96" stopColor="#B58A4A" stopOpacity="0.55" />
+              <stop offset="1" stopColor="#B58A4A" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <g fill="#0A0F1D" opacity="0.85">
+            {[[70,142],[65.12,141.72],[60.31,140.87],[55.64,139.47],[51.15,137.53],[46.92,135.09],[43,132.17],[39.45,128.82],[36.31,125.08],[33.63,121],[31.43,116.64],[29.76,112.05],[28.64,107.29],[28.07,102.44],[28.07,97.56],[28.64,92.71],[29.76,87.95],[31.43,83.36],[33.63,79],[36.31,74.92],[39.45,71.18],[43,67.83],[46.92,64.91],[51.15,62.47],[55.64,60.53],[60.31,59.13],[65.12,58.28],[70,58]].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r="1.7" />)}
+          </g>
+          <circle cx="70" cy="100" r="18" fill="none" stroke="#B58A4A" strokeWidth="1.0" opacity="0.32" />
+          <circle cx="88" cy="100" r="24" fill="none" stroke="#B58A4A" strokeWidth="1.2" opacity="0.50" />
+          <circle cx="112" cy="100" r="30" fill="none" stroke="#B58A4A" strokeWidth="1.4" opacity="0.70" />
+          <circle cx="142" cy="100" r="40" fill="url(#sbBubbleCream)" />
+          <circle cx="142" cy="100" r="36" fill="none" stroke="#B58A4A" strokeWidth="2" opacity="0.95" />
+          <circle cx="142" cy="100" r="12" fill="#F1E6CC" stroke="#0A0F1D" strokeWidth="2.4" />
+          <circle cx="142" cy="100" r="3.4" fill="#B58A4A" />
+          <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" strokeWidth="1" opacity="0.2" />
+          <text x="232" y="118" fontFamily="Source Sans 3, sans-serif" fontSize="50"><tspan fontWeight="600" letterSpacing="1" fill="#111827">COMET</tspan><tspan fontWeight="400" letterSpacing="0" fill="#111827"> proxies</tspan></text>
+        </svg>
       </div>
       <nav className="nav">
         {NAV.map(n => (
@@ -59,9 +88,11 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
       </nav>
       <div className="sidebar-footer">
         <div className="avatar">{initials}</div>
+        {/* Owner decision: a long email used to crowd the sign-out button —
+            show a greeting over the display name instead of the address. */}
         <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="user-email">Welcome back</div>
           <div className="user-name">{user.name}</div>
-          <div className="user-email">{user.email}</div>
         </div>
         <button className="icon-btn sidebar-signout" title="Sign out" onClick={() => signOut({ callbackUrl: '/login' })}>
           <svg viewBox="0 0 24 24"><path d="M15 17l5-5-5-5M20 12H9M12 3H5a2 2 0 00-2 2v14a2 2 0 002 2h7" /></svg>

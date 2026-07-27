@@ -2,7 +2,7 @@
 // Rendered from (client)/layout.tsx so it appears on EVERY client-portal
 // page (owner request; was checkout-only in the prototype).
 // Same support handle as the Support page.
-const TELEGRAM_URL = 'https://t.me/proxysupport';
+const TELEGRAM_URL = 'https://t.me/US5Gwetrust';
 
 export function TelegramCta() {
   return (

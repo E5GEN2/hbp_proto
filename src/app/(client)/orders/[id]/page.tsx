@@ -8,6 +8,7 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { ClientOrderDetailActions } from '@/components/client/OrderDetailActions';
 import { money } from '@/lib/money';
 import { daysLeft, fmtAdminStamp } from '@/lib/date';
+import { byRecency, LIFECYCLE } from '@/lib/timeline';
 
 
 
@@ -38,24 +39,25 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   const underProvisioned = order.status === 'ACTIVE' && isPaid && liveProxies < order.qty;
 
   // Activity timeline (synthesized from order + payments)
-  type Event = { at: Date; tone: string; title: string; detail?: string };
+  type Event = { at: Date; seq: number; tone: string; title: string; detail?: string };
   const events: Event[] = [];
-  events.push({ at: order.createdAt, tone: 'info', title: 'Order placed', detail: `${planDisplayName(order.plan.durationDays)} · ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} · ${money(Number(order.amount))}` });
+  events.push({ at: order.createdAt, seq: LIFECYCLE.placed, tone: 'info', title: 'Order placed', detail: `${planDisplayName(order.plan.durationDays)} · ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} · ${money(Number(order.amount))}` });
   if (underProvisioned) {
-    events.push({ at: order.updatedAt, tone: 'warning', title: 'Replacement in progress', detail: `${liveProxies} of ${order.qty} proxies attached — we're arranging the rest.` });
+    events.push({ at: order.updatedAt, seq: LIFECYCLE.alert, tone: 'warning', title: 'Replacement in progress', detail: `${liveProxies} of ${order.qty} proxies attached — we're arranging the rest.` });
   }
   for (const p of [...order.payments].reverse()) {
-    if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, tone: 'success', title: 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
-    else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
-    else if (p.status === 'FAILED') events.push({ at: p.createdAt, tone: 'danger', title: 'Payment failed', detail: 'Retry from this order or contact support.' });
-    else if (p.status === 'REFUNDED') events.push({ at: p.refundedAt ?? p.createdAt, tone: 'muted', title: `Refunded ${money(Number(p.refundedAmount ?? p.gross))}` });
+    if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.paid, tone: 'success', title: 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
+    else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, seq: LIFECYCLE.awaiting, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
+    else if (p.status === 'FAILED') events.push({ at: p.createdAt, seq: LIFECYCLE.failed, tone: 'danger', title: 'Payment failed', detail: 'Retry from this order or contact support.' });
+    else if (p.status === 'REFUNDED') events.push({ at: p.refundedAt ?? p.createdAt, seq: LIFECYCLE.refunded, tone: 'muted', title: `Refunded ${money(Number(p.refundedAmount ?? p.gross))}` });
   }
-  if (order.activatedAt) events.push({ at: order.activatedAt, tone: 'violet', title: 'Provisioned', detail: `${order.assignments.length} mobile ${order.assignments.length === 1 ? 'proxy is' : 'proxies are'} live.` });
-  else if (order.status === 'PROVISIONING') events.push({ at: order.updatedAt, tone: 'warning', title: 'Awaiting fulfillment', detail: 'Our team is preparing your proxies. Typical delivery within 24 hours.' });
-  if (order.cancelledAt) events.push({ at: order.cancelledAt, tone: 'danger', title: 'Cancelled', detail: order.cancelledReason ?? 'No charge was made.' });
-  // Newest first — same convention as the dashboard feed and the admin
-  // Activity widget (EntityActivityWidget).
-  events.sort((a, b) => b.at.getTime() - a.at.getTime());
+  if (order.activatedAt) events.push({ at: order.activatedAt, seq: LIFECYCLE.provisioned, tone: 'violet', title: 'Provisioned', detail: `${order.assignments.length} mobile ${order.assignments.length === 1 ? 'proxy is' : 'proxies are'} live.` });
+  else if (order.status === 'PROVISIONING') events.push({ at: order.updatedAt, seq: LIFECYCLE.fulfilling, tone: 'warning', title: 'Awaiting fulfillment', detail: 'Our team is preparing your proxies. Typical delivery within 24 hours.' });
+  if (order.cancelledAt) events.push({ at: order.cancelledAt, seq: LIFECYCLE.cancelled, tone: 'danger', title: 'Cancelled', detail: order.cancelledReason ?? 'No charge was made.' });
+  // Newest first — bucket by second, break ties by lifecycle stage so the
+  // latest event is always on top. Same convention as the dashboard feed and
+  // the admin Activity widget (EntityActivityWidget). See lib/timeline.ts.
+  events.sort(byRecency);
   const tlDot = (tone: string) => (tone && tone !== 'muted' ? tone : '');
 
   return (

@@ -12,7 +12,10 @@ export async function GET() {
   const [notifs, user] = await Promise.all([
     prisma.notification.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      // Newest first. Notification ids are `n<Date.now()>-…` (fixed-width ms
+      // prefix), so `id` desc is a deterministic, chronological tie-break for
+      // notifications created in the same transaction with equal createdAt.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 20,
     }),
     prisma.user.findUnique({ where: { id: userId }, select: { notifLastReadAt: true, balance: true } }),

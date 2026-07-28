@@ -17,11 +17,22 @@ import { CandidatePicker, type Candidate } from './CandidatePicker';
 // stays reason-free (internal cause is not client-facing).
 type Groups = { matching: Candidate[]; others: Candidate[]; plan: { carrier: string; region: string; pool: string } };
 
+// Replacement reasons — the technical five reuse the Mark-faulty vocabulary
+// VERBATIM (MarkFaultyModal.CATEGORIES) so the same failure means the same
+// label across both flows and analytics join cleanly; the next three are
+// replacement-specific (not admin-observed faults): client-initiated, a
+// provisioning correction, and a planned swap.
+const OTHER = 'Other (write a note)';
 const REASONS = [
-  { value: 'Faulty / unstable connection' },
-  { value: 'Client request' },
-  { value: 'Scheduled maintenance' },
-  { value: 'Other' },
+  { value: 'Connection loss / cannot reach' },
+  { value: 'High latency / degraded speed' },
+  { value: 'IP banned / blocked at destination' },
+  { value: 'Rotation not working' },
+  { value: 'Auth failures' },
+  { value: 'Client requested replacement' },
+  { value: 'Wrong carrier / region assigned' },
+  { value: 'Scheduled maintenance / hardware swap' },
+  { value: OTHER },
 ];
 
 export function ReplaceProxyModal({
@@ -64,9 +75,9 @@ export function ReplaceProxyModal({
   function submit() {
     setErr(null);
     if (!reason) return setErr('Pick a replacement reason');
-    if (reason === 'Other' && !detail.trim()) return setErr('Describe the reason');
+    if (reason === OTHER && !detail.trim()) return setErr('Describe the reason');
     if (mode === 'pick' && picked.size !== 1) return setErr('Pick the replacement proxy');
-    const fullReason = detail.trim() ? `${reason}: ${detail.trim()}` : reason;
+    const fullReason = reason === OTHER ? detail.trim() : (detail.trim() ? `${reason} — ${detail.trim()}` : reason);
     start(async () => {
       try {
         const r = await replaceProxyAction(orderId, proxyId, {
@@ -88,7 +99,7 @@ export function ReplaceProxyModal({
         <>
           <button className="btn" onClick={onClose} disabled={pending}>Cancel</button>
           <button className="btn primary" onClick={submit}
-            disabled={pending || !reason || (reason === 'Other' && !detail.trim()) || (mode === 'pick' && picked.size !== 1)}>
+            disabled={pending || !reason || (reason === OTHER && !detail.trim()) || (mode === 'pick' && picked.size !== 1)}>
             {pending ? 'Replacing…' : 'Replace'}
           </button>
         </>
@@ -143,7 +154,7 @@ export function ReplaceProxyModal({
         <FormSelect value={reason} onChange={setReason} options={REASONS} placeholder="Choose…" />
         <textarea
           className="form-input" rows={2}
-          placeholder={reason === 'Other' ? 'Describe the reason (required)' : 'Details (optional)'}
+          placeholder={reason === OTHER ? 'Describe the reason (required)' : 'Details (optional)'}
           value={detail} onChange={e => setDetail(e.target.value)}
         />
       </div>

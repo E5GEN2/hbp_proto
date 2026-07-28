@@ -47,7 +47,9 @@ const FORMAT_LABEL: Record<Format, string> = {
 // line under the credentials — for the string forms — or as a field for
 // json/csv. Owner ask: the rotation URL is what a client actually acts on.
 function formatExport(proxies: ProxyRow[], format: Format, proto: Proto, includeUrl: boolean): string {
-  const portOf = (p: ProxyRow) => (proto === 'socks5' ? p.port + 1000 : p.port);
+  // Same port for both protocols — only the scheme prefix differs (owner:
+  // the real credentials are identical for HTTP and SOCKS5).
+  const portOf = (p: ProxyRow) => p.port;
   const urlTail = (p: ProxyRow) => (includeUrl && p.rotationUrl ? `\n${p.rotationUrl}` : '');
   if (format === 'ip:port:user:pass')
     return proxies.map(p => `${proto}://${p.ip}:${portOf(p)}:${p.username}:${p.password}${urlTail(p)}`).join('\n');
@@ -301,13 +303,20 @@ export function ProxiesList({ rows, initialSearch = '', initialCarrier = '' }: {
                     </Link>
                   </td>
                   <td className="col-text muted">{p.carrier} · {p.region}</td>
-                  {/* Auto rotation / Uptime / Speed / Health show a dash until
-                      real telemetry lands (owner decision, Phase-2 backlog) —
-                      there is no live data behind these columns yet. */}
+                  {/* Auto rotation / Uptime / Speed show a dash until real
+                      telemetry lands (owner decision, Phase-2 backlog) — there
+                      is no live data behind these columns yet. Health stays a
+                      live chip: it is an operator-set status (Mark faulty /
+                      Maintenance / sweep), not telemetry (owner: live statuses
+                      must show). */}
                   <td className="col-text muted center">—</td>
                   <td className="col-text muted center">—</td>
                   <td className="col-text muted center">—</td>
-                  <td className="col-status muted center">—</td>
+                  <td className="col-status">
+                    {p.underMaintenance
+                      ? <span className="chip maintenance" data-tip="This proxy is under scheduled maintenance — service may be briefly interrupted.">Maintenance</span>
+                      : <span className={`chip ${p.health}`}>{cap(p.health)}</span>}
+                  </td>
                 </tr>
               ))
             )}

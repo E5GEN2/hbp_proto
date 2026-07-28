@@ -6,13 +6,18 @@ control) or is listed here until the backing functionality is built.
 
 ## Proxy telemetry (live data)
 
-The client Proxies table columns **Auto rotation · Uptime 30D · Speed ·
-Health** have no live data source yet — they render `—` until real telemetry
-exists (owner decision 2026-07-28). When telemetry lands:
+The client Proxies table columns **Auto rotation · Uptime 30D · Speed** have no
+live data source yet — they render `—` until real telemetry exists (owner
+decision 2026-07-28). When telemetry lands:
 
 - Auto rotation: per-proxy rotation interval (currently `Proxy.autoRotateMin`, not wired to anything real).
 - Uptime 30D / Speed: require a monitoring pipeline (no collector today).
-- Health: today `Proxy.health` is admin/sweep-set, not from automated probing — a real health monitor is needed before the column shows a live value again.
+
+**Health is NOT dashed** — it is a live operator-set status (Mark faulty /
+Maintenance / sweep), and the owner's rule is that any live status must be
+shown. It stays a chip on the list and detail. (A future automated health
+*probe* would only make the existing status more accurate, not add a new
+column.)
 
 ## Proxy bulk actions (no backend)
 

@@ -26,7 +26,7 @@ export function RotationUrlPanel({ rotationUrl }: { rotationUrl: string | null; 
         <div className="creds-row">
           <pre className="export-preview">{rotationUrl}</pre>
           <div className="creds-actions">
-            <button className="btn" onClick={copy}>Copy URL</button>
+            <button className="btn" onClick={copy}>Copy</button>
             <button className="btn ghost" disabled title="URL reset ships in a later release">Reset URL</button>
           </div>
         </div>

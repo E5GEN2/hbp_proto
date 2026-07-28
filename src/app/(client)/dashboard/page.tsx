@@ -119,7 +119,7 @@ export default async function ClientDashboard() {
               <div className="kpi-value">{proxies}</div>
               <div className="kpi-accent-bar blue" />
             </Link>
-            <Link className="kpi-card" href="/orders">
+            <Link className="kpi-card" href="/orders?tab=expiring">
               <div className="kpi-label">Expiring soon</div>
               <div className="kpi-value">{expiringSoon.length}</div>
               {/* Owner decision (item 1): fixed card-identity red, like the canon

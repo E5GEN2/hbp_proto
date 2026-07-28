@@ -35,7 +35,7 @@ function formatExport(proxies: Proxy[], format: Format, proto: Protocol): string
 
 export function CredentialsBlock({ proxies }: { proxies: Proxy[] }) {
   const toast = useToast();
-  const [protocol, setProtocol] = useState<Protocol>('http');
+  const [protocol, setProtocol] = useState<Protocol>('socks5');
   const [format, setFormat] = useState<Format>('ip:port:user:pass');
 
   const preview = formatExport(proxies, format, protocol);
@@ -56,8 +56,8 @@ export function CredentialsBlock({ proxies }: { proxies: Proxy[] }) {
         <div className="export-row">
           <span className="export-label">Protocol</span>
           <div className="export-proto-group">
-            <button className={`export-proto ${protocol === 'http' ? 'active' : ''}`} onClick={() => setProtocol('http')}>HTTP</button>
             <button className={`export-proto ${protocol === 'socks5' ? 'active' : ''}`} onClick={() => setProtocol('socks5')}>SOCKS5</button>
+            <button className={`export-proto ${protocol === 'http' ? 'active' : ''}`} onClick={() => setProtocol('http')}>HTTP</button>
           </div>
         </div>
         <div className="export-row">

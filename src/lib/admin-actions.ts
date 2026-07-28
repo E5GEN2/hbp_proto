@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
 import { authOptions, isAdminRole } from './auth';
 import * as T from './transitions';
+import { listAssignCandidates } from './provisioning';
 
 async function getAdminActor() {
   const session = await getServerSession(authOptions);
@@ -66,11 +67,19 @@ export const extendOrderAction = guarded(async function extendOrderAction(orderI
   return r;
 });
 
-export const assignProxyAction = guarded(async function assignProxyAction(orderId: string, proxyIds: string[]) {
+// proxyIds === null ⇒ auto-assign from the pool (in-tx pool-first pick).
+export const assignProxyAction = guarded(async function assignProxyAction(orderId: string, proxyIds: string[] | null) {
   const actor = await getAdminActor();
   const r = await T.assignProxyManually({ orderId, proxyIds, actor });
   bust();
   return r;
+});
+
+// Candidate lists for the Assign/Replace pickers — fetched on modal open so
+// the admin never works from a stale prefetch.
+export const listAssignCandidatesAction = guarded(async function listAssignCandidatesAction(orderId: string) {
+  await getAdminActor();
+  return listAssignCandidates(orderId);
 });
 
 export const markCredentialsDeliveredAction = guarded(async function markCredentialsDeliveredAction(orderId: string) {
@@ -101,9 +110,11 @@ export const returnProxyToPoolAction = guarded(async function returnProxyToPoolA
   return r;
 });
 
-export const replaceProxyAction = guarded(async function replaceProxyAction(orderId: string, proxyId: string) {
+export const replaceProxyAction = guarded(async function replaceProxyAction(
+  orderId: string, proxyId: string, opts?: { newProxyId?: string; reason?: string },
+) {
   const actor = await getAdminActor();
-  const r = await T.replaceProxy({ orderId, proxyId, actor });
+  const r = await T.replaceProxy({ orderId, proxyId, actor, newProxyId: opts?.newProxyId, reason: opts?.reason });
   bust();
   return r;
 });

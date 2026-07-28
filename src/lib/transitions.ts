@@ -503,10 +503,21 @@ export async function reprovisionRenewedOrder(
   };
 }
 
+// proxyIds === null ⇒ AUTO mode: pick up to the order's deficit from the pool
+// inside the same transaction, using the standard two-pass matcher every
+// automated path uses (carrier+region+plan.pool, then carrier+region). Manual
+// mode takes explicit ids — ANY available proxy is admin-assignable (pool and
+// even region are soft preferences, not invariants; the UI flags mismatches).
 export async function assignProxyManually({
   orderId, proxyIds, actor,
-}: { orderId: string; proxyIds: string[]; actor: Actor }) {
+}: { orderId: string; proxyIds: string[] | null; actor: Actor }) {
   return prisma.$transaction(async tx => {
+    // Serialize concurrent assigns to the SAME order: the deficit is computed
+    // from the open-assignment count, and two READ-COMMITTED transactions each
+    // reading it before the other commits could jointly over-fill past qty with
+    // different proxies (the partial unique index only blocks the same proxy
+    // twice). A row lock makes the second assign wait and re-read the true count.
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
     const ord = await tx.order.findUnique({
       where: { id: orderId },
       include: { plan: true, assignments: { where: { releasedAt: null } } },
@@ -523,19 +534,54 @@ export async function assignProxyManually({
     }
 
     const now = new Date();
-    const ids = await newAssignmentIds(tx, proxyIds.length);
-    for (let i = 0; i < proxyIds.length; i++) {
-      const pid = proxyIds[i];
+    const deficit = ord.qty - ord.assignments.length;
+    if (deficit <= 0) throw new Error('Order already has its full proxy count');
+
+    let picked: string[];
+    let autoMode = false;
+    if (proxyIds === null) {
+      // Auto: in-tx pool-first pick, capped at the deficit — never over-fills,
+      // never races a stale prefetched list.
+      autoMode = true;
+      const found = await tx.proxy.findMany({
+        where: { carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
+        take: deficit, select: { id: true },
+      });
+      if (found.length < deficit) {
+        const more = await tx.proxy.findMany({
+          where: { carrier: ord.plan.carrier, region: ord.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: found.map(c => c.id) } },
+          take: deficit - found.length, select: { id: true },
+        });
+        found.push(...more);
+      }
+      if (found.length === 0) {
+        throw new Error(`No available healthy proxies match ${ord.plan.carrier} · ${ord.region} — pick one manually or register more`);
+      }
+      picked = found.map(c => c.id);
+    } else {
+      picked = [...new Set(proxyIds)];
+      if (picked.length === 0) throw new Error('Pick at least one proxy');
+      if (picked.length > deficit) {
+        throw new Error(`Order only needs ${deficit} more ${deficit === 1 ? 'proxy' : 'proxies'}`);
+      }
+    }
+
+    const ids = await newAssignmentIds(tx, picked.length);
+    for (let i = 0; i < picked.length; i++) {
+      const pid = picked[i];
       const p = await tx.proxy.findUnique({ where: { id: pid } });
       if (!p) throw new Error(`Proxy ${pid} not found`);
       if (p.status !== 'AVAILABLE') throw new Error(`Proxy ${pid} is ${p.status}`);
+      // AVAILABLE⟹HEALTHY is an invariant (PR #104), but assignment makes the
+      // proxy client-visible — check explicitly rather than lean on it.
+      if (p.health !== 'HEALTHY') throw new Error(`Proxy ${pid} is ${p.health} — heal it before assigning`);
       await tx.assignment.create({
         data: { id: ids[i], orderId, proxyId: pid, actorId: actor.id, assignedAt: now },
       });
       await tx.proxy.update({ where: { id: pid }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
     }
 
-    const currentlyAssigned = ord.assignments.length + proxyIds.length;
+    const currentlyAssigned = ord.assignments.length + picked.length;
     const fullyAssigned = currentlyAssigned >= ord.qty;
     if (fullyAssigned) {
       await tx.order.update({
@@ -548,16 +594,21 @@ export async function assignProxyManually({
           expiresAt: ord.expiresAt ?? new Date(now.getTime() + ord.plan.durationDays * 86_400_000),
           credentialsSentAt: ord.credentialsSentAt ?? now,
           credentialsChannel: ord.credentialsChannel ?? null,
-          exception: ord.exception === 'PAID_NOT_PROVISIONED' ? null : ord.exception,
-          excInfo: ord.exception === 'PAID_NOT_PROVISIONED' ? null : ord.excInfo,
         },
       });
       await notify(tx, ord.clientId, `Your proxies for ${orderId} are ready`, 'SUCCESS', `/orders/${orderId}`);
     }
+    // One reconciler for the exception + excInfo, full or partial: it recounts
+    // SERVING assignments vs qty, so a partial top-up refreshes the stale
+    // "0/N provisioned" fraction, a full one clears PAID_NOT_PROVISIONED *and*
+    // REPLACEMENT_PENDING (the old inline clear handled only PNP and never
+    // updated excInfo on partial assigns), and a full-but-one-slot-FAULTY
+    // order stays flagged — consistent with the deficit widget's math.
+    await refreshProvisionException(tx, orderId);
 
     await log(tx, actor.id, 'PROXY.ASSIGN', 'ORDER', orderId,
-      `Manually assigned ${proxyIds.length} ${proxyIds.length === 1 ? 'proxy' : 'proxies'} · [${proxyIds.join(', ')}]`);
-    return { ok: true, fullyAssigned };
+      `${autoMode ? 'Auto-assigned' : 'Manually assigned'} ${picked.length} ${picked.length === 1 ? 'proxy' : 'proxies'} · [${picked.join(', ')}]${autoMode ? ' · pool-first' : ''}`);
+    return { ok: true, fullyAssigned, assigned: picked };
   });
 }
 
@@ -612,18 +663,32 @@ export async function markCredentialsDelivered({ orderId, actor }: { orderId: st
 // is not actually carrying traffic, so it must count toward the deficit.
 const SERVING_PROXY = { status: { not: 'FAULTY' as const }, health: { not: 'OFFLINE' as const } };
 
+// A REPLACEMENT_PENDING raised by the CLIENT (clientRequestReplacement) carries
+// a specific reason in excInfo and is NOT a deficit signal — the requested
+// proxy is still attached. The deficit reconciler must leave it entirely alone
+// (topping up an unrelated empty slot, a sweep backfill, or a heal must not
+// silently erase the client's request); it is resolved only by the admin's
+// Replace (which clears it explicitly).
+const CLIENT_REQUEST_PREFIX = 'Client requested replacement';
+
 export async function refreshProvisionException(tx: Tx, orderId: string): Promise<{ qty: number; live: number; deficit: number } | null> {
-  const o = await tx.order.findUnique({ where: { id: orderId }, select: { qty: true, status: true, exception: true } });
+  const o = await tx.order.findUnique({ where: { id: orderId }, select: { qty: true, status: true, exception: true, excInfo: true } });
   if (!o) return null;
   const live = await tx.assignment.count({ where: { orderId, releasedAt: null, proxy: SERVING_PROXY } });
   const deficit = o.qty - live;
+  const isClientRequest = o.exception === 'REPLACEMENT_PENDING' && (o.excInfo ?? '').startsWith(CLIENT_REQUEST_PREFIX);
+  if (isClientRequest) return { qty: o.qty, live, deficit }; // owned by the Replace flow, not the deficit reconciler
   const isUnderExc = o.exception === null || o.exception === 'REPLACEMENT_PENDING' || o.exception === 'PAID_NOT_PROVISIONED';
   const active = o.status === 'ACTIVE' || o.status === 'PROVISIONING';
   if (deficit > 0 && active) {
     if (isUnderExc) {
       // Preserve the never-provisioned type; otherwise flag replacement pending.
       const exc: OrderException = o.exception === 'PAID_NOT_PROVISIONED' ? 'PAID_NOT_PROVISIONED' : 'REPLACEMENT_PENDING';
-      await tx.order.update({ where: { id: orderId }, data: { exception: exc, excInfo: `${live}/${o.qty} proxies attached — replacement pending` } });
+      // Honest suffix per type — a partially-assigned PNP order renders under
+      // the "Paid but not provisioned" banner, where "replacement pending"
+      // read wrong.
+      const suffix = exc === 'PAID_NOT_PROVISIONED' ? 'provisioning incomplete' : 'replacement pending';
+      await tx.order.update({ where: { id: orderId }, data: { exception: exc, excInfo: `${live}/${o.qty} proxies attached — ${suffix}` } });
     }
   } else if (deficit <= 0 && (o.exception === 'REPLACEMENT_PENDING' || o.exception === 'PAID_NOT_PROVISIONED')) {
     await tx.order.update({ where: { id: orderId }, data: { exception: null, excInfo: null } });
@@ -756,7 +821,19 @@ export async function markProxyFaulty({
 // released back to the pool and a new AVAILABLE+HEALTHY proxy takes its slot,
 // so the order's live count is unchanged and the client gets new credentials.
 // Pool-first: exact carrier+region+pool, then carrier+region.
-export async function replaceProxy({ orderId, proxyId, actor }: { orderId: string; proxyId: string; actor: Actor }) {
+// newProxyId picks a SPECIFIC replacement (admin override — any AVAILABLE
+// healthy proxy, pool/region are soft preferences); omitted ⇒ auto pool-first
+// pick as before. reason is the admin's replacement reason — it lands in the
+// released assignment's reasonDetail and the audit log (NOT in client-facing
+// notifications: the client sees the swap, not the internal cause).
+export async function replaceProxy({ orderId, proxyId, actor, newProxyId, reason }: {
+  orderId: string; proxyId: string; actor: Actor; newProxyId?: string; reason?: string;
+}) {
+  // Required reason (owner rule) — enforced at the server, not only in the
+  // modal, so no direct action call can skip it. Trimmed + capped to match the
+  // clientRequestReplacement precedent.
+  const cleanReason = (reason ?? '').trim().slice(0, 100);
+  if (!cleanReason) throw new Error('A replacement reason is required');
   const outbox: { chatId: string | null; text: string }[] = [];
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const result = await prisma.$transaction(async tx => {
@@ -770,20 +847,41 @@ export async function replaceProxy({ orderId, proxyId, actor }: { orderId: strin
     if (!assignment) throw new Error('That proxy is not currently assigned to this order');
     const old = assignment.proxy;
     const ord = assignment.order;
+    // Capture whether this order carried a client-raised replacement request:
+    // the deficit reconciler now leaves those alone, so the admin's Replace
+    // (the resolution) must clear it explicitly below.
+    const wasClientRequest = ord.exception === 'REPLACEMENT_PENDING' && (ord.excInfo ?? '').startsWith(CLIENT_REQUEST_PREFIX);
+    // Server-side status gate (was UI-only): the bulk bar could reach a
+    // suspended/expired order's stray open assignment.
+    if (!['ACTIVE', 'PROVISIONING'].includes(ord.status)) {
+      throw new Error(`Cannot replace a proxy on a ${ord.status.toLowerCase()} order`);
+    }
 
-    const pick = async (where: any) => tx.proxy.findFirst({
-      where: { ...where, status: 'AVAILABLE', health: 'HEALTHY', id: { not: proxyId } },
-    });
-    const candidate =
-      (await pick({ carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool })) ??
-      (await pick({ carrier: ord.plan.carrier, region: ord.region }));
-    if (!candidate) throw new Error(`No healthy proxy available in ${ord.plan.carrier} · ${ord.region} to replace ${proxyId}`);
+    let candidate;
+    if (newProxyId) {
+      if (newProxyId === proxyId) throw new Error('Replacement must be a different proxy');
+      const p = await tx.proxy.findUnique({ where: { id: newProxyId } });
+      if (!p) throw new Error(`Proxy ${newProxyId} not found`);
+      if (p.status !== 'AVAILABLE') throw new Error(`Proxy ${newProxyId} is ${p.status}`);
+      if (p.health !== 'HEALTHY') throw new Error(`Proxy ${newProxyId} is ${p.health} — a replacement must be healthy`);
+      candidate = p;
+    } else {
+      const pick = async (where: any) => tx.proxy.findFirst({
+        where: { ...where, status: 'AVAILABLE', health: 'HEALTHY', id: { not: proxyId } },
+      });
+      candidate =
+        (await pick({ carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool })) ??
+        (await pick({ carrier: ord.plan.carrier, region: ord.region }));
+      if (!candidate) throw new Error(`No healthy proxy available in ${ord.plan.carrier} · ${ord.region} to replace ${proxyId} — pick one manually from another pool`);
+    }
 
     const now = new Date();
-    // Release the old proxy back to the pool with security-reset markers.
+    // Release the old proxy back to the pool with security-reset markers. The
+    // machine-generated "Replaced by X" prefix stays — the history table's
+    // old→new linkage reads it; the human reason is appended after it.
     await tx.assignment.update({
       where: { id: assignment.id },
-      data: { releasedAt: now, reason: 'REPLACEMENT', reasonDetail: `Replaced by ${candidate.id}` },
+      data: { releasedAt: now, reason: 'REPLACEMENT', reasonDetail: `Replaced by ${candidate.id} — ${cleanReason}` },
     });
     await tx.proxy.update({
       where: { id: proxyId },
@@ -797,6 +895,15 @@ export async function replaceProxy({ orderId, proxyId, actor }: { orderId: strin
     await tx.proxy.update({ where: { id: candidate.id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
 
     await refreshProvisionException(tx, orderId);
+    // A client-raised replacement request is resolved by this Replace — the
+    // reconciler leaves it alone, so clear it here (unless a real deficit still
+    // flags the order through the reconciler above).
+    if (wasClientRequest) {
+      const still = await tx.order.findUnique({ where: { id: orderId }, select: { exception: true, excInfo: true } });
+      if (still?.exception === 'REPLACEMENT_PENDING' && (still.excInfo ?? '').startsWith(CLIENT_REQUEST_PREFIX)) {
+        await tx.order.update({ where: { id: orderId }, data: { exception: null, excInfo: null } });
+      }
+    }
     await notify(tx, ord.clientId,
       `A proxy on order ${orderId} was replaced — ${candidate.id} is ready with fresh credentials`,
       'SUCCESS', `/orders/${orderId}`);
@@ -808,7 +915,8 @@ export async function replaceProxy({ orderId, proxyId, actor }: { orderId: strin
         [`A proxy on order <strong>${orderId}</strong> was replaced — <strong>${candidate.id}</strong> is ready with fresh credentials in your portal.`],
         `/orders/${orderId}`, 'View order') });
     }
-    await log(tx, actor.id, 'PROXY.REPLACE', 'PROXY', proxyId, `Replaced with ${candidate.id} on order ${orderId} · old proxy released to pool`);
+    await log(tx, actor.id, 'PROXY.REPLACE', 'PROXY', proxyId,
+      `Replaced with ${candidate.id} on order ${orderId} · old proxy released to pool · reason: ${cleanReason}${newProxyId ? ' · picked manually' : ''}`);
     return { ok: true as const, replacement: candidate.id, released: proxyId };
   });
   for (const m of outbox) await sendTelegram(m.chatId, m.text);

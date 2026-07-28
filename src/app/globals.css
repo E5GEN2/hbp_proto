@@ -1838,6 +1838,12 @@ a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
   overflow-wrap: anywhere; word-break: break-word;
 }
 .dt-proxies td.col-status { white-space: nowrap; overflow: visible; text-overflow: clip; }
+/* Atomic id columns (Proxy ID, Assigned-to order) hold short single-token
+   identifiers — never show the "…" truncation dots next to the checkbox
+   (owner P1 follow-up 2026-07-28). At normal widths they fit fully; the
+   proper per-column width sizing is part of the Phase-2 table overhaul. */
+.dt-proxies td.col-chk, .dt-proxies td.col-id,
+.dt-proxies th.col-chk, .dt-proxies th.col-id { text-overflow: clip; }
 
 /* Slim canon scrollbar (prototype §.content / .timeline.activity-scroll: 6px,
    transparent track, --border thumb, 3px radius). The app had only styled

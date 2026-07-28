@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
 import { FormSelect } from '@/components/ui/FormSelect';
+import { recordNav } from '@/lib/nav-history';
 
 export type ProxyRow = {
   id: string;
@@ -20,10 +21,11 @@ export type ProxyRow = {
   port: number;
   username: string;
   password: string;
+  rotationUrl: string | null;
 };
 
 type Format = 'ip:port:user:pass' | 'user:pass@ip:port' | 'json' | 'csv';
-type Proto = 'http' | 'socks5';
+type Proto = 'socks5' | 'http';
 
 const PAGE_SIZE = 10;
 /* Flexible .dt column width = applyDtAnchors() done in pure CSS:
@@ -32,7 +34,6 @@ const PAGE_SIZE = 10;
 const FLEX = (w: number) => `calc(100% * ${w} / 19)`;
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
-const fmtAutoRotate = (m: number) => (m ? `${m} min` : '—');
 
 const FORMATS: Format[] = ['ip:port:user:pass', 'user:pass@ip:port', 'json', 'csv'];
 const FORMAT_LABEL: Record<Format, string> = {
@@ -42,27 +43,36 @@ const FORMAT_LABEL: Record<Format, string> = {
   csv: 'CSV',
 };
 
-function formatExport(proxies: ProxyRow[], format: Format, proto: Proto): string {
-  const portOf = (p: ProxyRow) => (proto === 'socks5' ? p.port + 1000 : p.port);
+// includeUrl appends each proxy's IP-rotation URL (when it has one) on its own
+// line under the credentials — for the string forms — or as a field for
+// json/csv. Owner ask: the rotation URL is what a client actually acts on.
+function formatExport(proxies: ProxyRow[], format: Format, proto: Proto, includeUrl: boolean): string {
+  // Same port for both protocols — only the scheme prefix differs (owner:
+  // the real credentials are identical for HTTP and SOCKS5).
+  const portOf = (p: ProxyRow) => p.port;
+  const urlTail = (p: ProxyRow) => (includeUrl && p.rotationUrl ? `\n${p.rotationUrl}` : '');
   if (format === 'ip:port:user:pass')
-    return proxies.map(p => `${proto}://${p.ip}:${portOf(p)}:${p.username}:${p.password}`).join('\n');
+    return proxies.map(p => `${proto}://${p.ip}:${portOf(p)}:${p.username}:${p.password}${urlTail(p)}`).join('\n');
   if (format === 'user:pass@ip:port')
-    return proxies.map(p => `${proto}://${p.username}:${p.password}@${p.ip}:${portOf(p)}`).join('\n');
+    return proxies.map(p => `${proto}://${p.username}:${p.password}@${p.ip}:${portOf(p)}${urlTail(p)}`).join('\n');
   if (format === 'json')
     return JSON.stringify(
-      proxies.map(p => ({ id: p.id, protocol: proto, ip: p.ip, port: portOf(p), username: p.username, password: p.password, carrier: p.carrier, region: p.region })),
-      null,
-      2,
+      proxies.map(p => ({
+        id: p.id, protocol: proto, ip: p.ip, port: portOf(p), username: p.username, password: p.password,
+        carrier: p.carrier, region: p.region, ...(includeUrl ? { rotationUrl: p.rotationUrl ?? null } : {}),
+      })),
+      null, 2,
     );
-  return ['id,protocol,ip,port,username,password,carrier,region']
-    .concat(proxies.map(p => [p.id, proto, p.ip, portOf(p), p.username, p.password, p.carrier, p.region].join(',')))
+  const header = ['id', 'protocol', 'ip', 'port', 'username', 'password', 'carrier', 'region', ...(includeUrl ? ['rotationUrl'] : [])];
+  return [header.join(',')]
+    .concat(proxies.map(p => [p.id, proto, p.ip, portOf(p), p.username, p.password, p.carrier, p.region, ...(includeUrl ? [p.rotationUrl ?? ''] : [])].join(',')))
     .join('\n');
 }
 
-export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
+export function ProxiesList({ rows, initialSearch = '', initialCarrier = '' }: { rows: ProxyRow[]; initialSearch?: string; initialCarrier?: string }) {
   const toast = useToast();
-  const [search, setSearch] = useState('');
-  const [carrier, setCarrier] = useState('');
+  const [search, setSearch] = useState(initialSearch);
+  const [carrier, setCarrier] = useState(initialCarrier);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -70,7 +80,15 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
   const [exportSubject, setExportSubject] = useState<ProxyRow[] | null>(null);
   const [exportContext, setExportContext] = useState('');
   const [fmt, setFmt] = useState<Format>('ip:port:user:pass');
-  const [proto, setProto] = useState<Proto>('http');
+  const [proto, setProto] = useState<Proto>('socks5');
+  // Opt-in (owner: "a button that ADDS the rotation URL"). Off by default keeps
+  // the string forms one-proxy-per-line for importers; clicking adds the URL
+  // on its own line under each credential line.
+  const [includeUrl, setIncludeUrl] = useState(false);
+
+  // Carrier options come from the client's OWN proxies (which are admin-
+  // provisioned from the catalog) — no hard-coded phantom carriers. Sorted.
+  const carriers = useMemo(() => [...new Set(rows.map(r => r.carrier))].sort(), [rows]);
 
   const filtered = useMemo(
     () =>
@@ -85,6 +103,22 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
       }),
     [rows, carrier, search],
   );
+
+  // Persist search/carrier to the URL + the nav-history stack so the backlink
+  // returns to /proxies WITH the filters intact — a client can search an order,
+  // drill into a proxy/order, and come back to the same filtered view (owner
+  // ask). history.replaceState keeps it client-side (no server round-trip per
+  // keystroke); recordNav refreshes the stack top since NavBacklink's effect
+  // doesn't re-run on a query-only change.
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (search) sp.set('q', search);
+    if (carrier) sp.set('carrier', carrier);
+    const qs = sp.toString();
+    const url = `/proxies${qs ? `?${qs}` : ''}`;
+    window.history.replaceState(window.history.state, '', url);
+    recordNav(url, 'Proxies');
+  }, [search, carrier]);
 
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -113,28 +147,17 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
   const selCount = selected.size;
   const selectedProxies = () => rows.filter(p => selected.has(p.id));
 
-  function bulkRotate() {
-    const ps = selectedProxies();
-    if (!ps.length) return;
-    toast('Rotation complete', `${ps.length} ${ps.length === 1 ? 'proxy has' : 'proxies have'} fresh IPs.`, 'success');
-  }
   async function bulkCopyCreds() {
     const ps = selectedProxies();
     if (!ps.length) return;
-    const text = formatExport(ps, 'ip:port:user:pass', 'http');
+    // Owner ask: copy the selected proxies' credentials AND their rotation URLs.
+    const text = formatExport(ps, 'ip:port:user:pass', 'socks5', true);
     try {
       await navigator.clipboard.writeText(text);
-      toast('Copied credentials', `${ps.length} ${ps.length === 1 ? 'proxy' : 'proxies'}`, 'success');
+      toast('Copied credentials', `${ps.length} ${ps.length === 1 ? 'proxy' : 'proxies'} · with rotation URL`, 'success');
     } catch {
       toast('Copy failed', 'Clipboard unavailable', 'danger');
     }
-  }
-  function bulkHealthCheck() {
-    const ps = selectedProxies();
-    if (!ps.length) return;
-    const issues = ps.filter(p => p.health !== 'healthy').length;
-    if (issues > 0) toast('Health check complete', `${issues} of ${ps.length} ${issues === 1 ? 'proxy needs' : 'proxies need'} attention.`, 'warning');
-    else toast('Health check complete', `All ${ps.length} ${ps.length === 1 ? 'proxy is' : 'proxies are'} healthy.`, 'success');
   }
 
   function openExport(subject: ProxyRow[], context: string) {
@@ -145,11 +168,12 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
     setExportSubject(subject);
     setExportContext(context);
     setFmt('ip:port:user:pass');
-    setProto('http');
+    setProto('socks5');
+    setIncludeUrl(false);
   }
   async function copyExport() {
     if (!exportSubject) return;
-    const text = formatExport(exportSubject, fmt, proto);
+    const text = formatExport(exportSubject, fmt, proto, effectiveIncludeUrl);
     try {
       await navigator.clipboard.writeText(text);
       toast('Copied to clipboard', `Exported as ${proto.toUpperCase()} · ${fmt}`, 'success');
@@ -157,6 +181,11 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
       toast('Copy failed', 'Clipboard unavailable', 'danger');
     }
   }
+
+  const anyRotationUrl = exportSubject?.some(p => p.rotationUrl) ?? false;
+  // Never add an all-null rotationUrl field/column to json/csv when the subject
+  // has no URLs (the string forms are already per-row gated on p.rotationUrl).
+  const effectiveIncludeUrl = includeUrl && anyRotationUrl;
 
   return (
     <>
@@ -183,19 +212,14 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
             setCarrier(v);
             setPage(1);
           }}
-          options={[
-            { value: '', label: 'All carriers' },
-            { value: 'Verizon' },
-            { value: 'T-Mobile' },
-            { value: 'AT&T' },
-          ]}
+          options={[{ value: '', label: 'All carriers' }, ...carriers.map(c => ({ value: c }))]}
         />
         <div className="filter-divider" />
         <button className="btn" onClick={resetFilters}>
           Reset filters
         </button>
         <div className="filter-spacer" />
-        <button className="btn" onClick={() => openExport(rows, 'all')}>
+        <button className="btn" onClick={() => openExport(filtered, search || carrier ? 'filtered' : 'all')}>
           <svg viewBox="0 0 24 24">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
           </svg>
@@ -212,27 +236,20 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
       {/* Bulk-select bar */}
       <div className={`bulk-bar ${selCount > 0 ? 'visible' : ''}`}>
         <div className="bulk-summary">
-          <span className="chk checked" />
           <span>
             <span>{selCount}</span> selected
           </span>
         </div>
         <div className="bulk-actions">
-          <button className="btn sm" onClick={bulkRotate}>
-            Rotate
-          </button>
           <button className="btn sm" onClick={bulkCopyCreds}>
             Copy credentials
-          </button>
-          <button className="btn sm" onClick={bulkHealthCheck}>
-            Run health check
           </button>
         </div>
       </div>
 
       {/* Table */}
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt dt-proxies">
           <colgroup>
             <col style={{ width: 64 }} />
             <col style={{ width: 'var(--anchor-id)' }} />
@@ -285,12 +302,16 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
                       {p.orderId}
                     </Link>
                   </td>
-                  <td className="col-text muted">
-                    <span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span>
-                  </td>
-                  <td className="col-text muted center">{fmtAutoRotate(p.autoRotateMin)}</td>
-                  <td className="col-text muted center">{p.health === 'offline' ? '—' : `${Math.round(p.uptime ?? 0)}%`}</td>
-                  <td className="col-text muted center">{p.health === 'offline' ? '—' : `${p.speedMbps ?? 0} Mbps`}</td>
+                  <td className="col-text muted">{p.carrier} · {p.region}</td>
+                  {/* Auto rotation / Uptime / Speed show a dash until real
+                      telemetry lands (owner decision, Phase-2 backlog) — there
+                      is no live data behind these columns yet. Health stays a
+                      live chip: it is an operator-set status (Mark faulty /
+                      Maintenance / sweep), not telemetry (owner: live statuses
+                      must show). */}
+                  <td className="col-text muted center">—</td>
+                  <td className="col-text muted center">—</td>
+                  <td className="col-text muted center">—</td>
                   <td className="col-status">
                     {p.underMaintenance
                       ? <span className="chip maintenance" data-tip="This proxy is under scheduled maintenance — service may be briefly interrupted.">Maintenance</span>
@@ -350,11 +371,11 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
         <div className="export-row">
           <span className="export-label">Protocol</span>
           <div className="export-proto-group">
-            <button className={`export-proto ${proto === 'http' ? 'active' : ''}`} onClick={() => setProto('http')}>
-              HTTP
-            </button>
             <button className={`export-proto ${proto === 'socks5' ? 'active' : ''}`} onClick={() => setProto('socks5')}>
               SOCKS5
+            </button>
+            <button className={`export-proto ${proto === 'http' ? 'active' : ''}`} onClick={() => setProto('http')}>
+              HTTP
             </button>
           </div>
         </div>
@@ -368,7 +389,18 @@ export function ProxiesList({ rows }: { rows: ProxyRow[] }) {
             ))}
           </div>
         </div>
-        <pre className="export-preview">{exportSubject ? formatExport(exportSubject, fmt, proto) : ''}</pre>
+        <div className="export-row">
+          <span className="export-label">Rotation URL</span>
+          <button
+            className={`export-proto ${effectiveIncludeUrl ? 'active' : ''}`}
+            onClick={() => setIncludeUrl(v => !v)}
+            disabled={!anyRotationUrl}
+            title={anyRotationUrl ? '' : 'None of these proxies has a rotation URL'}
+          >
+            {!anyRotationUrl ? 'No rotation URL' : includeUrl ? 'Included' : 'Add IP rotation URL'}
+          </button>
+        </div>
+        <pre className="export-preview">{exportSubject ? formatExport(exportSubject, fmt, proto, effectiveIncludeUrl) : ''}</pre>
       </Modal>
     </>
   );

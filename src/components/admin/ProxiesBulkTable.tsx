@@ -100,7 +100,7 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
       </div>
 
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt dt-proxies">
           <colgroup>
             <col style={{ width: 64 }} />
             <col style={{ width: 168 }} />
@@ -112,7 +112,7 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
             <col style={{ width: FLEX(2) }} />
             <col style={{ width: FLEX(2) }} />
             <col style={{ width: FLEX(3) }} />
-            <col style={{ width: 110 }} />{/* Status — fixed anchor so the chip never clips (audit D-7) */}
+            <col style={{ width: 128 }} />{/* Status — fixed anchor, wide enough that the widest chip (Maintenance) never clips (owner P1) */}
           </colgroup>
           <thead><tr>
             <th className="col-chk"></th>

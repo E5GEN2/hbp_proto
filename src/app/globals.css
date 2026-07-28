@@ -1821,6 +1821,24 @@ a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
 .table-wrap.dt-scroll::-webkit-scrollbar-track { background: transparent; }
 .table-wrap.dt-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+/* ── Proxies tables (both portals) — owner P1 (2026-07-28) ──────────────────
+   Kill the ellipsis "…" truncation. Text columns WRAP to their full value
+   (Carrier·Region, Pool, Credentials, Hardware ID); atomic columns (chk / id /
+   status chip / numeric / date) hold short fixed content and simply never
+   clip. The systematic column-layout overhaul across all tables is a separate
+   Phase-2 task. */
+/* Prose text columns (Carrier·Region, Pool) wrap to their full value. Mono
+   columns (Credentials, Hardware ID — .td-mono) are excluded: a
+   host:port:login:password blob wraps badly mid-token, so those keep the
+   canon ellipsis + hover tooltip (TipFloater) and are part of the deferred
+   Phase-2 table-layout overhaul instead. */
+.dt-proxies td.col-text:not(.td-mono) { white-space: normal; }
+.dt-proxies td.col-text:not(.td-mono) .cell-tip {
+  display: block; white-space: normal; overflow: visible; text-overflow: clip;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.dt-proxies td.col-status { white-space: nowrap; overflow: visible; text-overflow: clip; }
+
 /* Slim canon scrollbar (prototype §.content / .timeline.activity-scroll: 6px,
    transparent track, --border thumb, 3px radius). The app had only styled
    .table-wrap.dt-scroll, so activity feeds and the main scroll fell back to the

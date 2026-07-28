@@ -24,7 +24,8 @@ const FORMATS: { key: Format; label: string }[] = [
 
 // Mirrors the canon formatProxiesExport (proto:// prefix on the string forms).
 function formatExport(proxies: Proxy[], format: Format, proto: Protocol): string {
-  const portOf = (p: Proxy) => (proto === 'socks5' ? p.port + 1000 : p.port);
+  // Same port for both protocols — only the scheme prefix differs.
+  const portOf = (p: Proxy) => p.port;
   if (format === 'ip:port:user:pass') return proxies.map(p => `${proto}://${p.ip}:${portOf(p)}:${p.username}:${p.password}`).join('\n');
   if (format === 'user:pass@ip:port') return proxies.map(p => `${proto}://${p.username}:${p.password}@${p.ip}:${portOf(p)}`).join('\n');
   if (format === 'json') return JSON.stringify(proxies.map(p => ({ id: p.id, protocol: proto, ip: p.ip, port: portOf(p), username: p.username, password: p.password, carrier: p.carrier, region: p.region })), null, 2);
@@ -35,7 +36,7 @@ function formatExport(proxies: Proxy[], format: Format, proto: Protocol): string
 
 export function CredentialsBlock({ proxies }: { proxies: Proxy[] }) {
   const toast = useToast();
-  const [protocol, setProtocol] = useState<Protocol>('http');
+  const [protocol, setProtocol] = useState<Protocol>('socks5');
   const [format, setFormat] = useState<Format>('ip:port:user:pass');
 
   const preview = formatExport(proxies, format, protocol);
@@ -56,8 +57,8 @@ export function CredentialsBlock({ proxies }: { proxies: Proxy[] }) {
         <div className="export-row">
           <span className="export-label">Protocol</span>
           <div className="export-proto-group">
-            <button className={`export-proto ${protocol === 'http' ? 'active' : ''}`} onClick={() => setProtocol('http')}>HTTP</button>
             <button className={`export-proto ${protocol === 'socks5' ? 'active' : ''}`} onClick={() => setProtocol('socks5')}>SOCKS5</button>
+            <button className={`export-proto ${protocol === 'http' ? 'active' : ''}`} onClick={() => setProtocol('http')}>HTTP</button>
           </div>
         </div>
         <div className="export-row">

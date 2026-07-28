@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { ProxiesList, type ProxyRow } from '@/components/client/ProxiesList';
 
-export default async function ClientProxiesPage() {
+export default async function ClientProxiesPage({ searchParams }: { searchParams: { q?: string; carrier?: string } }) {
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });
@@ -32,6 +32,7 @@ export default async function ClientProxiesPage() {
       port: a.proxy.port,
       username: a.proxy.username,
       password: a.proxy.password,
+      rotationUrl: a.proxy.rotationUrl,
     }))
     .sort((x, y) => x.id.localeCompare(y.id));
 
@@ -44,7 +45,7 @@ export default async function ClientProxiesPage() {
             <div className="panel-header">
               <span className="panel-title">Proxies</span>
             </div>
-            <ProxiesList rows={rows} />
+            <ProxiesList rows={rows} initialSearch={searchParams.q ?? ''} initialCarrier={searchParams.carrier ?? ''} />
           </div>
         </div>
       </main>

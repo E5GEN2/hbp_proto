@@ -80,7 +80,7 @@ export function ClientProxyHeaderActions({
         </>}
       >
         <div className="t-body" style={{ marginBottom: 12 }}>
-          We&rsquo;ll swap this proxy for a healthy one from the same pool. The replacement keeps your order active and shows up here automatically.
+          We&rsquo;ll swap this proxy for a fresh healthy one. The replacement keeps your order active and shows up here automatically.
         </div>
         <label className="form-label">What went wrong?</label>
         <FormSelect

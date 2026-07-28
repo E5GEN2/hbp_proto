@@ -5,6 +5,7 @@ import * as A from '@/lib/ui-actions/admin-actions';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
+import { ReplaceProxyModal } from './modals/ReplaceProxyModal';
 import { MarkPaidModal } from './modals/MarkPaidModal';
 import { RefundModal } from './modals/RefundModal';
 import { MarkFaultyModal } from './modals/MarkFaultyModal';
@@ -107,21 +108,6 @@ export function ExtendButton({
         currentDuration={currentDuration}
         currentExpiry={currentExpiry ?? null}
       />
-    </>
-  );
-}
-
-// P1-3: honest label — this records that the admin delivered credentials
-// out-of-band; nothing is auto-sent (real dispatch is a Phase-2 pipeline).
-export function MarkDeliveredButton({ orderId }: { orderId: string }) {
-  const toast = useToast();
-  const { call, pending, err } = useAction(A.markCredentialsDeliveredAction);
-  return (
-    <>
-      <button className="btn primary" onClick={async () => { try { await call(orderId); toast('Marked as delivered', orderId, 'success'); } catch {} }} disabled={pending}>
-        {pending ? '…' : 'Mark as delivered'}
-      </button>
-      {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
     </>
   );
 }
@@ -250,30 +236,15 @@ export function ReleaseProxyButton({ proxyId }: { proxyId: string }) {
   );
 }
 
+// Owner revision (admin review 2026-07-28): the yes/no confirm became a full
+// modal — auto-or-specific replacement pick (pool visible, cross-pool allowed)
+// plus a REQUIRED replacement reason. See ReplaceProxyModal.
 export function ReplaceProxyButton({ proxyId, orderId }: { proxyId: string; orderId: string }) {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
-  const toast = useToast();
   return (
     <>
       <button className="btn" onClick={() => setOpen(true)}>Replace</button>
-      <ConfirmAction
-        open={open} onClose={() => setOpen(false)}
-        title="Replace proxy"
-        entityLabel={`Proxy · ${proxyId}`}
-        message={`Swap ${proxyId} on order ${orderId} for a fresh healthy proxy from the same pool.`}
-        impact={[
-          'This proxy is released back to the pool (credentials rotated)',
-          'A new AVAILABLE proxy takes its slot on the order',
-          'The client is notified and gets the new credentials',
-        ]}
-        confirmLabel="Replace"
-        onConfirm={async () => {
-          const r = await A.replaceProxyAction(orderId, proxyId);
-          toast('Proxy replaced', `${proxyId} → ${r.replacement}`, 'success');
-          router.refresh();
-        }}
-      />
+      <ReplaceProxyModal open={open} onClose={() => setOpen(false)} orderId={orderId} proxyId={proxyId} />
     </>
   );
 }

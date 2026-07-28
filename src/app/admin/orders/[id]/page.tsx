@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, MarkDeliveredButton, ReplaceProxyButton, RefundButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -53,17 +53,19 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   });
   if (!order) notFound();
 
-  // Proxies still needed + prefetch candidates for the Assign modal
+  // Proxies still needed. The gate mirrors the server's paid set
+  // (PAID/CONFIRMED/FREE — the old `=== 'PAID'` hid the button on
+  // crypto-CONFIRMED orders); candidates load on modal open, in two groups
+  // (plan-matching + explicit any-pool override), via listAssignCandidatesAction.
   const activeAssignments = order.assignments.filter(a => a.releasedAt === null).length;
   const qtyNeeded = Math.max(0, order.qty - activeAssignments);
-  const showAssign = (qtyNeeded > 0 && order.paymentStatus === 'PAID') || order.exception === 'PAID_NOT_PROVISIONED';
+  const isPaidSet = ['PAID', 'CONFIRMED', 'FREE'].includes(order.paymentStatus);
+  // Gate purely on the RAW open-slot deficit (assignProxyManually's own metric).
+  // The old `|| exception === PAID_NOT_PROVISIONED` disjunct opened a dead-end
+  // Assign at qtyNeeded=0 (all slots filled but one FAULTY → PNP preserved by
+  // the reconciler) — that case wants Replace, not Assign.
+  const showAssign = qtyNeeded > 0 && isPaidSet;
   const wasPaid = order.paymentStatus === 'PAID' || order.paymentStatus === 'CONFIRMED';
-
-  const candidates = showAssign ? await prisma.proxy.findMany({
-    where: { carrier: order.plan.carrier, region: order.region, status: 'AVAILABLE', health: 'HEALTHY' },
-    take: 20,
-    orderBy: [{ pool: 'asc' }, { id: 'asc' }],
-  }) : [];
 
   // Resolve assignment actor names (actorId has no FK relation).
   const actorIds = [...new Set(order.assignments.map(a => a.actorId).filter(Boolean))] as string[];
@@ -128,7 +130,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   if (credsSent) {
     steps.push({ name: 'Activation', state: 'done', meta: `${fmtAdminStamp(order.credentialsSentAt)} · ${credsMeta}`, mode: fulfilMode });
   } else if (hasProxy) {
-    steps.push({ name: 'Activation', state: 'current', meta: (autoOn && !manualMode) ? 'Publishing credentials to portal…' : 'Manual required — deliver credentials, then Mark as delivered', mode: fulfilMode });
+    steps.push({ name: 'Activation', state: 'current', meta: (autoOn && !manualMode) ? 'Publishing credentials to portal…' : 'Manual required — hand the credentials to the client out-of-band', mode: fulfilMode });
   } else {
     steps.push({ name: 'Activation', state: 'pending', meta: 'Awaiting proxy', mode: fulfilMode });
   }
@@ -171,7 +173,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     if (!cur) { nextTone = 'completed'; nextLabel = 'None — completed'; }
     else if (cur.name === 'Payment') { nextTone = autoOn ? '' : 'attention'; nextLabel = paymentMode === 'auto' ? 'Wait for payment' : 'Confirm payment manually (Mark paid)'; }
     else if (cur.name === 'Proxy') { nextTone = (autoOn && !manualMode) ? '' : 'attention'; nextLabel = (autoOn && !manualMode) ? 'Auto-assign proxy' : 'Assign proxy manually'; }
-    else if (cur.name === 'Activation') { nextTone = (autoOn && !manualMode) ? '' : 'attention'; nextLabel = (autoOn && !manualMode) ? 'Credentials publish to portal automatically' : 'Deliver credentials, then Mark as delivered'; }
+    else if (cur.name === 'Activation') { nextTone = (autoOn && !manualMode) ? '' : 'attention'; nextLabel = (autoOn && !manualMode) ? 'Credentials publish to portal automatically' : 'Hand credentials to the client out-of-band'; }
   }
 
   // ─── Header chips ───────────────────────────────────────────────────
@@ -191,18 +193,15 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   // hasProxy (>=1 open assignment) mirrors the server gate — partial manual
   // delivery is legitimate (bulk path always allowed it); fullyAssigned would
   // point the step text at a button that never renders (review find).
-  const canMarkDelivered = (paidLike || manualMode) && hasProxy && !order.credentialsSentAt && !isCancelled && !isSuspended;
 
   const noteBtn = <AddNoteToolbar key="note" objectType="ORDER" objectId={order.id} label="Add note" />;
   const assignBtn = (
-    <OrderDetailActions key="assign" orderId={order.id} qtyNeeded={qtyNeeded}
-      candidates={candidates.map(p => ({ id: p.id, carrier: p.carrier, region: p.region, pool: p.pool, ip: p.ip, port: p.port, health: p.health }))} />
+    <OrderDetailActions key="assign" orderId={order.id} qtyNeeded={qtyNeeded} />
   );
   const extendBtn = <ExtendButton key="ext" orderId={order.id} currentQty={order.qty} currentDuration={order.plan.durationDays} currentExpiry={order.expiresAt} />;
   const suspendBtn = <SuspendButton key="susp" orderId={order.id} />;
   const resumeBtn = <ResumeButton key="res" orderId={order.id} />;
   const cancelBtn = <CancelOrderButton key="cancel" orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />;
-  const markDeliveredBtn = <MarkDeliveredButton key="creds" orderId={order.id} />;
 
   // A cancelled paid order carries the refund-pending signal — resolve it HERE,
   // where the Exceptions/bell links land, instead of a dead-end (finding B-4).
@@ -223,8 +222,11 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   if (isCancelled) actions = withRefund([noteBtn]);                            // terminal — extend/resume invalid
   else if (isExpired) actions = withRefund([extendBtn, noteBtn]);              // renew
   else if (isSuspended) actions = withRefund([resumeBtn, noteBtn, cancelBtn]);
-  else if (isActive) actions = withRefund([extendBtn, noteBtn, suspendBtn]);  // cancel via suspend-first (canon)
-  else if (isProv && hasProxy) actions = withRefund([...(canMarkDelivered ? [markDeliveredBtn] : []), noteBtn, suspendBtn]);
+  // Assign rides the deficit, not the status branch: a partially-assigned
+  // PROVISIONING order (owner report, ORD-86071) and an ACTIVE order that
+  // lost a proxy both need a top-up path — showAssign gates on qtyNeeded>0.
+  else if (isActive) actions = withRefund([...(showAssign ? [assignBtn] : []), extendBtn, noteBtn, suspendBtn]);  // cancel via suspend-first (canon)
+  else if (isProv && hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, suspendBtn]);
   else if (isProv && !hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]);
   else actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]); // NEW / AWAITING / PENDING_RENEWAL
 

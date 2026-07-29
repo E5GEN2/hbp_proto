@@ -10,8 +10,7 @@ import { CredentialsBlock } from '@/components/client/CredentialsBlock';
 import { WhitelistPanel } from '@/components/client/WhitelistPanel';
 import { RotationUrlPanel } from '@/components/client/RotationUrlPanel';
 import { ProxyLabelEdit } from '@/components/client/ProxyLabelEdit';
-import { AutoRotationPicker } from '@/components/client/AutoRotationPicker';
-import { fmtAdminStamp, daysLeft, fmtRel } from '@/lib/date';
+import { fmtAdminStamp, daysLeft } from '@/lib/date';
 
 const cap = (s: string) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '');
 
@@ -52,6 +51,7 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
                 proxyId={proxy.id}
                 health={proxy.health}
                 creds={{ ip: proxy.ip, port: proxy.port, username: proxy.username, password: proxy.password }}
+                rotationUrl={proxy.rotationUrl}
               />
             </div>
           </div>
@@ -71,17 +71,15 @@ export default async function ClientProxyDetail({ params }: { params: { id: stri
             <div className="grid-right">
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">Info</span></div>
-                <div className="panel-body">
+                {/* panel-body flush (canon): the kv-rows provide the 20px inset
+                    themselves — plain panel-body doubled it to 40px (owner B8).
+                    Auto rotation / Last rotated / Uptime·Latency removed — no
+                    live telemetry yet (Phase-2 backlog). */}
+                <div className="panel-body flush">
                   <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val"><Link href={`/orders/${myAssignment.order.id}`} className="mono td-link">{myAssignment.order.id}</Link></span></div>
                   <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(myAssignment.order.plan.durationDays)}</span></div>
                   <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{proxy.carrier} · {proxy.region}</span></div>
-                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val mono">{fmtAdminStamp(myAssignment.order.expiresAt)}{d != null && d > 0 ? ` · ${d}d left` : ''}</span></div>
-                  <div className="kv-row" style={{ alignItems: 'center' }}>
-                    <span className="kv-label">Auto rotation</span>
-                    <span className="kv-val"><AutoRotationPicker proxyId={proxy.id} current={proxy.autoRotateMin} /></span>
-                  </div>
-                  <div className="kv-row"><span className="kv-label">Last rotated</span><span className="kv-val mono">{proxy.lastRotated ? fmtRel(proxy.lastRotated) : 'Never'}</span></div>
-                  <div className="kv-row"><span className="kv-label">Uptime · Latency</span><span className="kv-val mono">{proxy.uptime.toFixed(1)}%{proxy.latency != null ? ` · ${proxy.latency} ms` : ''}</span></div>
+                  <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val mono" style={{ whiteSpace: 'nowrap' }}>{fmtAdminStamp(myAssignment.order.expiresAt)}{d != null && d > 0 ? ` · ${d}d left` : ''}</span></div>
                   <div className="kv-row kv-row-stack">
                     <span className="kv-label">Label</span>
                     <ProxyLabelEdit proxyId={proxy.id} current={proxy.label} />

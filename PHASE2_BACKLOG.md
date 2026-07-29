@@ -19,12 +19,16 @@ shown. It stays a chip on the list and detail. (A future automated health
 *probe* would only make the existing status more accurate, not add a new
 column.)
 
-## Proxy bulk actions (no backend)
+## Proxy rotation + telemetry actions (no backend)
 
-Removed from the client Proxies bulk bar until implemented (owner 2026-07-28):
+Removed from the UI until implemented (owner 2026-07-28) — all need a real
+rotation call against the upstream rotation URL and/or a monitoring pipeline:
 
-- **Rotate IP** — needs a rotation call against the upstream rotation URL.
-- **Run health check** — needs the health-probe pipeline above.
+- **Rotate IP** — client Proxies bulk bar AND the proxy-detail header button (removed). `AutoRotationPicker` component is now unused, kept for when rotation lands.
+- **Run health check** — client Proxies bulk bar (removed).
+- **Auto rotation** — proxy-detail Info row (removed; `Proxy.autoRotateMin` not wired).
+- **Last rotated** — proxy-detail Info row (removed; no rotation events recorded).
+- **Uptime · Latency** — proxy-detail Info row (removed; no monitoring collector).
 
 (`Copy credentials` stays — it works, and now copies the selected proxies' credentials **with** their rotation URLs.)
 

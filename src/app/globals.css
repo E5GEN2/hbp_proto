@@ -1084,34 +1084,47 @@ table.dt { table-layout: fixed; }
 }
 
 /* ===== Toast ===== */
+/* Toasts anchor where the bell popover opens — just below the topbar,
+   right-aligned — and look like notification-center messages (owner). */
 .toast-container {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: calc(var(--topbar-h) + 10px);
+  right: 10px;
   z-index: 9999;
   display: flex;
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
 }
+/* Admin dark theme for the out-of-shell toast container — colour tokens ONLY
+   (no layout tokens, so the .theme-admin{min-width:1280px} trap is avoided). */
+.toast-container.on-admin {
+  --surface: #1a1f2c; --surface-2: #232938;
+  --border: #353c4f; --border-subtle: #2a3142; --border-strong: #475068;
+  --text: #f0f3f9; --muted: #9ba4ba;
+  --success: #3ccf8e; --warning: #ffb84d; --danger: #ef4444; --info: #5b8cff;
+}
 .toast {
   pointer-events: auto;
-  min-width: 280px;
-  max-width: 380px;
-  padding: 12px 14px;
+  display: flex;
+  gap: 10px;
+  width: 360px;
+  max-width: calc(100vw - 20px);
+  padding: 12px 16px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left-width: 3px;
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
   animation: toast-in 0.18s ease-out;
 }
-.toast.success { border-left-color: var(--success); }
-.toast.warning { border-left-color: var(--warning); }
-.toast.danger { border-left-color: var(--danger); }
-.toast.info { border-left-color: var(--info); }
-.toast-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.toast-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+/* Tone strip mirrors .notif-item.<tone> .notif-dot-strip. The .notif-dot-strip
+   / .notif-body / .notif-title / .notif-meta classes reuse the notif-center
+   styling directly. */
+.toast .notif-dot-strip { align-self: stretch; }
+.toast.success .notif-dot-strip { background: var(--success); }
+.toast.warning .notif-dot-strip { background: var(--warning); }
+.toast.danger  .notif-dot-strip { background: var(--danger); }
+.toast.info    .notif-dot-strip { background: var(--info); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 /* ===== Modal ===== */
@@ -1821,29 +1834,27 @@ a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
 .table-wrap.dt-scroll::-webkit-scrollbar-track { background: transparent; }
 .table-wrap.dt-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* ── Proxies tables (both portals) — owner P1 (2026-07-28) ──────────────────
-   Kill the ellipsis "…" truncation. Text columns WRAP to their full value
-   (Carrier·Region, Pool, Credentials, Hardware ID); atomic columns (chk / id /
-   status chip / numeric / date) hold short fixed content and simply never
-   clip. The systematic column-layout overhaul across all tables is a separate
-   Phase-2 task. */
-/* Prose text columns (Carrier·Region, Pool) wrap to their full value. Mono
-   columns (Credentials, Hardware ID — .td-mono) are excluded: a
-   host:port:login:password blob wraps badly mid-token, so those keep the
-   canon ellipsis + hover tooltip (TipFloater) and are part of the deferred
-   Phase-2 table-layout overhaul instead. */
-.dt-proxies td.col-text:not(.td-mono) { white-space: normal; }
-.dt-proxies td.col-text:not(.td-mono) .cell-tip {
+/* ── No-ellipsis rule for ALL data tables, both portals (owner 2026-07-28) ───
+   Kill the "…" truncation everywhere. Prose text columns WRAP to their full
+   value; atomic columns (checkbox / id / status chip / numeric / date) hold
+   short fixed content and never show the dots (clip, not ellipsis). Mono
+   columns (.td-mono — credential / hardware blobs) are excluded: a
+   host:port:login:password string wraps badly mid-token, so those keep the
+   canon ellipsis + hover tooltip (TipFloater). The systematic per-column
+   width/order overhaul is a separate Phase-2 task. */
+table.dt td.col-text:not(.td-mono) { white-space: normal; }
+/* Composite link/contact cells (admin Clients name + email) keep their own
+   nowrap + ellipsis + tooltip — they'd wrap mid-token otherwise. */
+table.dt td.col-text:not(.td-mono) .cell-tip:not(.client-name-link):not(.client-cell-contact) {
   display: block; white-space: normal; overflow: visible; text-overflow: clip;
   overflow-wrap: anywhere; word-break: break-word;
 }
-.dt-proxies td.col-status { white-space: nowrap; overflow: visible; text-overflow: clip; }
-/* Atomic id columns (Proxy ID, Assigned-to order) hold short single-token
-   identifiers — never show the "…" truncation dots next to the checkbox
-   (owner P1 follow-up 2026-07-28). At normal widths they fit fully; the
-   proper per-column width sizing is part of the Phase-2 table overhaul. */
-.dt-proxies td.col-chk, .dt-proxies td.col-id,
-.dt-proxies th.col-chk, .dt-proxies th.col-id { text-overflow: clip; }
+/* Status column: no ellipsis dots, but stay clipped (overflow:hidden) so a
+   wide chip (e.g. the raw action enum in admin Logs) can't paint over its
+   neighbour. The proxies Status column is anchored wide enough to fit. */
+table.dt td.col-status { white-space: nowrap; overflow: hidden; text-overflow: clip; }
+table.dt td.col-chk, table.dt td.col-id, table.dt td.col-num, table.dt td.col-date,
+table.dt th.col-chk, table.dt th.col-id, table.dt th.col-num, table.dt th.col-date { text-overflow: clip; }
 
 /* Slim canon scrollbar (prototype §.content / .timeline.activity-scroll: 6px,
    transparent track, --border thumb, 3px radius). The app had only styled

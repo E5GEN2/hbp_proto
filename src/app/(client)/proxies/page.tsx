@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -44,6 +45,12 @@ export default async function ClientProxiesPage({ searchParams }: { searchParams
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">Proxies</span>
+              <Link className="btn primary" href="/catalog">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Buy proxies
+              </Link>
             </div>
             <ProxiesList rows={rows} initialSearch={searchParams.q ?? ''} initialCarrier={searchParams.carrier ?? ''} />
           </div>

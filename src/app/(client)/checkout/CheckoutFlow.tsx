@@ -6,6 +6,7 @@ import { money } from '@/lib/money';
 import { useToast } from '@/components/ui/Toast';
 import { durationLabel, tierFeatures, planDisplayName } from '@/lib/catalog';
 import { FormSelect } from '@/components/ui/FormSelect';
+import { CryptoPayPanel, CoinPicker, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 
 type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number };
 
@@ -45,6 +46,16 @@ export function CheckoutFlow({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // In-portal crypto (NP direct payments): coin picked in the payment step;
+  // payData present → the processing step renders the in-portal pay panel
+  // instead of the legacy dev-mock wallet. Empty coin list = NP not configured
+  // → the legacy mock flow stays intact.
+  const [payCoin, setPayCoin] = useState<string | null>(null);
+  const [payData, setPayData] = useState<PayPanelData | null>(null);
+  const [regenBusy, setRegenBusy] = useState(false);
+  const coinList = useCoinList(step === 'payment' || step === 'processing');
+  const directCrypto = (coinList.coins?.length ?? 0) > 0;
+
   const plan = useMemo(() => plans.find(p => p.region === location) ?? plans[0], [plans, location]);
   const total = plan.price * qty;
   const balanceOk = balance >= total;
@@ -57,7 +68,11 @@ export function CheckoutFlow({
       const r = await fetch('/api/checkout/place', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ planId: plan.id, qty, autoExtend, paymentMethod: method, ...(renewOf ? { renewOf } : {}) }),
+        body: JSON.stringify({
+          planId: plan.id, qty, autoExtend, paymentMethod: method,
+          ...(method === 'crypto' && payCoin ? { payCoin } : {}),
+          ...(renewOf ? { renewOf } : {}),
+        }),
       });
       // A crashed route returns non-JSON — surface the HTTP status instead of
       // the parser's cryptic message (Safari: "string did not match…").
@@ -70,14 +85,14 @@ export function CheckoutFlow({
         return;
       }
       if (!r.ok) throw new Error(j.error ?? `Order failed (HTTP ${r.status}) — please try again or contact support.`);
-      // Real crypto: hand over to the NOWPayments hosted invoice — settlement
-      // comes back via webhook. replace() drops the wizard from history, so
-      // the browser Back button doesn't strand the client on a stale form.
-      if (j.paymentUrl) {
-        window.location.replace(j.paymentUrl);
+      setOrderId(j.orderId);
+      // Real crypto: the response carries the in-portal payment (address /
+      // amount / expiry) — pay right here, settlement arrives via webhook.
+      if (j.payment) {
+        setPayData(j.payment);
+        setStep('processing');
         return;
       }
-      setOrderId(j.orderId);
       setStep(method === 'crypto' ? 'processing' : 'success');
       // NO router.refresh() here: the RSC re-render remounts this component
       // and wipes the success screen back to step 1 within ~0.5s — the client
@@ -108,6 +123,26 @@ export function CheckoutFlow({
   async function copyWallet() {
     try { await navigator.clipboard.writeText(WALLET); toast('Copied', 'Wallet address', 'success'); }
     catch { toast('Copy failed', 'Clipboard unavailable', 'danger'); }
+  }
+
+  // Fixed-rate window expired mid-checkout: issue a fresh charge for the SAME
+  // order (same coin) — /api/checkout/repay re-arms it without re-placing.
+  async function regenerate() {
+    if (!orderId) return;
+    const coinCode = payData?.payCurrency ?? payCoin;
+    if (!coinCode) return;
+    setRegenBusy(true);
+    try {
+      const r = await fetch('/api/checkout/repay', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ orderId, payCoin: coinCode }),
+      });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(j.error ?? 'Could not create a new payment — please try again.');
+      setPayData(j.payment);
+    } catch (e: any) {
+      toast('Failed', e.message, 'danger');
+    } finally { setRegenBusy(false); }
   }
 
   const summaryRows = (
@@ -217,8 +252,16 @@ export function CheckoutFlow({
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Payment method</span></div>
               <div className="panel-body">
-                {allowCrypto && <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
-                  title="Crypto (USDT-TRC20, BTC, ETH)" caption={<>Order activates after on-chain confirmation.</>} />}
+                {allowCrypto && (
+                  <>
+                    <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
+                      title={directCrypto ? 'Crypto (BTC, ETH, USDT, USDC…)' : 'Crypto (USDT-TRC20, BTC, ETH)'} caption={<>Order activates after on-chain confirmation.</>} />
+                    {paymentMethod === 'crypto' && (
+                      <CoinPicker totalUsd={total} value={payCoin} onChange={setPayCoin}
+                        coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
+                    )}
+                  </>
+                )}
                 <PayRow icon={<IconWallet />} selected={paymentMethod === 'balance'} disabled={!balanceOk} onClick={() => setPaymentMethod('balance')}
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
                 {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
@@ -227,8 +270,12 @@ export function CheckoutFlow({
               </div>
               <div className="panel-footer payment-actions">
                 <button className="btn" onClick={() => setStep('details')}>← Edit order</button>
-                <button className="btn primary" disabled={busy || (paymentMethod === 'balance' && !balanceOk)} onClick={() => placeOrder(paymentMethod)}>
-                  {busy ? 'Processing…' : 'Buy now'}
+                <button className="btn primary"
+                  /* coinList.error ≠ NP-off: a failed fetch must not arm the
+                     button coin-less (the server would 400) — Retry first. */
+                  disabled={busy || (paymentMethod === 'balance' && !balanceOk) || (paymentMethod === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
+                  onClick={() => placeOrder(paymentMethod)}>
+                  {busy ? 'Processing…' : paymentMethod === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue' : 'Buy now'}
                 </button>
               </div>
             </div>
@@ -242,7 +289,23 @@ export function CheckoutFlow({
         </div>
       )}
 
-      {step === 'processing' && (
+      {step === 'processing' && payData && (
+        <CryptoPayPanel
+          key={payData.paymentId}
+          pay={payData}
+          amountUsd={total}
+          title="Awaiting payment"
+          onSettled={() => setStep('success')}
+          onRegenerate={regenerate}
+          regenerating={regenBusy}
+        >
+          {orderId && (
+            <Link href={`/orders/${orderId}`} className="btn ghost">Track this order instead</Link>
+          )}
+        </CryptoPayPanel>
+      )}
+
+      {step === 'processing' && !payData && (
         <div className="checkout-processing">
           <div className="panel checkout-processing-card">
             <div className="processing-title">Awaiting payment</div>

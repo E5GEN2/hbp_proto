@@ -996,6 +996,32 @@ table.dt { table-layout: fixed; }
 .creds-row > .export-preview { flex: 1; min-width: 0; margin: 0; padding: 6px 14px; display: flex; align-items: center; }
 .creds-actions { display: flex; gap: 8px; flex-shrink: 0; align-self: flex-start; }
 
+/* In-portal crypto payment (NOWPayments direct) — QR must sit on white in
+   BOTH themes or phone scanners fail on the dark admin/portal surfaces. */
+.crypto-qr { width: 200px; height: 200px; padding: 14px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); display: inline-flex; align-items: center; justify-content: center; }
+.crypto-qr-svg { width: 100%; height: 100%; display: block; }
+.crypto-fields { width: 100%; display: flex; flex-direction: column; gap: 14px; }
+.crypto-field { width: 100%; text-align: left; }
+.crypto-field .creds-row { margin-top: 6px; }
+.crypto-value { font-size: 12px; overflow-wrap: anywhere; white-space: normal; text-align: left; }
+.crypto-memo-label { color: var(--danger) !important; }
+.crypto-memo-warn { margin-top: 6px; font: 400 11.5px var(--font-sans); color: var(--danger); }
+.crypto-status { display: inline-flex; align-items: center; gap: 8px; font: 500 12.5px var(--font-sans); color: var(--muted); }
+.crypto-status .crypto-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: cryptoPulse 1.6s ease-in-out infinite; }
+.crypto-status.warn { color: var(--warning); }
+.crypto-status.warn .crypto-status-dot { background: var(--warning); animation: none; }
+@keyframes cryptoPulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+/* Coin picker — same tile language as .pay-method-row, denser grid. */
+.coin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 12px; width: 100%; }
+.coin-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; font-family: var(--font-sans); transition: border-color .12s, background .12s; }
+.coin-tile:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); }
+.coin-tile.selected { border-color: var(--accent); background: var(--accent-subtle); }
+.coin-tile:disabled { opacity: .45; cursor: not-allowed; }
+.coin-tile-label { font: 600 12.5px var(--font-sans); color: var(--text); }
+.coin-tile-net { font: 400 11px var(--font-sans); color: var(--muted); }
+.coin-tile-min { font: 400 10.5px var(--font-sans); color: var(--warning); }
+
 /* Success / failed result screens */
 .checkout-success, .checkout-failed { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 32px 24px; text-align: center; }
 .checkout-success .success-icon, .checkout-failed .failed-icon { width: 64px; height: 64px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }

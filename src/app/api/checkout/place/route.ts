@@ -9,17 +9,32 @@ import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
-import { npEnabled, npCreateInvoice } from '@/lib/nowpayments';
+import { npEnabled, npCreatePayment, npCoin, type NpDirectPayment } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
-import { appUrl } from '@/lib/app-url';
 
 const Schema = z.object({
   planId: z.string(),
   qty: z.number().int().min(1).max(100),
   autoExtend: z.boolean(),
   paymentMethod: z.enum(['balance', 'crypto', 'card']),
+  // In-portal crypto: the coin the client picked. Validated against NP_COINS —
+  // never forwarded to the processor raw.
+  payCoin: z.string().optional(),
   renewOf: z.string().optional(),
 });
+
+// What the client pay panel renders — every field comes from OUR stored
+// payment row / the NP create response, never from client input.
+function payPanelPayload(paymentId: string, np: NpDirectPayment) {
+  return {
+    paymentId,
+    payCurrency: np.payCurrency,
+    payAmount: np.payAmount,
+    payAddress: np.payAddress,
+    payinExtraId: np.payinExtraId,
+    payExpiresAt: np.expiresAt ? np.expiresAt.getTime() : null,
+  };
+}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -30,6 +45,13 @@ export async function POST(req: Request) {
   const parse = Schema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Bad input' }, { status: 400 });
   const { planId, qty, autoExtend, paymentMethod, renewOf } = parse.data;
+
+  // Whitelist-validate the coin up front (both the new-order and the renewal
+  // branch create the NP charge with it).
+  const coin = paymentMethod === 'crypto' && npEnabled() ? npCoin(parse.data.payCoin) : null;
+  if (paymentMethod === 'crypto' && npEnabled() && !coin) {
+    return NextResponse.json({ error: 'Pick the cryptocurrency you want to pay with.' }, { status: 400 });
+  }
 
   if (paymentMethod === 'card' && !mockPaymentsAllowed()) {
     return NextResponse.json({ error: 'Card payments are not available yet — use balance or crypto.' }, { status: 400 });
@@ -56,7 +78,7 @@ export async function POST(req: Request) {
   //    proxies (audit B-2 / LIFECYCLE_CONTRACT l.82). Terms come from the
   //    original order server-side; freeze applies to NEW orders only.
   if (renewOf) {
-    return handleRenewal({ renewOf, userId, userBalance: Number(user.balance), paymentMethod });
+    return handleRenewal({ renewOf, userId, userBalance: Number(user.balance), paymentMethod, coin });
   }
 
   if (await newOrdersFrozen()) {
@@ -102,26 +124,24 @@ export async function POST(req: Request) {
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   const wantsAutoProvision = isInstant && plan.autoProvision;
 
-  // Real crypto: create the hosted NOWPayments invoice BEFORE persisting
+  // Real crypto: create the NOWPayments direct payment BEFORE persisting
   // anything — if the processor is down, no dangling order is left behind.
-  // The IPN webhook settles by order_id = our payment id.
-  let paymentUrl: string | null = null;
-  let externalRef: string | null = null;
-  if (paymentMethod === 'crypto' && npEnabled()) {
+  // The IPN webhook settles by order_id = our payment id. The client pays on
+  // OUR page (no redirect): the response carries address/amount/expiry.
+  let npPay: NpDirectPayment | null = null;
+  if (coin) {
     try {
-      const inv = await npCreateInvoice({
+      npPay = await npCreatePayment({
         amountUsd: total,
+        payCurrency: coin.code,
         paymentId,
         description: `Order ${orderId} — ${qty} × ${plan.name}`,
-        successUrl: appUrl(`/orders/${orderId}`),
-        cancelUrl: appUrl('/checkout'),
       });
-      paymentUrl = inv.invoiceUrl;
-      externalRef = inv.invoiceId;
     } catch (e: any) {
       return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
     }
   }
+  const externalRef = npPay ? npPay.npPaymentId : null;
 
   const now = new Date();
 
@@ -216,6 +236,12 @@ export async function POST(req: Request) {
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
         externalRef,
+        // Direct-payment display fields (NULL for balance/card/legacy)
+        payCurrency: npPay?.payCurrency ?? null,
+        payAmount: npPay?.payAmount ?? null,
+        payAddress: npPay?.payAddress ?? null,
+        payinExtraId: npPay?.payinExtraId ?? null,
+        payExpiresAt: npPay?.expiresAt ?? null,
       },
     });
 
@@ -279,17 +305,18 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  return NextResponse.json({ ok: true, orderId, ...(paymentUrl ? { paymentUrl } : {}) });
+  return NextResponse.json({ ok: true, orderId, ...(npPay ? { payment: payPanelPayload(paymentId, npPay) } : {}) });
 }
 
 // Renewal branch. Instant methods (balance/card) extend immediately; crypto
 // creates an AWAITING payment on the original order and the extension happens
 // in /api/checkout/confirm-crypto once the client confirms.
-async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
+async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin }: {
   renewOf: string;
   userId: string;
   userBalance: number;
   paymentMethod: 'balance' | 'crypto' | 'card';
+  coin: ReturnType<typeof npCoin>; // whitelist-validated by the caller (non-null when crypto+npEnabled)
 }) {
   const order = await prisma.order.findUnique({ where: { id: renewOf }, include: { plan: true } });
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
@@ -304,7 +331,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
   // awaiting confirmation must not stack another charge.
   const pending = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' } });
   if (pending) {
-    return NextResponse.json({ error: `A renewal payment (${pending.id}) is already awaiting confirmation.` }, { status: 409 });
+    // orderId → CheckoutFlow's 409 handler routes to /checkout?resume=… where
+    // the payment-aware panel re-opens the pending charge (review find).
+    return NextResponse.json({ error: `A renewal payment (${pending.id}) is already awaiting confirmation.`, orderId: order.id }, { status: 409 });
   }
 
   // Renewal discount (audit B-6) — same helper as the client UI and the
@@ -318,25 +347,22 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
   const paymentId = await nextPaymentId();
   const now = new Date();
 
-  // Real crypto renewal: hosted invoice first (same contract as new orders) —
+  // Real crypto renewal: direct payment first (same contract as new orders) —
   // the IPN webhook extends the order once the transfer lands.
-  let paymentUrl: string | null = null;
-  let externalRef: string | null = null;
-  if (paymentMethod === 'crypto' && npEnabled()) {
+  let npPay: NpDirectPayment | null = null;
+  if (coin) {
     try {
-      const inv = await npCreateInvoice({
+      npPay = await npCreatePayment({
         amountUsd: total,
+        payCurrency: coin.code,
         paymentId,
         description: `Renewal of order ${order.id} — ${order.qty} × ${order.plan.name}`,
-        successUrl: appUrl(`/orders/${order.id}`),
-        cancelUrl: appUrl(`/orders/${order.id}`),
       });
-      paymentUrl = inv.invoiceUrl;
-      externalRef = inv.invoiceId;
     } catch (e: any) {
       return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
     }
   }
+  const externalRef = npPay ? npPay.npPaymentId : null;
 
   try {
   await prisma.$transaction(async tx => {
@@ -353,6 +379,11 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
         externalRef,
+        payCurrency: npPay?.payCurrency ?? null,
+        payAmount: npPay?.payAmount ?? null,
+        payAddress: npPay?.payAddress ?? null,
+        payinExtraId: npPay?.payinExtraId ?? null,
+        payExpiresAt: npPay?.expiresAt ?? null,
       },
     });
 
@@ -444,8 +475,13 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod }: {
     if (e instanceof InsufficientBalance) {
       return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
     }
+    // Two concurrent crypto renewals: the pre-tx pending-check is blind to an
+    // uncommitted sibling — payments_one_awaiting_per_order catches the loser.
+    if (e?.code === 'P2002') {
+      return NextResponse.json({ error: 'A renewal payment is already awaiting confirmation.', orderId: order.id }, { status: 409 });
+    }
     throw e;
   }
 
-  return NextResponse.json({ ok: true, orderId: order.id, renewed: isInstant, ...(paymentUrl ? { paymentUrl } : {}) });
+  return NextResponse.json({ ok: true, orderId: order.id, renewed: isInstant, ...(npPay ? { payment: payPanelPayload(paymentId, npPay) } : {}) });
 }

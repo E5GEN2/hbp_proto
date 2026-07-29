@@ -19,11 +19,16 @@ function notifId() {
   return `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export async function settleAwaitingPayment(paymentId: string, via: string): Promise<SettleResult> {
+export async function settleAwaitingPayment(paymentId: string, via: string, opts?: { resurrectFailed?: boolean }): Promise<SettleResult> {
   const payment = await prisma.payment.findUnique({ where: { id: paymentId }, include: { client: true } });
   if (!payment) throw new Error(`Payment ${paymentId} not found`);
-  // Idempotency: IPN retries and double-clicks must not re-credit.
-  if (payment.status !== 'AWAITING') return { ok: true, already: true };
+  // Idempotency: IPN retries and double-clicks must not re-credit. A locally
+  // FAILED charge (fixed-rate window expired before the transfer confirmed)
+  // still settles when the caller says so — the money is real; the status
+  // flips FAILED→CONFIRMED directly, never touching AWAITING (which the
+  // payments_one_awaiting_per_order index may already have re-allocated).
+  const resurrect = opts?.resurrectFailed === true && payment.status === 'FAILED';
+  if (payment.status !== 'AWAITING' && !resurrect) return { ok: true, already: true };
 
   const now = new Date();
   const clientId = payment.clientId;
@@ -57,12 +62,15 @@ export async function settleAwaitingPayment(paymentId: string, via: string): Pro
   const order = await prisma.order.findUnique({ where: { id: payment.orderId }, include: { plan: true } });
   if (!order) throw new Error(`Order ${payment.orderId} not found for payment ${payment.id}`);
 
-  // ── Renewal: the order itself is already settled (paymentStatus PAID/…) and
-  //    the AWAITING row is a renewal charge. Confirming it EXTENDS the original
+  // ── Renewal: the order itself is already settled and the charge extends it.
+  //    Discriminate by order.status, NOT paymentStatus: a NEW order whose
+  //    charge expired carries paymentStatus=FAILED, and a resurrected late
+  //    settlement must still take the initial-purchase path below (activate,
+  //    not extend). Any non-NEW order = renewal charge: EXTENDS the original
   //    order when its proxies are still bound (B-2); an EXPIRED order has had
   //    them auto-released to the pool, so it re-provisions like a new order
   //    (fresh term from now; short pool → PAID_NOT_PROVISIONED, clock held). ──
-  if (order.paymentStatus !== 'AWAITING') {
+  if (order.status !== 'NEW') {
     let newExpiry: Date | null = null; // assigned in-tx from the FRESH expiry base
     let reproShort = false;
     await prisma.$transaction(async tx => {

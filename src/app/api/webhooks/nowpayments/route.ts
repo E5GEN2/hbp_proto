@@ -33,9 +33,21 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Mirror the raw NP status onto the payment row for the in-portal pay
+    // panel ("payment detected, waiting confirmations…"). Display-only —
+    // settlement below still keys off our own payment.status alone. updateMany
+    // so an unknown PAY- id is a no-op, not a P2025 throw.
+    if (status) {
+      await prisma.payment.updateMany({ where: { id: paymentId }, data: { npStatus: status } });
+    }
     // finished = funds fully received and settled on NOWPayments' side.
+    // resurrectFailed: a charge we already failed locally (rate window
+    // expired / client regenerated the address but paid the old one) still
+    // settles — the funds are on-chain; idempotency must not swallow real
+    // money. If the order meanwhile settled via a NEWER charge, the renewal
+    // branch simply extends the term — paid twice, value twice.
     if (status === 'finished') {
-      const result = await settleAwaitingPayment(paymentId, 'NOWPayments IPN');
+      const result = await settleAwaitingPayment(paymentId, 'NOWPayments IPN', { resurrectFailed: true });
       return NextResponse.json(result);
     }
 

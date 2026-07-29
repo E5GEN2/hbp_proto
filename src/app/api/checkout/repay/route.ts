@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextPaymentId } from '@/lib/id';
 import { enabledProviders } from '@/lib/runtime-flags';
-import { npEnabled, npCreatePayment, npCoin, type NpDirectPayment } from '@/lib/nowpayments';
+import { npEnabled, npCreatePayment, npCoin, belowMinMessage, type NpDirectPayment } from '@/lib/nowpayments';
 import { renewalUnitPrice } from '@/lib/renewal';
 import { money } from '@/lib/money';
 
@@ -73,6 +73,9 @@ export async function POST(req: Request) {
   const total = isNewOrder
     ? Number(order.amount)
     : renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  const belowMin = await belowMinMessage(coin.code, total);
+  if (belowMin) return NextResponse.json({ error: belowMin }, { status: 400 });
+
   const paymentId = await nextPaymentId();
 
   let npPay: NpDirectPayment;

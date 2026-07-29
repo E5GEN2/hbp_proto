@@ -1,8 +1,10 @@
 'use client';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-export type FormSelectOption = { value: string; label?: string; disabled?: boolean };
+// label widened to ReactNode (2026-07-29) so option rows can carry an icon +
+// text (crypto coin picker) — plain-string callers are unaffected.
+export type FormSelectOption = { value: string; label?: ReactNode; disabled?: boolean };
 
 /* Custom dropdown replacing native <select> (product ask 2026-07-07): the
    macOS native popup opens over the control, shifted left, self-sized and

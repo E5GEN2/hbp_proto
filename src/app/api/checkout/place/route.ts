@@ -9,7 +9,7 @@ import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
-import { npEnabled, npCreatePayment, npCoin, type NpDirectPayment } from '@/lib/nowpayments';
+import { npEnabled, npCreatePayment, npCoin, belowMinMessage, type NpDirectPayment } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
 
 const Schema = z.object({
@@ -130,6 +130,8 @@ export async function POST(req: Request) {
   // OUR page (no redirect): the response carries address/amount/expiry.
   let npPay: NpDirectPayment | null = null;
   if (coin) {
+    const belowMin = await belowMinMessage(coin.code, total);
+    if (belowMin) return NextResponse.json({ error: belowMin }, { status: 400 });
     try {
       npPay = await npCreatePayment({
         amountUsd: total,
@@ -351,6 +353,8 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   // the IPN webhook extends the order once the transfer lands.
   let npPay: NpDirectPayment | null = null;
   if (coin) {
+    const belowMin = await belowMinMessage(coin.code, total);
+    if (belowMin) return NextResponse.json({ error: belowMin }, { status: 400 });
     try {
       npPay = await npCreatePayment({
         amountUsd: total,

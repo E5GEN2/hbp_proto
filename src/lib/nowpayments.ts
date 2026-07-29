@@ -8,6 +8,8 @@
 
 import crypto from 'crypto';
 import { appUrl } from './app-url';
+import { money } from './money';
+import { npCoinDisplay } from './np-coins';
 
 function apiBase() {
   return process.env.NOWPAYMENTS_SANDBOX === 'true'
@@ -122,6 +124,18 @@ export async function npMinAmountUsd(code: string): Promise<number | null> {
   } catch { /* network blip — treat as unknown */ }
   minCache.set(code, { at: Date.now(), minUsd });
   return minUsd;
+}
+
+// Server-side belt-and-braces for the picker's client min-gating (review find
+// A): a stale/crafted client could still POST a below-minimum amount. Returns
+// a clean, coin-aware message to send as a 400, or null when it's fine (a
+// failed min lookup fails open — npCreatePayment then surfaces NP's own error).
+export async function belowMinMessage(code: string, amountUsd: number): Promise<string | null> {
+  const min = await npMinAmountUsd(code);
+  if (min != null && amountUsd < min) {
+    return `The minimum for ${npCoinDisplay(code)} is ${money(min)} — pick another coin or increase the amount.`;
+  }
+  return null;
 }
 
 // IPN authenticity: HMAC-SHA512 over the JSON body re-serialized with keys

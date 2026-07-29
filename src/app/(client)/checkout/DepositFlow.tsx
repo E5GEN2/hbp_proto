@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
 import { depositAction } from '@/lib/ui-actions/client-actions';
-import { CryptoPayPanel, CoinPicker, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
+import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 
 const PRESETS = [25, 50, 100, 250];
 const WALLET = 'TRX9aB7eFmZxXk4mPzRq8nGdLcVtJwS6Hb';
@@ -110,7 +110,7 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
                 <PayRow icon={<IconBitcoin />} selected={method === 'crypto'} onClick={() => setMethod('crypto')}
                   title={directCrypto ? 'Crypto (BTC, ETH, USDT, USDC…)' : 'Crypto (USDT-TRC20, BTC, ETH)'} caption="On-chain confirmation required." />
                 {method === 'crypto' && (
-                  <CoinPicker totalUsd={amountNum} value={payCoin} onChange={setPayCoin}
+                  <CoinSelect totalUsd={amountNum} value={payCoin} onChange={setPayCoin}
                     coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
                 )}
               </>

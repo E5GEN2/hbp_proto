@@ -6,7 +6,8 @@ import { money } from '@/lib/money';
 import { useToast } from '@/components/ui/Toast';
 import { durationLabel, tierFeatures, planDisplayName } from '@/lib/catalog';
 import { FormSelect } from '@/components/ui/FormSelect';
-import { CryptoPayPanel, CoinPicker, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
+import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
+import { CompletePaymentActions } from './CompletePaymentActions';
 
 type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number };
 
@@ -257,7 +258,7 @@ export function CheckoutFlow({
                     <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
                       title={directCrypto ? 'Crypto (BTC, ETH, USDT, USDC…)' : 'Crypto (USDT-TRC20, BTC, ETH)'} caption={<>Order activates after on-chain confirmation.</>} />
                     {paymentMethod === 'crypto' && (
-                      <CoinPicker totalUsd={total} value={payCoin} onChange={setPayCoin}
+                      <CoinSelect totalUsd={total} value={payCoin} onChange={setPayCoin}
                         coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
                     )}
                   </>
@@ -294,13 +295,26 @@ export function CheckoutFlow({
           key={payData.paymentId}
           pay={payData}
           amountUsd={total}
-          title="Awaiting payment"
+          title="Complete your payment"
           onSettled={() => setStep('success')}
           onRegenerate={regenerate}
           regenerating={regenBusy}
         >
+          {/* Same info card as the resume interstitial (owner item 5): the
+              order at a glance + cancel + a way back. */}
           {orderId && (
-            <Link href={`/orders/${orderId}`} className="btn ghost">Track this order instead</Link>
+            <>
+              <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 20px' }}>
+                <div className="kv-row"><span className="kv-label">{renewOf ? 'Renews order' : 'Order'}</span><span className="kv-val mono">{orderId}</span></div>
+                <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(duration)}</span></div>
+                <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
+                <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
+              </div>
+              {/* Cancelling is only meaningful for the unpaid NEW order — a
+                  renewal charge must not offer to cancel the paid original. */}
+              {!renewOf && <CompletePaymentActions orderId={orderId} payUrl={null} />}
+              <Link href={`/orders/${orderId}`} className="btn ghost">← Back to order</Link>
+            </>
           )}
         </CryptoPayPanel>
       )}

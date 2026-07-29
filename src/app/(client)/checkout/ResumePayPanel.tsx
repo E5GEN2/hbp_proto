@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
-import { CryptoPayPanel, CoinPicker, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
+import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 
 export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, children }: {
   orderId: string;
@@ -68,7 +68,7 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, child
           If you already sent the funds, contact support — nothing is lost.
         </div>
         <div style={{ width: '100%', textAlign: 'left' }}>
-          <CoinPicker totalUsd={amountUsd} value={payCoin} onChange={setPayCoin}
+          <CoinSelect totalUsd={amountUsd} value={payCoin} onChange={setPayCoin}
             coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
         </div>
         <div className="processing-actions">

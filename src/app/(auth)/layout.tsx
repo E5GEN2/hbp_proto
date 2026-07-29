@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { SiteLogo } from './SiteLogo';
 import { SiteBacklink } from './SiteBacklink';
-import { DemoCreds } from './DemoCreds';
 
 export const metadata: Metadata = { title: 'Sign in — HBP' };
 
 // Auth shell, styled to match the marketing site: same cream + dotted background,
 // the Comet logo pill at the top (same place as the site nav), an optional
-// back-to-site link, and the auth card centred. Demo creds sit bottom-right.
+// back-to-site link, and the auth card centred. (Demo credentials card removed
+// for launch — owner ask 2026-07-29.)
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="theme-client auth-page">
@@ -28,7 +28,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </Suspense>
       </header>
       <main className="auth-main">{children}</main>
-      <DemoCreds />
     </div>
   );
 }

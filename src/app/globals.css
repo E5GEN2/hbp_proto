@@ -901,10 +901,13 @@ table.dt { table-layout: fixed; }
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  font: 600 11px/20px var(--font-sans);
-  text-align: center;
+  font: 600 11px/1 var(--font-sans);
   color: var(--muted);
   flex-shrink: 0;
+  /* Flex-center (owner find №6): the done-step check SVG sat off-center under
+     line-height centering (inline svg + vertical-align:middle hangs off the
+     baseline) — flex centers both the digit and the check identically. */
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .wizard-step.active .wizard-step-num { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .wizard-step.done .wizard-step-num { background: var(--accent); border-color: var(--accent); color: var(--surface); }
@@ -973,7 +976,23 @@ table.dt { table-layout: fixed; }
 .pay-method-row.selected { border-color: var(--accent); background: var(--accent-subtle); }
 .pay-method-row.disabled { opacity: .55; cursor: not-allowed; }
 .pay-method-row.disabled:hover { background: transparent; border-color: var(--border); }
-.pay-method-row input[type="radio"] { width: 18px; height: 18px; accent-color: var(--accent); }
+/* Custom-drawn radio (owner find №2): native radios + accent-color render
+   differently per browser (Safari showed a bare dot with no ring) — an
+   appearance:none ring + inner dot is deterministic everywhere. */
+.pay-method-row input[type="radio"] {
+  appearance: none; -webkit-appearance: none;
+  width: 18px; height: 18px; margin: 0;
+  border: 1.5px solid var(--border-strong); border-radius: 50%;
+  background: var(--surface);
+  display: inline-grid; place-content: center;
+  flex-shrink: 0; cursor: inherit;
+}
+.pay-method-row input[type="radio"]::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); transform: scale(0); transition: transform .1s;
+}
+.pay-method-row input[type="radio"]:checked { border-color: var(--accent); }
+.pay-method-row input[type="radio"]:checked::before { transform: scale(1); }
 .pay-method-row .pay-method-icon { width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0; }
 .pay-method-row .pay-method-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; }
 .pay-method-row .pay-method-text { min-width: 0; flex: 1; }
@@ -1012,15 +1031,18 @@ table.dt { table-layout: fixed; }
 .crypto-status.warn .crypto-status-dot { background: var(--warning); animation: none; }
 @keyframes cryptoPulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 
-/* Coin picker — same tile language as .pay-method-row, denser grid. */
-.coin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 12px; width: 100%; }
-.coin-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; font-family: var(--font-sans); transition: border-color .12s, background .12s; }
-.coin-tile:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); }
-.coin-tile.selected { border-color: var(--accent); background: var(--accent-subtle); }
-.coin-tile:disabled { opacity: .45; cursor: not-allowed; }
-.coin-tile-label { font: 600 12.5px var(--font-sans); color: var(--text); }
-.coin-tile-net { font: 400 11px var(--font-sans); color: var(--muted); }
-.coin-tile-min { font: 400 10.5px var(--font-sans); color: var(--warning); }
+/* Coin picker (owner revision 2026-07-29) — two dropdowns (coin → network)
+   with brand marks, indented under the Crypto pay-method row. Explicit bottom
+   margin: .pay-method-row spacing comes from ITS margin-bottom, so a block
+   inserted between rows must bring its own gap or it sits flush against the
+   next row (owner find №1). */
+.crypto-method-extra { display: flex; gap: 12px; flex-wrap: wrap; margin: 2px 0 14px; padding: 0 2px; }
+.crypto-select { flex: 1 1 0; min-width: 200px; }
+.crypto-select .form-label { margin-bottom: 6px; }
+.coin-opt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.coin-mark { width: 18px; height: 18px; flex-shrink: 0; display: block; }
+.coin-opt-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coin-opt-note { font-size: 11px; color: var(--text-disabled); white-space: nowrap; margin-left: 4px; }
 
 /* Success / failed result screens */
 .checkout-success, .checkout-failed { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 32px 24px; text-align: center; }
@@ -2631,24 +2653,7 @@ html:has(.theme-admin) { --border: #353c4f; }
 .auth-links a { color: var(--accent-text); cursor: pointer; }
 .auth-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-/* Demo credentials — fixed, bottom-right, unobtrusive */
-.demo-creds-fixed {
-  position: fixed; right: 18px; bottom: 18px; z-index: 40;
-  width: 286px; max-width: calc(100vw - 36px);
-  background: rgba(250,248,244,.9);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  border: 1px solid rgba(201,194,181,.55); border-radius: 12px;
-  box-shadow: 0 14px 36px -18px rgba(17,24,39,.3);
-  padding: 12px 14px;
-  font: 400 11.5px/1.5 var(--font-sans); color: var(--text-secondary);
-}
-.demo-creds-title { font: 650 10px/1 var(--font-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.demo-creds-group { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 6px; }
-.demo-creds-kind { font-weight: 600; color: var(--text); }
-.demo-creds-pass { color: var(--muted); }
-.demo-creds-fixed code { font: 500 11px var(--font-mono); color: var(--text); }
-.demo-creds-list { font: 500 11px var(--font-mono); color: var(--text-secondary); word-break: break-word; margin-top: 3px; display: flex; flex-direction: column; gap: 2px; }
-@media (max-width: 600px) { .demo-creds-fixed { display: none; } }
+/* (Demo credentials card removed for launch — owner ask 2026-07-29.) */
 /* Marketing narrows its gutter to 24px below 920px. */
 @media (max-width: 920px) { .auth-topbar { width: min(1240px, 100% - 48px); } }
 @media (max-width: 560px) {

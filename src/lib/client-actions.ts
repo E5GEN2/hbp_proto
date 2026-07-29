@@ -8,13 +8,12 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
-import { npEnabled, npCreateInvoice } from './nowpayments';
+import { npEnabled, npCreatePayment, npCoin, type NpDirectPayment } from './nowpayments';
 import { sendEmail, passwordChangedEmail } from './email';
 import { passwordPolicyError } from './password-policy';
 import { creditBalance, roundCents } from './balance';
 import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
-import { appUrl } from './app-url';
 import * as T from './transitions';
 
 async function getClientUserId() {
@@ -139,7 +138,7 @@ export const saveNotifPrefsAction = guarded(async function saveNotifPrefsAction(
   return { ok: true };
 });
 
-export const depositAction = guarded(async function depositAction({ amount: rawAmount, method }: { amount: number; method: 'card' | 'crypto' }) {
+export const depositAction = guarded(async function depositAction({ amount: rawAmount, method, payCoin }: { amount: number; method: 'card' | 'crypto'; payCoin?: string }) {
   // 2dp-normalize before ANY use — payment.gross, the ledger row and the
   // credit must all carry the identical value (review find).
   const amount = roundCents(rawAmount);
@@ -159,21 +158,21 @@ export const depositAction = guarded(async function depositAction({ amount: rawA
   const isInstant = method === 'card';
   const now = new Date();
 
-  // Real crypto top-up: hosted NOWPayments invoice — balance is credited by
-  // the IPN webhook once the transfer lands, never by the client.
-  let paymentUrl: string | null = null;
-  let externalRef: string | null = null;
+  // Real crypto top-up: NOWPayments direct payment — the client pays on OUR
+  // page (no redirect); balance is credited by the IPN webhook once the
+  // transfer lands, never by the client.
+  let npPay: NpDirectPayment | null = null;
   if (method === 'crypto' && npEnabled()) {
-    const inv = await npCreateInvoice({
+    const coin = npCoin(payCoin);
+    if (!coin) throw new Error('Pick the cryptocurrency you want to pay with.');
+    npPay = await npCreatePayment({
       amountUsd: amount,
+      payCurrency: coin.code,
       paymentId: payId,
       description: `Balance top-up ${money(amount)}`,
-      successUrl: appUrl('/billing'),
-      cancelUrl: appUrl('/billing'),
     });
-    paymentUrl = inv.invoiceUrl;
-    externalRef = inv.invoiceId;
   }
+  const externalRef = npPay ? npPay.npPaymentId : null;
 
   await prisma.$transaction(async tx => {
     await tx.payment.create({
@@ -187,6 +186,11 @@ export const depositAction = guarded(async function depositAction({ amount: rawA
         status: isInstant ? 'CONFIRMED' : 'AWAITING',
         confirmedAt: isInstant ? now : null,
         externalRef,
+        payCurrency: npPay?.payCurrency ?? null,
+        payAmount: npPay?.payAmount ?? null,
+        payAddress: npPay?.payAddress ?? null,
+        payinExtraId: npPay?.payinExtraId ?? null,
+        payExpiresAt: npPay?.expiresAt ?? null,
       },
     });
     if (isInstant) {
@@ -210,5 +214,17 @@ export const depositAction = guarded(async function depositAction({ amount: rawA
   });
 
   bust();
-  return { ok: true, paymentId: payId, instant: isInstant, ...(paymentUrl ? { paymentUrl } : {}) };
+  return {
+    ok: true, paymentId: payId, instant: isInstant,
+    ...(npPay ? {
+      payment: {
+        paymentId: payId,
+        payCurrency: npPay.payCurrency,
+        payAmount: npPay.payAmount,
+        payAddress: npPay.payAddress,
+        payinExtraId: npPay.payinExtraId,
+        payExpiresAt: npPay.expiresAt ? npPay.expiresAt.getTime() : null,
+      },
+    } : {}),
+  };
 });

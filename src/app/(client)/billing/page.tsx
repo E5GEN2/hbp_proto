@@ -158,7 +158,12 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                               <td className="col-action">
                                 {/* No client-facing invoices at launch (decision 2026-07-06) —
                                     PDFs live in the admin panel only. */}
-                                {p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.externalRef
+                                {p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.payAddress
+                                  /* Direct in-portal payment → our own pay panel
+                                     (order resume / deposit resume). */
+                                  ? <Link className="td-link" href={p.orderId ? `/checkout?resume=${p.orderId}` : `/checkout?kind=deposit&resume=${p.id}`}>Pay now</Link>
+                                  : p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.externalRef
+                                  /* Legacy hosted invoice (pre-in-portal payments). */
                                   ? <a className="td-link" href={npInvoiceUrl(p.externalRef)}>Pay now</a>
                                   : <span style={{ color: 'var(--muted)' }}>—</span>}
                               </td>

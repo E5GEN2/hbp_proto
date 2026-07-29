@@ -337,6 +337,21 @@ model Payment {
   confirmedAt     DateTime?
   refundedAt      DateTime?
 
+  // NOWPayments direct payment (in-portal): what the client-side pay panel
+  // shows. NULL on legacy hosted-invoice payments and non-crypto payments.
+  payCurrency     String?       // NP ticker, e.g. USDTTRC20
+  payAmount       Decimal?      @db.Decimal(30, 12) // exact crypto amount to send (fee-by-user included)
+  payAddress      String?       // deposit address
+  payinExtraId    String?       // memo/tag for chains that require one (TON)
+  payExpiresAt    DateTime?     // fixed-rate window end (NP valid_until)
+  npStatus        String?       // latest IPN payment_status — display only, never drives settlement
+
+  // ⚠️ partial unique index payments_one_awaiting_per_order ON ("orderId")
+  // WHERE status='AWAITING' AND "orderId" IS NOT NULL lives ONLY in migration
+  // 20260729130000 (Prisma DSL can't express partial indexes — `db push`
+  // would silently DROP it; migrations only). Writers of AWAITING rows catch
+  // P2002 and return 409.
+
   order           Order?        @relation(fields: [orderId], references: [id])
   client          User          @relation("PaymentClient", fields: [clientId], references: [id])
   invoice         Invoice?

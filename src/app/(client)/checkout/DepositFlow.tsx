@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
 import { depositAction } from '@/lib/ui-actions/client-actions';
+import { CryptoPayPanel, CoinPicker, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 
 const PRESETS = [25, 50, 100, 250];
 const WALLET = 'TRX9aB7eFmZxXk4mPzRq8nGdLcVtJwS6Hb';
@@ -27,6 +28,14 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
   const [pending, start] = useTransition();
   const [paymentId, setPaymentId] = useState<string | null>(null);
 
+  // In-portal crypto (NP direct payments): coin picked in the payment step;
+  // payData present → the processing step renders the in-portal pay panel.
+  // Empty coin list = NP not configured → the legacy mock flow stays intact.
+  const [payCoin, setPayCoin] = useState<string | null>(null);
+  const [payData, setPayData] = useState<PayPanelData | null>(null);
+  const coinList = useCoinList(step === 'payment' || step === 'processing');
+  const directCrypto = (coinList.coins?.length ?? 0) > 0;
+
   const amountNum = typeof amount === 'number' ? amount : parseFloat(amount);
   const ok = !isNaN(amountNum) && amountNum >= 1 && amountNum <= 10000;
 
@@ -34,15 +43,15 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
     if (!ok) return toast('Invalid amount', 'Must be between $1 and $10,000', 'warning');
     start(async () => {
       try {
-        const r = await depositAction({ amount: amountNum, method });
-        // Real crypto: hand over to the NOWPayments hosted invoice — balance
-        // is credited by the webhook once the transfer lands. replace() keeps
-        // the wizard out of history for the browser Back button.
-        if (r.paymentUrl) {
-          window.location.replace(r.paymentUrl);
+        const r = await depositAction({ amount: amountNum, method, ...(method === 'crypto' && payCoin ? { payCoin } : {}) });
+        setPaymentId(r.paymentId);
+        // Real crypto: the response carries the in-portal payment (address /
+        // amount / expiry) — pay right here; the webhook credits the balance.
+        if (r.payment) {
+          setPayData(r.payment);
+          setStep('processing');
           return;
         }
-        setPaymentId(r.paymentId);
         if (r.instant) {
           setStep('success');
           // NO router.refresh() — it remounts the wizard and wipes the success
@@ -96,18 +105,48 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
           <div className="panel-body">
             {allowCard && <PayRow icon={<IconCard />} selected={method === 'card'} onClick={() => setMethod('card')}
               title="Card · Visa •• 4242" caption="Mock card — instant top-up in this prototype." />}
-            {allowCrypto && <PayRow icon={<IconBitcoin />} selected={method === 'crypto'} onClick={() => setMethod('crypto')}
-              title="Crypto (USDT-TRC20, BTC, ETH)" caption="On-chain confirmation required." />}
+            {allowCrypto && (
+              <>
+                <PayRow icon={<IconBitcoin />} selected={method === 'crypto'} onClick={() => setMethod('crypto')}
+                  title={directCrypto ? 'Crypto (BTC, ETH, USDT, USDC…)' : 'Crypto (USDT-TRC20, BTC, ETH)'} caption="On-chain confirmation required." />
+                {method === 'crypto' && (
+                  <CoinPicker totalUsd={amountNum} value={payCoin} onChange={setPayCoin}
+                    coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
+                )}
+              </>
+            )}
             {noMethods && <div className="help-text">Top-ups are temporarily unavailable — payment providers are disabled. Please contact support.</div>}
           </div>
           <div className="panel-footer payment-actions">
             <button className="btn" onClick={() => setStep('details')}>← Back</button>
-            <button className="btn primary" disabled={pending || noMethods} onClick={pay}>{pending ? 'Processing…' : `Pay ${money(amountNum)}`}</button>
+            <button className="btn primary"
+              /* coinList.error ≠ NP-off: a failed fetch must not arm the
+                 button coin-less (the server would 400) — Retry first. */
+              disabled={pending || noMethods || (method === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
+              onClick={pay}>
+              {pending ? 'Processing…' : method === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue' : `Pay ${money(amountNum)}`}
+            </button>
           </div>
         </div>
       )}
 
-      {step === 'processing' && (
+      {step === 'processing' && payData && (
+        <CryptoPayPanel
+          key={payData.paymentId}
+          pay={payData}
+          amountUsd={amountNum}
+          title="Awaiting payment"
+          settleNote="your balance is credited either way"
+          onSettled={() => setStep('success')}
+          // No regenerate for deposits — an expired top-up charge is simply
+          // abandoned (FAILED) and the client starts a fresh one.
+        >
+          <button className="btn ghost" onClick={() => { setPayData(null); setStep('details'); }}>← Start a new deposit</button>
+          <Link href={returnTo ?? '/billing'} className="btn ghost">Back to {returnTo ? 'checkout' : 'billing'}</Link>
+        </CryptoPayPanel>
+      )}
+
+      {step === 'processing' && !payData && (
         <div className="checkout-processing">
           <div className="panel checkout-processing-card">
             <div className="processing-title">Awaiting payment</div>

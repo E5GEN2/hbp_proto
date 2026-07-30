@@ -105,7 +105,11 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
           role="listbox"
           style={{
             position: 'fixed', left: pos.left, width: pos.width, right: 'auto',
-            top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight,
+            // Coalesce to explicit 'auto' — a bare `undefined` lets the base
+            // .form-select-menu `top: calc(100% + 4px)` leak onto the fixed
+            // portal, throwing an 'above'-placed menu off the bottom edge
+            // (review find). 'below' sets top, 'above' sets bottom.
+            top: pos.top ?? 'auto', bottom: pos.bottom ?? 'auto', maxHeight: pos.maxHeight,
           }}
         >
           {options.map(o => (

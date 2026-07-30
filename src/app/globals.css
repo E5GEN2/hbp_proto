@@ -296,6 +296,9 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   max-height: 260px; overflow-y: auto;
 }
 .theme-client .form-select-menu { box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
+/* Portaled open menu (owner find №2): fixed, above modals (9999). Inline
+   top/left/width/maxHeight come from the trigger's measured rect. */
+.form-select-menu-portal { z-index: 10000; }
 /* In filter bars the control is content-sized (canon .filter-bar .form-select
    width:auto rules hit the button); the wrap must shrink with it so the menu
    still spans exactly the button's width. */
@@ -976,23 +979,9 @@ table.dt { table-layout: fixed; }
 .pay-method-row.selected { border-color: var(--accent); background: var(--accent-subtle); }
 .pay-method-row.disabled { opacity: .55; cursor: not-allowed; }
 .pay-method-row.disabled:hover { background: transparent; border-color: var(--border); }
-/* Custom-drawn radio (owner find №2): native radios + accent-color render
-   differently per browser (Safari showed a bare dot with no ring) — an
-   appearance:none ring + inner dot is deterministic everywhere. */
-.pay-method-row input[type="radio"] {
-  appearance: none; -webkit-appearance: none;
-  width: 18px; height: 18px; margin: 0;
-  border: 1.5px solid var(--border-strong); border-radius: 50%;
-  background: var(--surface);
-  display: inline-grid; place-content: center;
-  flex-shrink: 0; cursor: inherit;
-}
-.pay-method-row input[type="radio"]::before {
-  content: ""; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--accent); transform: scale(0); transition: transform .1s;
-}
-.pay-method-row input[type="radio"]:checked { border-color: var(--accent); }
-.pay-method-row input[type="radio"]:checked::before { transform: scale(1); }
+/* Canon radio (client prototype): native input tinted with accent-color. Owner
+   find №4 — the earlier custom appearance:none ring diverged from the canon. */
+.pay-method-row input[type="radio"] { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
 .pay-method-row .pay-method-icon { width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0; }
 .pay-method-row .pay-method-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; }
 .pay-method-row .pay-method-text { min-width: 0; flex: 1; }
@@ -1022,7 +1011,11 @@ table.dt { table-layout: fixed; }
 .crypto-fields { width: 100%; display: flex; flex-direction: column; gap: 14px; }
 .crypto-field { width: 100%; text-align: left; }
 .crypto-field .creds-row { margin-top: 6px; }
-.crypto-value { font-size: 12px; overflow-wrap: anywhere; white-space: normal; text-align: left; }
+/* Address/amount stay on ONE line (owner find №7): a wrapped crypto address is
+   hard to verify. nowrap + horizontal scroll if it can't fit; Copy is the real
+   affordance so no data is lost. */
+.crypto-value { font-size: 12px; white-space: nowrap; overflow-x: auto; text-align: left; scrollbar-width: none; }
+.crypto-value::-webkit-scrollbar { display: none; }
 .crypto-memo-label { color: var(--danger) !important; }
 .crypto-memo-warn { margin-top: 6px; font: 400 11.5px var(--font-sans); color: var(--danger); }
 .crypto-status { display: inline-flex; align-items: center; gap: 8px; font: 500 12.5px var(--font-sans); color: var(--muted); }
@@ -1040,7 +1033,9 @@ table.dt { table-layout: fixed; }
 .crypto-select { flex: 1 1 0; min-width: 200px; }
 .crypto-select .form-label { margin-bottom: 6px; }
 .coin-opt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
-.coin-mark { width: 18px; height: 18px; flex-shrink: 0; display: block; }
+.coin-mark { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.coin-mark svg { width: 100%; height: 100%; display: block; }
+.coin-mark-empty { border-radius: 50%; background: var(--surface-2); }
 .coin-opt-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coin-opt-note { font-size: 11px; color: var(--text-disabled); white-space: nowrap; margin-left: 4px; }
 

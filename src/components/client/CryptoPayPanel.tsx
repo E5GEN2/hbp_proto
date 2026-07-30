@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { money } from '@/lib/money';
 import { npCoin, npCoinDisplay, COIN_FAMILIES, familyCoins } from '@/lib/np-coins';
+import { TOKEN_ICON, NETWORK_ICON } from '@/lib/coin-icons';
 
 export type PayPanelData = {
   paymentId: string;
@@ -48,41 +49,19 @@ function QrSvg({ text }: { text: string }) {
   );
 }
 
-// ── Inline SVG marks for coins and networks (brand-colored circles; letter
-//    glyphs limited to universally-available characters — B, L, T, $ — and
-//    hand-drawn paths for the rest, so no font can render tofu).
-function Mark({ bg, children }: { bg: string; children: ReactNode }) {
-  return (
-    <svg className="coin-mark" viewBox="0 0 18 18" aria-hidden="true">
-      <circle cx="9" cy="9" r="9" fill={bg} />
-      {children}
-    </svg>
-  );
+// ── Coin/network logos: real brand marks from web3icons (MIT), inlined as SVG
+//    strings in coin-icons.ts. CoinGlyph renders one inside an 18px .coin-mark
+//    box (dangerouslySetInnerHTML — the SVG is our own build-time asset, never
+//    user input).
+function CoinGlyph({ svg }: { svg: string | undefined }) {
+  if (!svg) return <span className="coin-mark coin-mark-empty" aria-hidden="true" />;
+  return <span className="coin-mark" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
-const GLYPH = { fontFamily: 'system-ui, sans-serif', fontWeight: 700, fill: '#fff' } as const;
-const MARKS: Record<string, ReactNode> = {
-  BTC: <Mark bg="#F7931A"><text x="9" y="13.2" textAnchor="middle" fontSize="11.5" {...GLYPH}>B</text></Mark>,
-  // Ethereum diamond (upper + lower halves, classic mark simplified)
-  ETH: <Mark bg="#627EEA"><path d="M9 3l3.6 6L9 11.2 5.4 9 9 3z" fill="#fff" opacity=".9" /><path d="M9 12.4l3.6-2.2L9 15.4 5.4 10.2 9 12.4z" fill="#fff" opacity=".65" /></Mark>,
-  LTC: <Mark bg="#B8B8B8"><text x="9" y="13.2" textAnchor="middle" fontSize="11.5" {...GLYPH}>L</text></Mark>,
-  TRX: <Mark bg="#EF0027"><text x="9" y="13.2" textAnchor="middle" fontSize="11" {...GLYPH}>T</text></Mark>,
-  // Solana: three slanted bars
-  SOL: <Mark bg="#1a1a2e"><g fill="#fff"><path d="M5.2 5.4h7l-1.4 1.6h-7l1.4-1.6z" /><path d="M5.2 8.2h7l-1.4 1.6h-7l1.4-1.6z" opacity=".8" /><path d="M5.2 11h7L10.8 12.6h-7L5.2 11z" opacity=".6" /></g></Mark>,
-  // Tether ₮: T with a second crossbar, drawn as paths
-  USDT: <Mark bg="#26A17B"><path d="M4.5 4.5h9v2h-3.4v1.2c1.9.14 3.4.6 3.4 1.2 0 .6-1.5 1.06-3.4 1.2v3.4H7.9v-3.4c-1.9-.14-3.4-.6-3.4-1.2 0-.6 1.5-1.06 3.4-1.2V6.5H4.5v-2zm5.6 4.2v1.4c1.2-.1 2-.3 2-.7 0-.4-.8-.6-2-.7zm-2.2 0c-1.2.1-2 .3-2 .7 0 .4.8.6 2 .7V8.7z" fill="#fff" /></Mark>,
-  USDC: <Mark bg="#2775CA"><text x="9" y="13" textAnchor="middle" fontSize="11" {...GLYPH}>$</text></Mark>,
-  BSC: <Mark bg="#F3BA2F"><path d="M9 4.2L10.9 6.1 9 8 7.1 6.1 9 4.2zM5.4 7.8L7.3 9.7 5.4 11.6 3.5 9.7 5.4 7.8zM12.6 7.8l1.9 1.9-1.9 1.9-1.9-1.9 1.9-1.9zM9 11.4l1.9 1.9L9 15.2l-1.9-1.9L9 11.4zM9 8.6l1.1 1.1L9 10.8 7.9 9.7 9 8.6z" fill="#fff" /></Mark>,
-};
-// Family key → mark; network display string → mark.
-const NET_MARK: Record<string, ReactNode> = {
-  'Bitcoin': MARKS.BTC, 'Ethereum': MARKS.ETH, 'Litecoin': MARKS.LTC, 'Tron': MARKS.TRX,
-  'Solana': MARKS.SOL, 'BSC (BEP-20)': MARKS.BSC, 'ERC-20': MARKS.ETH, 'TRC-20': MARKS.TRX,
-};
 
-function optLabel(mark: ReactNode, text: string, note?: string) {
+function optLabel(svg: string | undefined, text: string, note?: string) {
   return (
     <span className="coin-opt">
-      {mark}
+      <CoinGlyph svg={svg} />
       <span className="coin-opt-text">{text}</span>
       {note && <span className="coin-opt-note">{note}</span>}
     </span>
@@ -153,7 +132,7 @@ export function CoinSelect({ totalUsd, value, onChange, coins, loading, error, o
       return {
         value: f.key,
         disabled: allBelow,
-        label: optLabel(MARKS[f.key], f.label, allBelow && Number.isFinite(minOfFam) ? `min ${money(minOfFam)}` : undefined),
+        label: optLabel(TOKEN_ICON[f.key], f.label, allBelow && Number.isFinite(minOfFam) ? `min ${money(minOfFam)}` : undefined),
       };
     });
 
@@ -161,7 +140,7 @@ export function CoinSelect({ totalUsd, value, onChange, coins, loading, error, o
   const networkOptions = nets.map(n => ({
     value: n.code,
     disabled: netBelow(n),
-    label: optLabel(NET_MARK[n.network] ?? MARKS[family!], n.network, netBelow(n) ? `min ${money(n.minUsd!)}` : undefined),
+    label: optLabel(NETWORK_ICON[n.network] ?? TOKEN_ICON[family!], n.network, netBelow(n) ? `min ${money(n.minUsd!)}` : undefined),
   }));
 
   function pickFamily(fam: string) {
@@ -175,18 +154,28 @@ export function CoinSelect({ totalUsd, value, onChange, coins, loading, error, o
     onChange(enabled.length === 1 ? enabled[0].code : null);
   }
 
+  // Both dropdowns always render side by side (owner item 1): Coin | Network.
+  // The Network select is disabled until a coin is chosen; a single-network
+  // coin shows that network preselected (still disabled — nothing to pick).
+  const networkDisabled = !family || nets.length <= 1;
+  const networkPlaceholder = !family ? 'Choose a coin first' : nets.length <= 1 ? undefined : 'Choose network…';
+
   return (
     <div className="crypto-method-extra">
       <div className="crypto-select">
         <label className="form-label">Coin</label>
         <FormSelect value={family ?? ''} onChange={pickFamily} options={familyOptions} placeholder="Choose coin…" />
       </div>
-      {family && nets.length > 1 && (
-        <div className="crypto-select">
-          <label className="form-label">Network</label>
-          <FormSelect value={value ?? ''} onChange={v => onChange(v || null)} options={networkOptions} placeholder="Choose network…" />
-        </div>
-      )}
+      <div className="crypto-select">
+        <label className="form-label">Network</label>
+        <FormSelect
+          value={value ?? ''}
+          onChange={v => onChange(v || null)}
+          options={networkOptions}
+          placeholder={networkPlaceholder}
+          disabled={networkDisabled}
+        />
+      </div>
     </div>
   );
 }
@@ -291,21 +280,29 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
   const expired = msLeft != null && msLeft <= 0;
   const line = statusLine(npStatus);
 
-  // Terminal: the charge died (IPN expired/failed). Offer recovery.
-  if (failed) {
+  // Recovery view — the charge is no longer payable: either the IPN reported it
+  // dead (`failed`) OR the fixed-rate window lapsed client-side (`expired`,
+  // owner item 6). Both collapse the stale QR/address into ONE obvious action
+  // so the client isn't left wondering where to get a fresh address. Clicking
+  // regenerates at the current rate with a fresh countdown (parent swaps
+  // payData → the panel remounts via key). If they already paid the old
+  // address, a late `finished` IPN still settles it (resurrectFailed).
+  if (failed || expired) {
     return (
       <div className="checkout-processing">
         <div className="panel checkout-processing-card">
-          <div className="processing-title">Payment window closed</div>
+          <div className="processing-title">{expired && !failed ? 'Rate window expired' : 'Payment window closed'}</div>
           <div className="t-note" style={{ maxWidth: 420 }}>
-            This charge is no longer active — the exchange-rate window closed (or the charge was cancelled) before a payment was received.
-            {onRegenerate ? ' Generate a fresh address to try again — the price stays the same.' : ''}
-            {' '}If you already sent the funds, contact support — nothing is lost.
+            {expired && !failed
+              ? 'The locked exchange rate has expired, so this address is no longer valid.'
+              : 'This charge is no longer active — the rate window closed (or the charge was cancelled) before a payment arrived.'}
+            {onRegenerate ? ' Get a fresh address to pay at the current rate — the price in USD stays the same.' : ''}
+            {' '}If you already sent the funds, don’t resend — contact support and nothing is lost.
           </div>
           {onRegenerate && (
             <div className="processing-actions">
               <button className="btn primary" disabled={regenerating} onClick={onRegenerate}>
-                {regenerating ? 'Generating…' : 'Generate new address'}
+                {regenerating ? 'Generating…' : 'Get a fresh address'}
               </button>
             </div>
           )}
@@ -355,17 +352,9 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
           {line.text}
         </div>
 
-        {msLeft != null && !expired && (
+        {msLeft != null && (
           <div className="t-note">
             Rate locked for <span className="mono">{fmtLeft(msLeft)}</span> — send the exact amount before the window closes.
-          </div>
-        )}
-        {expired && (
-          <div className="t-note" style={{ color: 'var(--warning)' }}>
-            The rate window is closing — a transfer sent now may not be credited automatically.
-            {onRegenerate && (
-              <> <span className="td-link" style={{ cursor: 'pointer' }} onClick={regenerating ? undefined : onRegenerate}>{regenerating ? 'Generating…' : 'Generate a fresh address'}</span> if you haven&rsquo;t sent it yet.</>
-            )}
           </div>
         )}
         <div className="t-note">This page updates automatically once the transaction is detected — keep the tab open or come back later; {settleNote}.</div>

@@ -27,6 +27,8 @@ export type OrderRow = {
 type Tab = 'active' | 'expiring' | 'past';
 const DAY = 86_400_000;
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+
+const PAGE_SIZE = 15;
 const PAID = ['PAID', 'CONFIRMED', 'FREE'];
 
 function tabGroups(o: OrderRow, now: number): Tab[] {
@@ -62,14 +64,23 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
   const now = Date.now();
 
   const valid: Tab[] = ['active', 'expiring', 'past'];
-  const [tab, setTab] = useState<Tab>(valid.includes(initialTab as Tab) ? (initialTab as Tab) : 'active');
+  const [tab, setTabState] = useState<Tab>(valid.includes(initialTab as Tab) ? (initialTab as Tab) : 'active');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const setTab = (t: Tab) => { setTabState(t); setPage(1); };
 
   const counts: Record<Tab, number> = { active: 0, expiring: 0, past: 0 };
   for (const o of orders) for (const g of tabGroups(o, now)) counts[g] += 1;
 
   const list = orders.filter(o => tabGroups(o, now).includes(tab)).sort((a, b) => b.createdAt - a.createdAt);
+
+  // Paginate every tab (owner item 8): orders are kept forever (financial
+  // records) — Past would otherwise grow without bound. 15/page, newest-first.
+  const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  const pg = Math.min(page, pages);
+  const start = (pg - 1) * PAGE_SIZE;
+  const pageRows = list.slice(start, start + PAGE_SIZE);
 
   async function doRenew(id: string) {
     setBusyId(id);
@@ -129,8 +140,9 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
           </Link>
         </div>
       ) : (
+        <>
         <div className="orders-grid">
-          {list.map(o => (
+          {pageRows.map(o => (
             <OrderCard
               key={o.id}
               o={o}
@@ -143,6 +155,21 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
             />
           ))}
         </div>
+        {pages > 1 && (
+          <div className="pagination">
+            <div className="pagination-info">
+              Showing {start + 1}–{start + pageRows.length} of {list.length}
+            </div>
+            <div className="pagination-nav">
+              <button className={`page-btn ${pg <= 1 ? 'disabled' : ''}`} onClick={() => setPage(Math.max(1, pg - 1))}>‹</button>
+              {Array.from({ length: pages }, (_, i) => i + 1).map(i => (
+                <button key={i} className={`page-btn ${i === pg ? 'active' : ''}`} onClick={() => setPage(i)}>{i}</button>
+              ))}
+              <button className={`page-btn ${pg >= pages ? 'disabled' : ''}`} onClick={() => setPage(Math.min(pages, pg + 1))}>›</button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       <Modal

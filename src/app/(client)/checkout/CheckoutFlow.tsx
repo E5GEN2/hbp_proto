@@ -256,7 +256,7 @@ export function CheckoutFlow({
                 {allowCrypto && (
                   <>
                     <PayRow icon={<IconBitcoin />} selected={paymentMethod === 'crypto'} onClick={() => setPaymentMethod('crypto')}
-                      title={directCrypto ? 'Crypto (BTC, ETH, USDT, USDC…)' : 'Crypto (USDT-TRC20, BTC, ETH)'} caption={<>Order activates after on-chain confirmation.</>} />
+                      title="Crypto" caption={<>Order activates after on-chain confirmation.</>} />
                     {paymentMethod === 'crypto' && (
                       <CoinSelect totalUsd={total} value={payCoin} onChange={setPayCoin}
                         coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />

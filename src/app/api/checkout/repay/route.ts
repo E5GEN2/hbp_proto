@@ -50,11 +50,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Renewals are not available for this plan.' }, { status: 400 });
   }
 
-  const now = new Date();
   const awaiting = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' } });
-  // A charge that is still inside its rate window stays authoritative — the
-  // client should pay IT, not mint another address.
-  if (awaiting && !(awaiting.payAddress && awaiting.payExpiresAt && awaiting.payExpiresAt <= now)) {
+  // The client only reaches "get a fresh address" from the expired/failed
+  // recovery view, so honor it for any AWAITING NOWPayments DIRECT charge —
+  // do NOT gate on the server clock. A skewed client clock (device set fast)
+  // would otherwise dead-end a paying customer: the client shows "expired" and
+  // offers regenerate, but the server still sees the charge live → 409 with no
+  // way forward. The old address is abandoned; a late 'finished' IPN on it
+  // still settles via resurrectFailed. A non-direct AWAITING charge
+  // (unexpected for crypto) is left untouched.
+  if (awaiting && !(awaiting.provider === 'NOWPayments' && awaiting.payAddress)) {
     return NextResponse.json({ error: 'A payment is already awaiting confirmation for this order.' }, { status: 409 });
   }
   // Re-issue needs evidence a direct charge existed for this order — repay is

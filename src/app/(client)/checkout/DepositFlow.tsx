@@ -108,7 +108,7 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
             {allowCrypto && (
               <>
                 <PayRow icon={<IconBitcoin />} selected={method === 'crypto'} onClick={() => setMethod('crypto')}
-                  title={directCrypto ? 'Crypto (BTC, ETH, USDT, USDC…)' : 'Crypto (USDT-TRC20, BTC, ETH)'} caption="On-chain confirmation required." />
+                  title="Crypto" caption="On-chain confirmation required." />
                 {method === 'crypto' && (
                   <CoinSelect totalUsd={amountNum} value={payCoin} onChange={setPayCoin}
                     coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />

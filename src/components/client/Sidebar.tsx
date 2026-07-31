@@ -46,14 +46,20 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
       <div className="sidebar-logo">
         {/* Comet Proxy logo — owner decision: the marketing-site mark replaces
             the canon pulsing-dot + "PROXY" wordmark (bare, no pill — the pill
-            variant was tried and rejected). viewBox is cropped to the measured
-            content bbox (26..551 × 56..144, font-loaded getBBox). The divider
-            line is stroke 3 (not the marketing 1): at this scale (~0.3×) a
-            1-unit stroke renders sub-pixel and vanishes. */}
+            variant was tried and rejected). Uses the marketing/footer logo's
+            canonical viewBox (6 40 558 120) — the site footer's "small logo"
+            treatment — instead of a tight content crop. Rationale: with the
+            live Source Sans 3 font the "ODATAI proxies" wordmark extends out to
+            x≈556, so the old cropped box (right edge 26+525=551, overflow:hidden)
+            shaved the tail of the final "s". The footer box (right edge 6+558=
+            564) clears it. Height stays 28 for the sidebar rhythm; the wider box
+            renders the mark at ~130px (airier, matching the footer). The divider
+            line is stroke 3 (not the marketing 1): at this scale a 1-unit stroke
+            renders sub-pixel and vanishes. */}
         {/* letterSpacing/textTransform: the .sidebar-logo wordmark styles
             (uppercase, .12em tracking) inherit into SVG text — reset them so
             the "proxies" tail keeps the marketing lowercase + metrics. */}
-        <svg viewBox="26 56 525 88" style={{ height: 28, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label={BRAND_FULL}>
+        <svg viewBox="6 40 558 120" style={{ height: 28, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label={BRAND_FULL}>
           <defs>
             <radialGradient id="sbBubbleCream" cx="50%" cy="50%" r="50%">
               <stop offset="0" stopColor="#B58A4A" stopOpacity="0.30" />

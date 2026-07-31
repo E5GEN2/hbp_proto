@@ -17,7 +17,7 @@ export default function NotFound() {
       </p>
       <div className="err-actions">
         <Link href="/" className="btn primary lg">Go to my dashboard</Link>
-        <Link href="/marketing" className="btn lg">Back to the site</Link>
+        <Link href="/" className="btn lg">Back to the site</Link>
       </div>
     </ErrorShell>
   );

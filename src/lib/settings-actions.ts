@@ -19,6 +19,9 @@ function bust() {
   revalidatePath('/admin/settings', 'layout');
   revalidatePath('/catalog');
   revalidatePath('/checkout');
+  // The marketing landing now renders at the root; revalidate both so the promo
+  // banner updates whether the visitor hits "/" or the legacy "/marketing".
+  revalidatePath('/');
   revalidatePath('/marketing');
 }
 

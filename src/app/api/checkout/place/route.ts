@@ -20,6 +20,9 @@ const Schema = z.object({
   // In-portal crypto: the coin the client picked. Validated against NP_COINS —
   // never forwarded to the processor raw.
   payCoin: z.string().optional(),
+  // Explicit "yes, place another identical order" — clears the recent-duplicate
+  // backstop below (owner ask 2026-07-31).
+  confirmDuplicate: z.boolean().optional(),
   renewOf: z.string().optional(),
 });
 
@@ -100,6 +103,28 @@ export async function POST(req: Request) {
       error: `You already have an unpaid order (${unpaid.id}) for this plan — complete its payment or cancel it first.`,
       orderId: unpaid.id,
     }, { status: 409 });
+  }
+
+  // Accidental double-charge backstop (owner ask 2026-07-31): an IDENTICAL
+  // order (same plan, qty, region) that was PAID moments ago is almost always a
+  // double-submit or a stale-tab re-buy — the 409 above only covers UNPAID
+  // dupes. Require one explicit confirm rather than silently charging twice.
+  if (!parse.data.confirmDuplicate) {
+    const recentPaid = await prisma.order.findFirst({
+      where: {
+        clientId: userId, planId, qty, region: plan.region,
+        paymentStatus: 'PAID',
+        createdAt: { gte: new Date(Date.now() - 120_000) },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (recentPaid) {
+      return NextResponse.json({
+        error: `You placed an identical order (${recentPaid.id}) less than 2 minutes ago.`,
+        recentOrderId: recentPaid.id, needsConfirm: true,
+      }, { status: 409 });
+    }
   }
 
   const unitPrice = Number(plan.price);

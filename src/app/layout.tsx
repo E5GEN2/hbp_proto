@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'HBP — Proxy Platform',
+  title: 'Odatai — Proxy Platform',
   description: 'Mobile proxy reseller — client portal and operator admin.',
   icons: {
     icon: [

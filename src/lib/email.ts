@@ -16,7 +16,7 @@ export function emailEnabled() {
 }
 
 function fromAddress() {
-  return process.env.EMAIL_FROM ?? 'Comet Proxy <no-reply@odatai.com>';
+  return process.env.EMAIL_FROM ?? 'Odatai Proxy <no-reply@odatai.com>';
 }
 
 export async function sendEmail(input: { to: string; subject: string; html: string; text?: string }): Promise<boolean> {
@@ -53,7 +53,7 @@ export async function sendEmail(input: { to: string; subject: string; html: stri
 
 // ── Templates ────────────────────────────────────────────────────────────────
 // Single-column inline-styled HTML — renders the same in Gmail/Outlook/Apple
-// Mail. Brand: Comet Proxy wordmark, soft-gold accent from the site palette.
+// Mail. Brand: Odatai Proxy wordmark, soft-gold accent from the site palette.
 
 const GOLD = '#B58A4A';
 const INK = '#0A0F1D';
@@ -65,7 +65,7 @@ function shell(title: string, bodyHtml: string) {
 <tr><td align="center">
 <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
   <tr><td style="padding:0 8px 18px;">
-    <span style="font:700 17px/1 Arial,Helvetica,sans-serif;color:${INK};letter-spacing:.4px;">COMET</span>
+    <span style="font:700 17px/1 Arial,Helvetica,sans-serif;color:${INK};letter-spacing:.4px;">ODATAI</span>
     <span style="font:700 17px/1 Arial,Helvetica,sans-serif;color:${GOLD};letter-spacing:.4px;">&nbsp;PROXY</span>
   </td></tr>
   <tr><td style="background:#ffffff;border:1px solid #e6e1d8;border-radius:12px;padding:32px;">
@@ -74,7 +74,7 @@ function shell(title: string, bodyHtml: string) {
   </td></tr>
   <tr><td style="padding:18px 8px 0;font:400 12px/1.6 Arial,Helvetica,sans-serif;color:#8a8477;">
     Need help? Message support on <a href="https://t.me/US5Gwetrust" style="color:${GOLD};">Telegram</a>.<br>
-    You received this email because of activity on your Comet Proxy account.
+    You received this email because of activity on your Odatai Proxy account.
   </td></tr>
 </table>
 </td></tr>
@@ -100,15 +100,15 @@ function cta(label: string, href: string) {
 
 export function passwordResetEmail(link: string) {
   return {
-    subject: 'Reset your Comet Proxy password',
+    subject: 'Reset your Odatai Proxy password',
     html: shell(
       'Reset your password',
-      p('We received a request to reset the password for your Comet Proxy account. Click the button below to choose a new one.') +
+      p('We received a request to reset the password for your Odatai Proxy account. Click the button below to choose a new one.') +
       cta('Set new password', link) +
       p(`This link expires in <strong>60 minutes</strong> and can be used once. If the button doesn't work, copy this address into your browser:<br><a href="${link}" style="color:${GOLD};word-break:break-all;">${link}</a>`) +
       p('If you didn’t request this, you can safely ignore this email — your password stays unchanged.'),
     ),
-    text: `Reset your Comet Proxy password: ${link}\nThe link expires in 60 minutes. If you didn't request this, ignore this email.`,
+    text: `Reset your Odatai Proxy password: ${link}\nThe link expires in 60 minutes. If you didn't request this, ignore this email.`,
   };
 }
 
@@ -117,7 +117,7 @@ export function passwordResetEmail(link: string) {
 // link. Transactional — never pref-gated.
 export function emailVerificationEmail(code: string, link: string, ttlMinutes: number) {
   return {
-    subject: 'Verify your Comet Proxy email',
+    subject: 'Verify your Odatai Proxy email',
     html: shell(
       'Confirm your email',
       p('Enter this code on the verification page to activate your account:') +
@@ -125,22 +125,22 @@ export function emailVerificationEmail(code: string, link: string, ttlMinutes: n
       p('Or simply click the button:') +
       cta('Verify email', link) +
       p(`The code and link expire in <strong>${ttlMinutes} minutes</strong>. If the button doesn't work, copy this address into your browser:<br><a href="${link}" style="color:${GOLD};word-break:break-all;">${link}</a>`) +
-      p('If you didn’t create a Comet Proxy account, you can safely ignore this email.'),
+      p('If you didn’t create a Odatai Proxy account, you can safely ignore this email.'),
     ),
-    text: `Your Comet Proxy verification code: ${code}\nOr verify by link: ${link}\nThe code and link expire in ${ttlMinutes} minutes. If you didn't sign up, ignore this email.`,
+    text: `Your Odatai Proxy verification code: ${code}\nOr verify by link: ${link}\nThe code and link expire in ${ttlMinutes} minutes. If you didn't sign up, ignore this email.`,
   };
 }
 
 export function welcomeEmail(name: string) {
   return {
-    subject: 'Welcome to Comet Proxy',
+    subject: 'Welcome to Odatai Proxy',
     html: shell(
       `Welcome, ${name}!`,
-      p('Your Comet Proxy account is ready. Order mobile proxies, manage credentials and track renewals from your dashboard.') +
+      p('Your Odatai Proxy account is ready. Order mobile proxies, manage credentials and track renewals from your dashboard.') +
       cta('Open dashboard', appUrl('/dashboard')) +
       p('Questions? Our support team is one message away on Telegram.'),
     ),
-    text: `Welcome to Comet Proxy, ${name}! Your account is ready: ${appUrl('/dashboard')}`,
+    text: `Welcome to Odatai Proxy, ${name}! Your account is ready: ${appUrl('/dashboard')}`,
   };
 }
 
@@ -236,14 +236,14 @@ export function incidentEmail(subject: string, lines: string[], linkPath: string
 // The Settings page promises exactly this alert — now it exists.
 export function passwordChangedEmail() {
   return {
-    subject: 'Your Comet Proxy password was changed',
+    subject: 'Your Odatai Proxy password was changed',
     html: shell(
       'Password changed',
-      p('The password for your Comet Proxy account was just changed.') +
+      p('The password for your Odatai Proxy account was just changed.') +
       p('If this was you, no action is needed. If you did NOT do this, reset your password immediately and contact support.') +
       cta('Reset password', appUrl('/forgot')),
     ),
-    text: `Your Comet Proxy password was changed. If this wasn't you, reset it immediately: ${appUrl('/forgot')}`,
+    text: `Your Odatai Proxy password was changed. If this wasn't you, reset it immediately: ${appUrl('/forgot')}`,
   };
 }
 

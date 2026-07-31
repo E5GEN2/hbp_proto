@@ -347,7 +347,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
   </div>
   <div class="legal-modal__body">
     <p class="legal-modal__meta">Last updated — January 2026</p>
-    <p>Comet Proxy ("we", "us") operates a mobile proxy network. This policy explains what we collect when you use our site and service, and how we handle it. We keep data collection to the minimum required to run the service.</p>
+    <p>Odatai Proxy ("we", "us") operates a mobile proxy network. This policy explains what we collect when you use our site and service, and how we handle it. We keep data collection to the minimum required to run the service.</p>
     <h4>What we collect</h4>
     <p>Account details you provide (email, billing identifiers) and operational metadata needed to provision and authenticate proxies — such as session timestamps, assigned endpoints, and aggregate bandwidth counters.</p>
     <h4>What we don't collect</h4>
@@ -372,7 +372,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
   </div>
   <div class="legal-modal__body">
     <p class="legal-modal__meta">Last updated — January 2026</p>
-    <p>By purchasing or using Comet Proxy, you agree to these terms. If you are using the service on behalf of an organization, you confirm you have authority to bind it.</p>
+    <p>By purchasing or using Odatai Proxy, you agree to these terms. If you are using the service on behalf of an organization, you confirm you have authority to bind it.</p>
     <h4>The service</h4>
     <p>We provide access to mobile IPs running on physical devices with real carrier SIMs. Plans differ by duration; every plan includes unlimited bandwidth and sticky 24-hour sessions unless stated otherwise.</p>
     <h4>Acceptable use</h4>

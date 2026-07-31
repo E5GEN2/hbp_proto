@@ -40,7 +40,7 @@ const META: Record<string, string[]> = {
   catalog:      ['Master lists that drive every plan dropdown', 'Existing plans keep their snapshotted values'],
   provisioning: ['Default pool policy per Carrier · Region', 'Applies to plans that don’t override'],
   flags:        ['Flags take effect immediately', 'Red flags require confirmation'],
-  announcements: ['Controls the promo banner on the public marketing site', 'Saved changes appear on /marketing immediately'],
+  announcements: ['Controls the promo banner on the public marketing site', 'Saved changes appear on the public site immediately'],
   help:         ['Workflow visualisations and process documentation'],
 };
 

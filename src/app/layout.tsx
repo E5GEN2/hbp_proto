@@ -1,9 +1,10 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Providers } from './providers';
+import { BRAND_NAME } from '@/lib/brand';
 
 export const metadata: Metadata = {
-  title: 'Odatai — Proxy Platform',
+  title: `${BRAND_NAME} — Proxy Platform`,
   description: 'Mobile proxy reseller — client portal and operator admin.',
   icons: {
     icon: [

@@ -1,6 +1,9 @@
-// Comet Proxy logo pill (defs + .topbar__logo anchor), lifted verbatim from the
-// marketing design so the auth page shows the exact same mark. Rendered via
-// dangerouslySetInnerHTML to avoid SVG->JSX attribute churn. Links to /marketing.
+// Logo pill (defs + .topbar__logo anchor), lifted verbatim from the marketing
+// design so the auth page shows the exact same mark. Rendered via
+// dangerouslySetInnerHTML to avoid SVG->JSX attribute churn. The comet MARK
+// geometry stays brand-neutral; only the wordmark text reads BRAND_WORDMARK
+// (env-driven — see src/lib/brand.ts) so both market sites share one source.
+import { BRAND_WORDMARK, BRAND_FULL } from '@/lib/brand';
 
 export const SITE_LOGO_HTML = `<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
   <defs>
@@ -23,10 +26,10 @@ export const SITE_LOGO_HTML = `<svg width="0" height="0" style="position:absolut
     </g>
   </defs>
 </svg>
-<a class="topbar__logo" href="/marketing" aria-label="Comet Proxy" style="border-radius: 999px; padding: 2px 12px 2px 8px; height: 56px; width: 230px">
+<a class="topbar__logo" href="/marketing" aria-label="${BRAND_FULL}" style="border-radius: 999px; padding: 2px 12px 2px 8px; height: 56px; width: 230px">
       <svg viewBox="6 40 558 120" style="height: 46px; width: auto">
         <use href="#cometMark"></use>
         <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" stroke-width="1" opacity="0.2"></line>
-        <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">COMET</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827" style="line-height: 1.6"> proxies</tspan></text>
+        <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">${BRAND_WORDMARK}</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827" style="line-height: 1.6"> proxies</tspan></text>
       </svg>
     </a>`;

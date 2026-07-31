@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { signalStructural } from '@/lib/nav-history';
 import { MobileNavBackdrop, useMobileNav } from '@/components/ui/MobileNav';
+import { BRAND_WORDMARK, BRAND_FULL } from '@/lib/brand';
 
 // Nav icons — owner decision (dashboard review): client pictograms mirror the
 // ADMIN panel's icon set (components/admin/Sidebar.tsx ICONS) for the matching
@@ -52,7 +53,7 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
         {/* letterSpacing/textTransform: the .sidebar-logo wordmark styles
             (uppercase, .12em tracking) inherit into SVG text — reset them so
             the "proxies" tail keeps the marketing lowercase + metrics. */}
-        <svg viewBox="26 56 525 88" style={{ height: 28, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label="Comet Proxy">
+        <svg viewBox="26 56 525 88" style={{ height: 28, width: 'auto', letterSpacing: 'normal', textTransform: 'none' }} aria-label={BRAND_FULL}>
           <defs>
             <radialGradient id="sbBubbleCream" cx="50%" cy="50%" r="50%">
               <stop offset="0" stopColor="#B58A4A" stopOpacity="0.30" />
@@ -72,7 +73,7 @@ export function ClientSidebar({ user }: { user: { name: string; email: string; t
           <circle cx="142" cy="100" r="12" fill="#F1E6CC" stroke="#0A0F1D" strokeWidth="2.4" />
           <circle cx="142" cy="100" r="3.4" fill="#B58A4A" />
           <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" strokeWidth="3" opacity="0.25" />
-          <text x="232" y="118" fontFamily="Source Sans 3, sans-serif" fontSize="50"><tspan fontWeight="600" letterSpacing="1" fill="#111827">COMET</tspan><tspan fontWeight="400" letterSpacing="0" fill="#111827"> proxies</tspan></text>
+          <text x="232" y="118" fontFamily="Source Sans 3, sans-serif" fontSize="50"><tspan fontWeight="600" letterSpacing="1" fill="#111827">{BRAND_WORDMARK}</tspan><tspan fontWeight="400" letterSpacing="0" fill="#111827"> proxies</tspan></text>
         </svg>
       </div>
       <nav className="nav">

@@ -1,8 +1,10 @@
-// Static body of the Comet Proxy marketing landing, ported 1:1 (byte-identical) from
+// Static body of the marketing landing, ported 1:1 (byte-identical) from
 // 'Marketing Site.html' (claude.ai/design 22eeaf81). Dynamic parts are @@tokens@@ filled
 // at render time: @@PROMO@@ (admin announcement), @@SIGNIN@@ (login href), @@PLAN_CARDS@@
-// (live Plan-driven cards). The trailing modal <script> is replaced by a useEffect in
-// MarketingView. Legal modal <dialog>s + footer [data-legal] links are kept verbatim.
+// (live Plan-driven cards), @@BRAND_WORDMARK@@/@@BRAND_FULL@@ (env-driven brand). The
+// trailing modal <script> is replaced by a useEffect in MarketingView. Legal modal
+// <dialog>s + footer [data-legal] links are kept verbatim.
+import { BRAND_WORDMARK, BRAND_FULL } from '@/lib/brand';
 
 const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
 <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
@@ -30,11 +32,11 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
 <!-- ============ NAV ============ -->
 <div class="nav-wrap">
   <div class="topbar rise" data-d="1">
-    <a class="topbar__logo" href="#" aria-label="Comet Proxy" style="border-radius: 999px; padding: 2px 12px 2px 8px; height: 56px; width: 230px">
+    <a class="topbar__logo" href="#" aria-label="@@BRAND_FULL@@" style="border-radius: 999px; padding: 2px 12px 2px 8px; height: 56px; width: 230px">
       <svg viewBox="6 40 558 120" style="height: 46px; width: auto">
         <use href="#cometMark"></use>
         <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" stroke-width="1" opacity="0.2"></line>
-        <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">COMET</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827" style="line-height: 1.6"> proxies</tspan></text>
+        <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">@@BRAND_WORDMARK@@</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827" style="line-height: 1.6"> proxies</tspan></text>
       </svg>
     </a>
     <header class="nav" style="height: 56px; padding: 8px 20px;">
@@ -327,7 +329,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <svg viewBox="6 40 558 120">
       <use href="#cometMark"></use>
       <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" stroke-width="1" opacity="0.2"></line>
-      <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">COMET</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827"> proxies</tspan></text>
+      <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">@@BRAND_WORDMARK@@</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827"> proxies</tspan></text>
     </svg>
   </div>
   <div class="foot__end">
@@ -347,7 +349,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
   </div>
   <div class="legal-modal__body">
     <p class="legal-modal__meta">Last updated — January 2026</p>
-    <p>Odatai Proxy ("we", "us") operates a mobile proxy network. This policy explains what we collect when you use our site and service, and how we handle it. We keep data collection to the minimum required to run the service.</p>
+    <p>@@BRAND_FULL@@ ("we", "us") operates a mobile proxy network. This policy explains what we collect when you use our site and service, and how we handle it. We keep data collection to the minimum required to run the service.</p>
     <h4>What we collect</h4>
     <p>Account details you provide (email, billing identifiers) and operational metadata needed to provision and authenticate proxies — such as session timestamps, assigned endpoints, and aggregate bandwidth counters.</p>
     <h4>What we don't collect</h4>
@@ -372,7 +374,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
   </div>
   <div class="legal-modal__body">
     <p class="legal-modal__meta">Last updated — January 2026</p>
-    <p>By purchasing or using Odatai Proxy, you agree to these terms. If you are using the service on behalf of an organization, you confirm you have authority to bind it.</p>
+    <p>By purchasing or using @@BRAND_FULL@@, you agree to these terms. If you are using the service on behalf of an organization, you confirm you have authority to bind it.</p>
     <h4>The service</h4>
     <p>We provide access to mobile IPs running on physical devices with real carrier SIMs. Plans differ by duration; every plan includes unlimited bandwidth and sticky 24-hour sessions unless stated otherwise.</p>
     <h4>Acceptable use</h4>
@@ -394,5 +396,9 @@ export function renderMarketingBody(opts: { promo: string; signInHref: string; p
   return TEMPLATE
     .replace('@@PROMO@@', () => opts.promo)
     .replace('@@SIGNIN@@', () => opts.signInHref)
-    .replace('@@PLAN_CARDS@@', () => opts.planCards);
+    .replace('@@PLAN_CARDS@@', () => opts.planCards)
+    // Brand is env-driven (src/lib/brand.ts) so one codebase serves both market
+    // sites: the logo wordmark (2×) + legal prose read the deployment's brand.
+    .replace(/@@BRAND_WORDMARK@@/g, () => BRAND_WORDMARK)
+    .replace(/@@BRAND_FULL@@/g, () => BRAND_FULL);
 }

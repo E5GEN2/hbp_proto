@@ -6,6 +6,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { Prisma } from '@prisma/client';
 import { appUrl } from './app-url';
 import { money2dp } from './money';
+import { BRAND_WORDMARK, BRAND_FULL } from './brand';
 
 export type InvoiceWithRelations = Prisma.InvoiceGetPayload<{
   include: { payment: true; order: { include: { plan: true } }; client: true };
@@ -32,8 +33,8 @@ export async function buildInvoicePdf(inv: InvoiceWithRelations): Promise<Uint8A
   let y = 841.89 - 64;
 
   // ── Header: wordmark + INVOICE ────────────────────────────────────────────
-  page.drawText('ODATAI', { x: left, y, size: 18, font: bold, color: INK });
-  page.drawText('PROXY', { x: left + bold.widthOfTextAtSize('ODATAI', 18) + 6, y, size: 18, font: bold, color: GOLD });
+  page.drawText(BRAND_WORDMARK, { x: left, y, size: 18, font: bold, color: INK });
+  page.drawText('PROXY', { x: left + bold.widthOfTextAtSize(BRAND_WORDMARK, 18) + 6, y, size: 18, font: bold, color: GOLD });
   const title = 'INVOICE';
   page.drawText(title, { x: right - bold.widthOfTextAtSize(title, 20), y, size: 20, font: bold, color: INK });
 
@@ -105,7 +106,7 @@ export async function buildInvoicePdf(inv: InvoiceWithRelations): Promise<Uint8A
   // ── Footer ───────────────────────────────────────────────────────────────
   const footY = 72;
   page.drawLine({ start: { x: left, y: footY + 18 }, end: { x: right, y: footY + 18 }, thickness: 0.7, color: LINE });
-  page.drawText(`Odatai Proxy · ${appUrl().replace(/^https?:\/\//, '')} · Telegram @US5Gwetrust`, {
+  page.drawText(`${BRAND_FULL} · ${appUrl().replace(/^https?:\/\//, '')} · Telegram @US5Gwetrust`, {
     x: left, y: footY, size: 8.5, font, color: MUTED,
   });
   page.drawText('Generated from the admin panel', {

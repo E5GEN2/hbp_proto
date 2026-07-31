@@ -209,9 +209,9 @@ export function CheckoutFlow({
       <div style={{ maxWidth: 1280, margin: '0 auto' }}>
         <div className="checkout-processing">
           <div className="panel checkout-processing-card">
-            <div className="processing-title">You already have an unpaid order</div>
+            <div className="processing-title">A payment is already awaiting</div>
             <div className="t-note" style={{ maxWidth: 420 }}>
-              Order <span className="mono">{dupOrderId}</span> for this plan is still awaiting payment. Complete or cancel it before placing another.
+              Order <span className="mono">{dupOrderId}</span> has a payment awaiting confirmation. Finish it before placing another.
             </div>
             <div className="processing-actions">
               <Link href={`/checkout?resume=${dupOrderId}`} className="btn primary">Complete that payment</Link>

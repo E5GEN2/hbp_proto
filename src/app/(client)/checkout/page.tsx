@@ -9,6 +9,7 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
 import { renewalUnitPrice } from '@/lib/renewal';
+import { safeReturn } from '@/lib/safe-return';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 import { CheckoutFlow } from './CheckoutFlow';
 import { CheckoutSuccess } from './CheckoutSuccess';
@@ -55,9 +56,12 @@ export default async function CheckoutPage({ searchParams }: {
   if (searchParams.success) {
     const order = await prisma.order.findUnique({ where: { id: searchParams.success }, include: { plan: true } });
     if (!order || order.clientId !== session!.user.id) notFound();
-    // A crafted success URL for an unpaid order must not fake a confirmation —
-    // send it to the real order page (shows the true status + how to pay).
-    if (order.status === 'NEW') redirect(`/orders/${order.id}`);
+    // Positive allowlist (review find): the confirmation is truthful ONLY for a
+    // freshly-paid order (ACTIVE or PROVISIONING). Any other state — unpaid
+    // (NEW), or a since-EXPIRED/CANCELLED/SUSPENDED order revisited via a stale
+    // ?success= bookmark — would fake a confirmation, so send it to the real
+    // order page which shows the true status + next action.
+    if (order.status !== 'ACTIVE' && order.status !== 'PROVISIONING') redirect(`/orders/${order.id}`);
     const renewed = searchParams.renewed === '1';
     const total = renewed
       ? renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty
@@ -132,7 +136,10 @@ export default async function CheckoutPage({ searchParams }: {
 
     const parsedAmount = searchParams.amount ? parseFloat(searchParams.amount) : NaN;
     const presetAmount = Number.isFinite(parsedAmount) && parsedAmount >= 1 && parsedAmount <= 10000 ? parsedAmount : undefined; // garbage/out-of-range ?amount= must not leak NaN or "$-50" (P1-5)
-    const decodedReturn = searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined;
+    // safeReturn rejects off-site / bypass targets (//evil, /\evil, absolute
+     // URLs) so the breadcrumb link AND DepositFlow's "Back" can't be an
+     // open redirect; unsafe → treated as absent (falls back to Billing).
+    const decodedReturn = searchParams.returnTo ? (safeReturn(decodeURIComponent(searchParams.returnTo)) ?? undefined) : undefined;
     // Origin-aware breadcrumb (trace finds #7/#11/#17): when funding an
     // in-progress checkout the "Billing" crumb was a trap — its structural jump
     // dumped the buyer on /billing, losing the order. Point the crumb back to
@@ -411,7 +418,9 @@ export default async function CheckoutPage({ searchParams }: {
           qty={presetQty}
           autoExtend={presetAutoExtend}
           location={presetLocation ?? planSummaries[0].region}
-          step={(searchParams.step ?? 'details') as any}
+          /* Only 'details'/'payment' are valid ENTRY steps; processing/failed
+             are internal. Sanitize so a crafted ?step= can't render a blank body. */
+          step={searchParams.step === 'payment' ? 'payment' : 'details'}
           balance={Number(me.balance)}
           plans={planSummaries}
           allowCard={allowCard}

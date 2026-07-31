@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { planDisplayName } from '@/lib/catalog';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import type { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
@@ -11,6 +11,7 @@ import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
 import { renewalUnitPrice } from '@/lib/renewal';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 import { CheckoutFlow } from './CheckoutFlow';
+import { CheckoutSuccess } from './CheckoutSuccess';
 import { DepositFlow } from './DepositFlow';
 import { CompletePaymentActions } from './CompletePaymentActions';
 import { ResumePayPanel, DepositResumePanel } from './ResumePayPanel';
@@ -35,6 +36,7 @@ export default async function CheckoutPage({ searchParams }: {
     duration?: string; qty?: string; autoExtend?: string; location?: string; step?: string;
     kind?: string; amount?: string; returnTo?: string;
     resume?: string; renewOf?: string; ref?: string;
+    success?: string; renewed?: string;
   };
 }) {
   const session = await getServerSession(authOptions);
@@ -46,6 +48,37 @@ export default async function CheckoutPage({ searchParams }: {
   const providers = await enabledProviders();
   const allowCard = mockPaymentsAllowed() && providers.stripe;
   const allowCrypto = providers.crypto;
+
+  // Success branch (trace find #3/#8) — an addressable order-confirmation URL
+  // the wizard router.replace()s to after an instant or settled-crypto payment,
+  // so a reload/Back lands on the confirmation (not a blank buy form).
+  if (searchParams.success) {
+    const order = await prisma.order.findUnique({ where: { id: searchParams.success }, include: { plan: true } });
+    if (!order || order.clientId !== session!.user.id) notFound();
+    // A crafted success URL for an unpaid order must not fake a confirmation —
+    // send it to the real order page (shows the true status + how to pay).
+    if (order.status === 'NEW') redirect(`/orders/${order.id}`);
+    const renewed = searchParams.renewed === '1';
+    const total = renewed
+      ? renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty
+      : Number(order.amount);
+    return (
+      <>
+        <ClientTopbar breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: `Order ${order.id}` }]} balance={Number(me.balance)} />
+        <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+          <CheckoutSuccess
+            orderId={order.id}
+            planLabel={planDisplayName(order.plan.durationDays)}
+            region={order.region}
+            qty={order.qty}
+            total={total}
+            activated={order.status === 'ACTIVE'}
+            renewed={renewed}
+          />
+        </main>
+      </>
+    );
+  }
 
   // Deposit branch
   if (searchParams.kind === 'deposit') {
@@ -99,11 +132,21 @@ export default async function CheckoutPage({ searchParams }: {
 
     const parsedAmount = searchParams.amount ? parseFloat(searchParams.amount) : NaN;
     const presetAmount = Number.isFinite(parsedAmount) && parsedAmount >= 1 && parsedAmount <= 10000 ? parsedAmount : undefined; // garbage/out-of-range ?amount= must not leak NaN or "$-50" (P1-5)
+    const decodedReturn = searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined;
+    // Origin-aware breadcrumb (trace finds #7/#11/#17): when funding an
+    // in-progress checkout the "Billing" crumb was a trap — its structural jump
+    // dumped the buyer on /billing, losing the order. Point the crumb back to
+    // checkout so top-nav agrees with the in-panel "← Back". Only honor a
+    // same-origin checkout returnTo (leading "/checkout"), never an arbitrary URL.
+    const returnToCheckout = decodedReturn && decodedReturn.startsWith('/checkout');
+    const depositCrumb = returnToCheckout
+      ? [{ label: 'Checkout', href: decodedReturn! }, { label: 'Add funds' }]
+      : [{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }];
     return (
       <>
-        <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
+        <ClientTopbar breadcrumb={depositCrumb} balance={Number(me.balance)} />
         <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-          <DepositFlow presetAmount={presetAmount} returnTo={searchParams.returnTo ? decodeURIComponent(searchParams.returnTo) : undefined} allowCard={allowCard} allowCrypto={allowCrypto} />
+          <DepositFlow presetAmount={presetAmount} returnTo={decodedReturn} allowCard={allowCard} allowCrypto={allowCrypto} />
         </main>
       </>
     );
@@ -152,12 +195,10 @@ export default async function CheckoutPage({ searchParams }: {
     );
     // Cancel-order actions only make sense for an unpaid NEW order — a renewal
     // charge must never offer to cancel the (already paid) original order.
-    const cardActions = (
-      <>
-        {isNewOrder && <CompletePaymentActions orderId={resumeOrder.id} payUrl={null} />}
-        <Link href={`/orders/${resumeOrder.id}`} className="btn ghost">← Back to order</Link>
-      </>
-    );
+    // No in-card "← Back to order" here: the breadcrumb "Order X" and the
+    // universal NavBacklink already cover going back — a third control just
+    // contradicted them (trace finds #12/#18).
+    const cardActions = isNewOrder ? <CompletePaymentActions orderId={resumeOrder.id} payUrl={null} /> : null;
 
     if (direct || (hadDirect && canRepay)) {
       return (
@@ -206,7 +247,6 @@ export default async function CheckoutPage({ searchParams }: {
                     : <>This {isNewOrder ? 'order' : 'renewal'} is awaiting a payment arranged outside the portal. If you&rsquo;re unsure how to pay, message <a href="https://t.me/US5Gwetrust" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.</>}
                 </div>
                 <CompletePaymentActions orderId={resumeOrder.id} payUrl={payUrl} />
-                <Link href={`/orders/${resumeOrder.id}`} className="btn ghost">← Back to order</Link>
               </div>
             </div>
           </main>

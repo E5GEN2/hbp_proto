@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { fmtAdminStamp } from '@/lib/date';
 import { money } from '@/lib/money';
 
@@ -18,6 +18,12 @@ const TONE: Record<string, string> = { SUCCESS: 'success', WARNING: 'warn', DANG
 // wipe that — the watermark advances when the popover CLOSES, so you can
 // actually see what's new while it's open.
 export function NotificationsBell({ initialBalance }: { initialBalance: number }) {
+  const pathname = usePathname();
+  // On /checkout the topbar "Add funds" chip (no returnTo) would strand an
+  // in-progress purchase on /billing — the inline "Add funds" in the payment
+  // step (which carries returnTo) is the only correct affordance here (trace
+  // find #15). Keep the balance readout, drop the CTA on this route.
+  const onCheckout = pathname === '/checkout';
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
@@ -107,9 +113,11 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
           <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>
         </span>
         <span className="topbar-balance-value">{money(balance)}</span>
-        <Link className="btn ghost topbar-balance-cta" href="/checkout?kind=deposit">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
-        </Link>
+        {!onCheckout && (
+          <Link className="btn ghost topbar-balance-cta" href="/checkout?kind=deposit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
+          </Link>
+        )}
       </div>
 
       {/* Bell */}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { clientCancelOrderAction } from '@/lib/ui-actions/client-actions';
+import { signalStructural } from '@/lib/nav-history';
 
 // Actions for the "Complete your payment" interstitial (/checkout?resume=…):
 // pay on the stored NOWPayments invoice, or cancel the unpaid order. There is
@@ -20,6 +21,10 @@ export function CompletePaymentActions({ orderId, payUrl }: { orderId: string; p
         await clientCancelOrderAction(orderId);
         toast('Order cancelled', orderId, 'warning');
         setConfirmCancel(false);
+        // Structural jump: drop the stale /checkout?resume entry so the order
+        // page doesn't show "← Back to Complete payment" → a dead "no pending
+        // payment" bounce (trace find #9).
+        signalStructural();
         router.replace(`/orders/${orderId}`);
         router.refresh();
       } catch (e: any) {

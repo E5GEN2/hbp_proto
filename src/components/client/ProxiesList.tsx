@@ -28,10 +28,15 @@ type Format = 'ip:port:user:pass' | 'user:pass@ip:port' | 'json' | 'csv';
 type Proto = 'socks5' | 'http';
 
 const PAGE_SIZE = 10;
-/* Flexible .dt column width = applyDtAnchors() done in pure CSS:
-   usable = 100% − anchor-l (64px chk + 164px Proxy ID = 228px); each col gets
-   usable * --w / --col-total (19). table-layout:fixed honours the calc widths. */
-const FLEX = (w: number) => `calc(100% * ${w} / 19)`;
+/* CTS colgroup (globals.css "CLIENT TABLE SYSTEM"). The old FLEX() helper —
+   calc(100% * w / 19) — summed to 100% ON TOP of the 228px fixed columns,
+   over-constraining the table by +228px; Chrome silently rescaled every
+   column by ~0.8 (the PR #121 id-clip saga was this). CTS anchors instead:
+   atomic columns carry A/994 as a percentage of the 994px budget (table
+   inner width @1280); Carrier·Region stays auto and absorbs the remainder
+   (158px at budget). Anchors: chk 64px · Proxy ID 164 (--anchor-id) ·
+   Assigned-to 116 · Auto rotation 136 (header "AUTO ROTATION" binds) ·
+   Uptime 108 · Speed 104 · Health 144 (--anchor-status). Σ = 994 exactly. */
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 
@@ -246,13 +251,13 @@ export function ProxiesList({ rows, initialSearch = '', initialCarrier = '' }: {
         <table className="dt dt-proxies">
           <colgroup>
             <col style={{ width: 64 }} />
-            <col style={{ width: 'var(--anchor-id)' }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(3) }} />
+            <col style={{ width: '16.4990%' }} />
+            <col style={{ width: '11.6700%' }} />
+            <col />
+            <col style={{ width: '13.6821%' }} />
+            <col style={{ width: '10.8652%' }} />
+            <col style={{ width: '10.4628%' }} />
+            <col style={{ width: '14.4869%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -260,9 +265,9 @@ export function ProxiesList({ rows, initialSearch = '', initialCarrier = '' }: {
               <th className="col-id">Proxy ID</th>
               <th className="col-id">Assigned to</th>
               <th className="col-text">Carrier · Region</th>
-              <th className="col-text center">Auto rotation</th>
-              <th className="col-text center">Uptime 30D</th>
-              <th className="col-text center">Speed</th>
+              <th className="col-text">Auto rotation</th>
+              <th className="col-text">Uptime 30D</th>
+              <th className="col-text">Speed</th>
               <th className="col-status">Health</th>
             </tr>
           </thead>
@@ -303,9 +308,9 @@ export function ProxiesList({ rows, initialSearch = '', initialCarrier = '' }: {
                       live chip: it is an operator-set status (Mark faulty /
                       Maintenance / sweep), not telemetry (owner: live statuses
                       must show). */}
-                  <td className="col-text muted center">—</td>
-                  <td className="col-text muted center">—</td>
-                  <td className="col-text muted center">—</td>
+                  <td className="col-text muted">—</td>
+                  <td className="col-text muted">—</td>
+                  <td className="col-text muted">—</td>
                   <td className="col-status">
                     {p.underMaintenance
                       ? <span className="chip maintenance" data-tip="This proxy is under scheduled maintenance — service may be briefly interrupted.">Maintenance</span>

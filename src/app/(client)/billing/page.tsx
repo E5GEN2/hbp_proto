@@ -8,12 +8,16 @@ import { fmtAdminStamp } from '@/lib/date';
 import { PaymentMethodsPanel } from '@/components/client/PaymentMethods';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 
-// Type-column primary label. Mirrors canon `paymentDescription`.
+// Type-column primary label. Mirrors canon `paymentDescription`, except the
+// order case reads "Payment" not "Order payment" (owner, CTS 2026-08-02):
+// the longer label cannot fit the Type column's 73px content box at the
+// 1280-viewport budget and forced a two-line wrap; the order itself is
+// already identified by the adjacent Order ID column.
 function txDescription(p: { status: string; orderId: string | null; method: string }) {
   if (p.status === 'REFUNDED') return 'Refund';
   if (!p.orderId && /^(deposit|wallet top.?up|top.?up)/i.test(p.method || '')) return 'Deposit';
   if (!p.orderId) return p.method || 'Payment';
-  return 'Order payment';
+  return 'Payment';
 }
 
 // Strip the deposit-flow prefixes from the method string (the Type cell already
@@ -114,14 +118,32 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                 ) : (
                   <div className="table-wrap dt-scroll">
                     <table className="dt">
+                      {/* CTS colgroup (globals.css "CLIENT TABLE SYSTEM").
+                          Anchors from REAL rendered measurements at the
+                          651px budget (panel inner width @1280, 2-col
+                          grid): Payment ID 100 (header "PAYMENT ID" binds, incl. floor-compression headroom),
+                          Amount 92 (fits the refund "+ $9,999.99" — the
+                          widest string money() can emit under the $10,000
+                          cap; review finding CTS-2), Date 115 ("30 Jul ·
+                          18:42" mono, measured 101px end-to-clip-safe), Order ID
+                          87, Status 90 (widest chip "Confirmed"), Invoice
+                          78 ("Pay now" 51.3px + 24 pads + floor-compression
+                          headroom — this is an ellipsis column, so content
+                          must clear the CONTENT box or it turns into
+                          "Pay n…"). Each carries A/651 as a percentage;
+                          Type stays auto and absorbs the remainder (89px at
+                          budget, grows first).
+                          ⚠ Chrome drops calc(px + %) on <col> in fixed
+                          layout — plain percentages only. Σ = 651px exactly
+                          at the anchor budget. */}
                       <colgroup>
-                        <col style={{ width: 100 }} />
-                        <col style={{ width: 75 }} />
-                        <col style={{ width: 120 }} />
+                        <col style={{ width: '15.3609%' }} />
+                        <col style={{ width: '14.1321%' }} />
+                        <col style={{ width: '17.6651%' }} />
                         <col />
-                        <col style={{ width: 95 }} />
-                        <col style={{ width: 85 }} />
-                        <col style={{ width: 90 }} />
+                        <col style={{ width: '13.3641%' }} />
+                        <col style={{ width: '13.8249%' }} />
+                        <col style={{ width: '11.9816%' }} />
                       </colgroup>
                       <thead>
                         <tr>

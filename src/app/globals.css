@@ -500,10 +500,9 @@ table.dt { table-layout: fixed; }
   text-align: center;
 }
 .col-money.right, .col-num.right, .col-date.right { text-align: right; }
-/* Canon client (client-panel.html:452): numeric HEADERS right-align while
-   their cells stay centered; the admin canon centers both (see .theme-admin
-   header centering below). */
-.theme-client table.dt thead th.col-num { text-align: right; }
+/* (CTS 2026-08: the old canon right-aligned numeric-header rule for the
+   client lived here — deleted. Owner's table system aligns EVERYTHING left;
+   see the CLIENT TABLE SYSTEM block at the end of this file.) */
 .col-status { text-align: left; }
 .col-action { text-align: center; }
 /* Canon centers the HEADER of numeric/money/date/pct/duration/action columns
@@ -1934,10 +1933,10 @@ html:has(.theme-admin) { --border: #353c4f; }
 .billing-grid .table-wrap { overflow-x: auto; }
 .billing-grid table.dt thead th,
 .billing-grid table.dt tbody td { padding: 10px 8px; }
-.billing-grid table.dt thead th:first-child,
-.billing-grid table.dt tbody td:first-child { padding-left: 16px; }
-.billing-grid table.dt thead th:last-child,
-.billing-grid table.dt tbody td:last-child { padding-right: 16px; }
+/* (CTS 2026-08: the hardcoded 16px first/last edge pads that lived here are
+   gone — the CTS block re-declares --table-edge-cap:16px on this table, so
+   the BASE first/last rules (:450-451,:472-473) AND the tr divider inset
+   (:454-458) all read the same 16px. Edges and divider now always agree.) */
 .billing-grid .tx-type   { font: 500 13px/1.4 var(--font-sans); color: var(--text); }
 .billing-grid .tx-method { font: 400 11px/1.35 var(--font-sans); color: var(--muted); margin-top: 2px; }
 .col-num.positive { color: var(--success); }
@@ -2040,9 +2039,16 @@ html:has(.theme-admin) { --border: #353c4f; }
    columns, so no admin rule may respond to viewport width. */
 .theme-admin { min-width: 1280px; }
 
+/* CTS: billing collapses to one column below 1280 — in the 1025-1279 window
+   the 2fr transactions panel is narrower than the table's 651px anchor budget
+   (e.g. @1025: (1025-220-64-16)*2/3 ≈ 483px), which would force a horizontal
+   pan next to acres of page whitespace. Single column gives the table the
+   full content width instead; Payment methods stacks below. */
+@media (max-width: 1279px) {
+  .theme-client .billing-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 1024px) {
   .theme-client .grid-detail,
-  .theme-client .billing-grid,
   .theme-client .dash-2col-2-1,
   .theme-client .card-2col   { grid-template-columns: 1fr; }
   .theme-client .kpi-strip,
@@ -2679,3 +2685,119 @@ html:has(.theme-admin) { --border: #353c4f; }
   animation: load-spin .8s linear infinite;
 }
 @keyframes load-spin { to { transform: rotate(360deg); } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   CLIENT TABLE SYSTEM (CTS) — owner's column rules, 2026-08-02.
+   The one rulebook for every data table in the CLIENT portal (Billing
+   Transactions, Proxies). Admin tables are pixel-canon and share the same
+   base classes, so EVERY rule here is .theme-client-scoped and the block
+   sits at the END of the file so equal-specificity ties resolve our way.
+
+   The owner's six rules:
+     1. columns lay out evenly and never shift position;
+     2. data reads easily;
+     3. wrap ONLY in columns whose content is long relative to the rest;
+     4. content never crosses the divider lines / cell edges;
+     5. LEFT alignment everywhere (headers and cells);
+     6. data distributes evenly across the table width.
+
+   Mechanics (see also the colgroups in billing/page.tsx + ProxiesList.tsx):
+   - Column taxonomy: chk / id / num / date / status / action = ATOMIC
+     (nowrap, fixed anchor sized so real content NEVER truncates);
+     text = FLEXIBLE (wraps at word boundaries only).
+   - Widths: per table, every atomic column gets an anchor A (px) computed
+     from the widest REAL cell/header + paddings; anchors sum to the table's
+     budget B = its inner width at the narrowest 2-col layout (billing 651px,
+     proxies 994px @1280 viewport). Colgroup carries A/B as a PERCENTAGE and
+     ONE text column stays auto to absorb the remainder — so widths sum to
+     100% by construction at every size and grow proportionally (rule 6).
+     ⚠ NOT calc(px + %): Chrome silently drops mixed-unit calc() on <col>
+     of a fixed-layout table and falls back to even distribution (measured,
+     2026-08-02) — the FLEX() calc(100%·w/19) proxies scheme also silently
+     over-constrained the table by +228px. Plain percentages only.
+   - min-width:B on the table makes anchors hard minimums; below B the
+     wrapper pans (overflow-x:auto), columns never squish (rules 1, 4).
+   - overflow:hidden stays on every cell as containment insurance, but the
+     anchor math is what guarantees it never actually cuts content (rule 4).
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── A. Alignment: LEFT everywhere (rule 5). Neutralizes the base
+   .col-num/.col-date center (:496-501) and .col-action center (:508) on
+   cells; th side is belt-and-braces (base :444 is already left now that the
+   old client th.col-num right-align rule is deleted). */
+.theme-client table.dt thead th.col-num,
+.theme-client table.dt thead th.col-date,
+.theme-client table.dt thead th.col-action,
+.theme-client table.dt tbody td.col-num,
+.theme-client table.dt tbody td.col-date,
+.theme-client table.dt tbody td.col-action { text-align: left; }
+
+/* ── B. Canon cell typography (rule 2) — client mirror of the .theme-admin
+   block at :524-541: (0,3,3) finally beats the base td font shorthand
+   (0,1,3) that was silently killing .col-id/.col-num/.mono on the client,
+   and re-declares the tabular figures that the shorthand resets. */
+.theme-client table.dt tbody td.col-id {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.theme-client table.dt tbody td.col-num,
+.theme-client table.dt tbody td.col-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+/* Refund green must outrank the muted color above: (0,4,3) > (0,3,3). */
+.theme-client table.dt tbody td.col-num.positive { color: var(--success); }
+
+/* ── C. Wrap policy (rule 3): word boundaries ONLY. The first selector is
+   the verbatim-prefixed replica of the global no-ellipsis rule (:1891) —
+   (0,7,2) is the only thing that beats its (0,6,2) without !important.
+   overflow-wrap:anywhere let 86px-starved cells shatter "Wallet top-up"
+   mid-token; break-word keeps wrapping as last-resort but never mid-word
+   while a word boundary exists. */
+.theme-client table.dt td.col-text:not(.td-mono)
+  .cell-tip:not(.client-name-link):not(.client-cell-contact) {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.theme-client table.dt tbody td.col-text { overflow-wrap: break-word; }
+
+/* ── D. Billing vertical scroll, resurrected: the shell rule
+   `.theme-client .panel > .table-wrap` (:581) sets overflow-y:hidden at
+   (0,3,0) and beat .table-wrap.dt-scroll (0,2,0) — so max-height:540px
+   existed but could not scroll, stranding transactions past ~13 rows.
+   (0,4,0) restores it; sticky thead (:1875) starts working too. */
+.theme-client .panel > .table-wrap.dt-scroll { overflow-y: auto; }
+
+/* ── E. Billing geometry. One token drives the row-divider inset
+   (:454-458) AND the first/last edge paddings — they can never disagree
+   again (rule 4: content used to start 16px before the divider and end
+   16px past it). 16px is the canon billing edge (client-panel.html:2579).
+   ⚠ The explicit first/last rules below are LOAD-BEARING, not redundant:
+   the billing `padding: 10px 8px` shorthand (:1934-1935) is (0,2,3), the
+   SAME specificity as the base :first/:last-child edge rules (:450-451,
+   :472-473) — and later in source, so it wins that tie and would flatten
+   the edges to 8px. These (0,4,3) rules re-assert the token on top
+   (review finding CTS-1, 2026-08-03). */
+.theme-client .billing-grid table.dt { --table-edge-cap: 16px; }
+.theme-client .billing-grid table.dt thead th:first-child,
+.theme-client .billing-grid table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
+.theme-client .billing-grid table.dt thead th:last-child,
+.theme-client .billing-grid table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
+
+/* Anchor-budget floors. Selectors are (0,4,1)/(0,5,1): the billing one
+   TIES the ≤768 mobile min-width:560 rule and wins by source order — keep
+   this block below it. Floors sit 16px BELOW the anchor budgets (651/994):
+   the budgets assume the full 996px content width @1280, but a vertical
+   scrollbar steals layout width (6px styled webkit; up to ~15px classic
+   Windows) — a floor at the full budget would leave every page that
+   scrolls vertically in a permanent few-px horizontal pan (review finding
+   CTS-3). Between floor and budget the %-columns compress ≤2.5%, which
+   every anchor's content margin absorbs (verified by rendered probe). */
+.theme-client .billing-grid .table-wrap > table.dt { min-width: 635px; }
+
+/* ── F. Proxies anchor-budget floor.
+   NOTE: .dt-proxies is shared with admin ProxiesBulkTable — never style it
+   here without the .theme-client prefix. */
+.theme-client .panel > .table-wrap > table.dt.dt-proxies { min-width: 978px; }

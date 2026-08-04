@@ -51,9 +51,15 @@ export function TipFloater() {
       if (!text) return;
       current = trigger;
       floater.textContent = text;
-      // Reset geometry BEFORE measuring — a stale left/top from the previous
-      // show caps the line boxes against the viewport edge (skinny-column bug).
-      floater.style.width = '';
+      // Measure at the EXPLICIT max width, never at width:auto — two past
+      // bugs both came from trusting shrink-to-fit here: (1) a stale inline
+      // left from the previous show capped the line boxes at the viewport
+      // edge; (2) with the floater's overflow-wrap:anywhere, min-content is
+      // one character, and Chrome's fixed-position shrink-to-fit collapses
+      // to it — a one-character-per-line 47px column. Pinning width to the
+      // CSS max (320) makes the line boxes lay out exactly as they will
+      // render, then the width shrinks to the widest actual line.
+      floater.style.width = '320px';
       floater.style.maxHeight = '';
       floater.style.left = '0px';
       floater.style.top = '0px';
@@ -68,7 +74,7 @@ export function TipFloater() {
           const cs = getComputedStyle(floater);
           const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
           const bor = parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
-          floater.style.width = Math.ceil(maxLine + pad + bor) + 'px';
+          floater.style.width = Math.min(320, Math.ceil(maxLine + pad + bor)) + 'px';
         }
       } catch { /* noop */ }
 

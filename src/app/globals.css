@@ -479,15 +479,18 @@ table.dt { table-layout: fixed; }
    (prototype.html:1190) — narrow surfaces (e.g. the half-width billing
    Transactions panel) tighten to 12px, ultra-wide loosen to 20px; edge
    caps stay constant so tables stay anchored to the panel grid. */
+/* ATS: the adaptive tiers are CLIENT-ONLY — admin anchor math needs constant
+   16px inter-pads at every width (the loose tier used to eat header headroom
+   on wide screens). */
 @container (max-width: 800px) {
-  .table thead th, table.dt thead th, .table tbody td, table.dt tbody td { padding-inline: var(--table-cell-pad-x-tight); }
-  .table thead th:first-child, table.dt thead th:first-child, .table tbody td:first-child, table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
-  .table thead th:last-child, table.dt thead th:last-child, .table tbody td:last-child, table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
+  .theme-client .table thead th, .theme-client table.dt thead th, .theme-client .table tbody td, .theme-client table.dt tbody td { padding-inline: var(--table-cell-pad-x-tight); }
+  .theme-client .table thead th:first-child, .theme-client table.dt thead th:first-child, .theme-client .table tbody td:first-child, .theme-client table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
+  .theme-client .table thead th:last-child, .theme-client table.dt thead th:last-child, .theme-client .table tbody td:last-child, .theme-client table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
 }
 @container (min-width: 1281px) {
-  .table thead th, table.dt thead th, .table tbody td, table.dt tbody td { padding-inline: var(--table-cell-pad-x-loose); }
-  .table thead th:first-child, table.dt thead th:first-child, .table tbody td:first-child, table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
-  .table thead th:last-child, table.dt thead th:last-child, .table tbody td:last-child, table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
+  .theme-client .table thead th, .theme-client table.dt thead th, .theme-client .table tbody td, .theme-client table.dt tbody td { padding-inline: var(--table-cell-pad-x-loose); }
+  .theme-client .table thead th:first-child, .theme-client table.dt thead th:first-child, .theme-client .table tbody td:first-child, .theme-client table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
+  .theme-client .table thead th:last-child, .theme-client table.dt thead th:last-child, .theme-client .table tbody td:last-child, .theme-client table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
 }
 .table td a, .td-link { color: var(--accent-text); font-weight: 500; font-variant-numeric: tabular-nums; }
 .table td a:hover, .td-link:hover { color: var(--accent-hover); text-decoration: underline; }
@@ -500,23 +503,21 @@ table.dt { table-layout: fixed; }
   font: 400 12px var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
-  text-align: center;
+  /* ATS: left everywhere (was center). */
 }
 .col-money.right, .col-num.right, .col-date.right { text-align: right; }
 /* (CTS 2026-08: the old canon right-aligned numeric-header rule for the
    client lived here — deleted. Owner's table system aligns EVERYTHING left;
    see the CLIENT TABLE SYSTEM block at the end of this file.) */
 .col-status { text-align: left; }
-.col-action { text-align: center; }
+.col-action { text-align: left; }
 /* Canon centers the HEADER of numeric/money/date/pct/duration/action columns
    too — but `table.dt thead th` (text-align:left) outranks the bare `.col-*`
    class, so headers were rendering left over their centered data. Restore the
    canon centering with a th-scoped, higher-specificity rule. Scoped to
    .theme-admin so the client portal's tables are untouched by this audit. */
-.theme-admin table.dt thead th.col-num, .theme-admin table.dt thead th.col-money,
-.theme-admin table.dt thead th.col-date, .theme-admin table.dt thead th.col-pct,
-.theme-admin table.dt thead th.col-duration, .theme-admin table.dt thead th.col-volume,
-.theme-admin table.dt thead th.col-action { text-align: center; }
+/* (ATS 2026-08-03: the admin th centering that lived here is retired — the
+   owner's table system aligns EVERYTHING left on both portals.) */
 /* Canon numeric-CELL typography. Canon writes these as `.dt tbody td.col-*`
    (prototype.html:1113-1129) so they outrank the base `.dt tbody td` font;
    the app's bare `.col-*` utilities (0,1,0) lose to `table.dt tbody td`
@@ -535,11 +536,8 @@ table.dt { table-layout: fixed; }
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--muted);
-  /* Canon's base `tbody td` never sets overflow — a fixed-width stamp bleeds
-     a few px into the 16px cell padding instead of ellipsizing ("26 May ·
-     13:10" must not truncate to "26 May · 1…" @1440). The app's base td adds
-     hidden+ellipsis; undo it for these fixed-width kinds only. */
-  overflow: visible;
+  /* (ATS: the old `overflow:visible` bleed-license is gone — anchors are
+     sized so real content always fits; base hidden is containment.) */
 }
 .col-endpoint { font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 /* Stacked-content cells — allow wrapping without ellipsis cutting second line */
@@ -727,7 +725,7 @@ table.dt { table-layout: fixed; }
   border-left: 1.5px solid var(--surface); border-bottom: 1.5px solid var(--surface);
   transform: rotate(-45deg);
 }
-.col-chk { width: 32px; padding-left: 20px; }
+/* (ATS: the .col-chk width utility is gone — colgroup anchors own it.) */
 
 /* Pagination — info left, page-btn nav right; sits at the bottom of the panel. */
 .pagination {
@@ -1246,6 +1244,13 @@ table.dt { table-layout: fixed; }
   overflow: hidden;
 }
 .help-floater.visible { display: block; }
+/* ATS: th labels with an inline ⓘ (.th-label) let the icon hang into the
+   cell padding instead of being clipped by the th ellipsis. */
+table.dt thead th:has(.th-label) { overflow: visible; }
+/* Chip columns anchored to the widest COMMON chip: rare overlong labels clip
+   (no ellipsis inside a pill) but carry .cell-tip so hover reveals the full
+   text. */
+.cell-tip.chip-clip { text-overflow: clip; }
 /* Cream theme carries far less ambient contrast than the admin dark —
    soften the floater shadow accordingly. (The floater mounts INSIDE the
    portal shell — see TipFloater — so the descendant selector applies and
@@ -1756,8 +1761,6 @@ thead th .th-label > .help-tip {
 .theme-admin .issue-count { font-size: 13px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* Selling Capacity table + state pills */
-.theme-admin .capacity-table thead th { text-align: left; }
-.theme-admin .capacity-table tbody td { text-align: left; }
 .theme-admin .capacity-table tbody tr:hover { background: var(--bg-hover); }
 .theme-admin .capacity-table .plan-link { color: var(--accent); font-weight: 500; cursor: pointer; }
 .theme-admin .capacity-table .plan-link:hover { text-decoration: underline; }
@@ -1900,7 +1903,9 @@ table.dt td.col-text:not(.td-mono) { white-space: normal; }
    nowrap + ellipsis + tooltip — they'd wrap mid-token otherwise. */
 table.dt td.col-text:not(.td-mono) .cell-tip:not(.client-name-link):not(.client-cell-contact) {
   display: block; white-space: normal; overflow: visible; text-overflow: clip;
-  overflow-wrap: anywhere; word-break: break-word;
+  /* ATS: word boundaries only — `anywhere` shattered short strings mid-token
+     in width-starved columns. */
+  overflow-wrap: break-word; word-break: normal;
 }
 /* Status column: no ellipsis dots, but stay clipped (overflow:hidden) so a
    wide chip (e.g. the raw action enum in admin Logs) can't paint over its

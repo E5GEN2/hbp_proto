@@ -105,7 +105,7 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
   return (
     <>
       <AdminTopbar crumbs={[{ label: 'Admin Logs' }]} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
             { kind: 'search', name: 'q', placeholder: '' },

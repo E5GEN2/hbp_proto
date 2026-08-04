@@ -99,7 +99,7 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
                 <td className="col-text"><span className={`chip ${r.autoAssign ? 'active' : 'muted'}`}>{r.autoAssign ? 'ON' : 'OFF · manual picker'}</span></td>
                 <td className="col-text muted">{r.notes || '—'}</td>
                 <td className="col-action">
-                  <span className="hstack" style={{ justifyContent: 'flex-end' }}>
+                  <span className="hstack" style={{ justifyContent: 'flex-start' }}>
                     <a className="td-link" onClick={() => openEdit(r)}>Edit</a>
                     <a className="td-link" onClick={() => del(r.id, `${r.carrier}/${r.region}`)}>Delete</a>
                   </span>

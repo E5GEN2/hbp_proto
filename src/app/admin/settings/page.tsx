@@ -86,7 +86,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
   return (
     <>
       <AdminTopbar crumbs={[{ label: 'Settings' }]} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <div className="detail-page-shell">
         <div className="panel">
           <div className="tabs" id="settingsTabs">

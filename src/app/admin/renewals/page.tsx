@@ -108,7 +108,7 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
   return (
     <>
       <AdminTopbar crumbs={[{ label: 'Renewals' }]} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <FilterBar
           filters={[
             { kind: 'search', name: 'q', placeholder: '' },

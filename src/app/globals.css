@@ -49,7 +49,10 @@
 
   /* Geometry tokens — canon: client-panel.html §2 */
   --page-w: calc(1080px + 16px + var(--aside-w)); /* 1416px */
-  --table-edge-cap: 32px;
+  /* Canonical lining denominator (owner 2026-08-03): edge inset 20 · divider
+     inset 20 · row py 12 — every lined block (tables, kv rows, widget lists)
+     reads the same numbers. Was 32 (tables) / 16 (billing) / 20 (kv,widget). */
+  --table-edge-cap: 20px;
   --table-cell-pad-x: 16px;
   --table-cell-pad-x-tight: 12px;
   --table-cell-pad-x-loose: 20px;
@@ -951,7 +954,7 @@ table.dt { table-layout: fixed; }
 /* Order Summary widget — no row hairlines except the pre-total separator */
 .order-summary .kv-row { background-image: none; }
 .order-summary .kv-row:has(+ .kv-row.total) {
-  background-image: linear-gradient(90deg, transparent 20px, var(--border-subtle) 20px, var(--border-subtle) calc(100% - 20px), transparent calc(100% - 20px));
+  background-image: linear-gradient(90deg, transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset), var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
   background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
 }
 .order-summary .kv-row.total { border-top: 0; margin-top: 0; }
@@ -1047,7 +1050,7 @@ table.dt { table-layout: fixed; }
 .checkout-success .success-title, .checkout-failed .failed-title { font: 650 22px var(--font-sans); color: var(--text); }
 .checkout-failed .failed-message { font: 400 13.5px var(--font-sans); color: var(--text-secondary); max-width: 440px; }
 .checkout-success .success-helper { font: 400 13.5px/1.55 var(--font-sans); color: var(--warning); background: var(--warning-dim); border-radius: var(--radius-md); padding: 12px 16px; max-width: 440px; text-align: center; }
-.checkout-success .success-summary { width: 100%; max-width: 440px; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; background: var(--surface); display: flex; flex-direction: column; gap: 0; }
+.checkout-success .success-summary { width: 100%; max-width: 440px; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 0; background: var(--surface); display: flex; flex-direction: column; gap: 0; }
 .checkout-success .success-actions, .checkout-failed .failed-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
 @media (max-width: 768px) {
@@ -1098,7 +1101,7 @@ table.dt { table-layout: fixed; }
 
 .whitelist-list { display: flex; flex-direction: column; }
 .whitelist-row {
-  display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 20px;
   background-image: linear-gradient(90deg, transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset), var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
   background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
 }
@@ -1770,6 +1773,9 @@ thead th .th-label > .help-tip {
 
 .widget-list { display: flex; flex-direction: column; }
 .widget-list.scroll { max-height: 240px; overflow-y: auto; }
+/* orders/[id] uses `activity-scroll` (matches the timeline cap) — was a dead
+   class: no rule matched, the list grew unbounded. */
+.widget-list.activity-scroll { max-height: 254px; overflow-y: auto; }
 .widget-row {
   display: flex;
   align-items: center;
@@ -1861,7 +1867,7 @@ a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 20px 24px;
+  padding: 20px;
   display: flex; align-items: center; justify-content: space-between;
   gap: 24px; flex-wrap: wrap;
 }
@@ -1937,7 +1943,7 @@ html:has(.theme-admin) { --border: #353c4f; }
    cells with 16px edges inside the half-width panel (th row = 32px). */
 .billing-grid .table-wrap { overflow-x: auto; }
 .billing-grid table.dt thead th,
-.billing-grid table.dt tbody td { padding: 10px 8px; }
+.billing-grid table.dt tbody td { padding: 12px 8px; }
 /* (CTS 2026-08: the hardcoded 16px first/last edge pads that lived here are
    gone — the CTS block re-declares --table-edge-cap:16px on this table, so
    the BASE first/last rules (:450-451,:472-473) AND the tr divider inset
@@ -2009,10 +2015,10 @@ html:has(.theme-admin) { --border: #353c4f; }
    inset 20px so it doesn't reach the section edge. */
 .toggle-row {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 14px 20px;
+  padding: 12px 20px;
   background-image: linear-gradient(90deg,
-    transparent 20px, var(--border-subtle) 20px,
-    var(--border-subtle) calc(100% - 20px), transparent calc(100% - 20px));
+    transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset),
+    var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
   background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
 }
 .toggle-row:last-child { background-image: none; }
@@ -2173,7 +2179,7 @@ html:has(.theme-admin) { --border: #353c4f; }
 .theme-admin .detail-chips { margin-top: 4px; }
 .kv { display: flex; flex-direction: column; }
 .kv-key { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
-.theme-admin .kv-row { padding: 10px 20px; align-items: center; }
+.theme-admin .kv-row { align-items: center; }
 .theme-admin .kv-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
 
 /* --- exception chip + banner ------------------------------------------ */
@@ -2785,7 +2791,10 @@ html:has(.theme-admin) { --border: #353c4f; }
    :472-473) — and later in source, so it wins that tie and would flatten
    the edges to 8px. These (0,4,3) rules re-assert the token on top
    (review finding CTS-1, 2026-08-03). */
-.theme-client .billing-grid table.dt { --table-edge-cap: 16px; }
+/* (lining 2026-08-03: billing's 16px edge token re-declare is gone — the
+   global --table-edge-cap is now the canonical 20px for every table. The
+   first/last re-asserts below stay: they still beat the .billing-grid
+   padding shorthand's (0,2,3) source-order tie.) */
 .theme-client .billing-grid table.dt thead th:first-child,
 .theme-client .billing-grid table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
 .theme-client .billing-grid table.dt thead th:last-child,

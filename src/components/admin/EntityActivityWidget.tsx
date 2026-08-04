@@ -51,7 +51,7 @@ export async function EntityActivityWidget({
       {logs.length === 0 ? (
         <div className="muted" style={{ padding: '18px 20px', fontSize: 12 }}>No activity yet.</div>
       ) : (
-        <div className="timeline activity-scroll" style={{ padding: '14px 18px' }}>
+        <div className="timeline activity-scroll" style={{ padding: '14px 20px' }}>
           {logs.map(l => (
             <div key={l.id} className="tl-item">
               <span className={`tl-dot ${dotClass(l.action)}`} />

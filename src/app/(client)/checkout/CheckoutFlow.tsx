@@ -235,7 +235,7 @@ export function CheckoutFlow({
             <div className="checkout-details-row">
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">{label} · Mobile proxies</span></div>
-                <div className="panel-body">
+                <div className="panel-body flush">
                   <div className="duration-meta">
                     <div>
                       <div className="duration-price">{money(plan.price)}</div>
@@ -371,7 +371,7 @@ export function CheckoutFlow({
               order at a glance + cancel + a way back. */}
           {orderId && (
             <>
-              <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 20px' }}>
+              <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 0' }}>
                 <div className="kv-row"><span className="kv-label">{renewOf ? 'Renews order' : 'Order'}</span><span className="kv-val mono">{orderId}</span></div>
                 <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(duration)}</span></div>
                 <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>

@@ -38,6 +38,7 @@ export function AdminNotifBell() {
 
   function toggle() {
     if (open) { setOpen(false); return; }
+    overPop.current = false; // clean baseline: onMouseLeave won't fire if a prior popover unmounted under the pointer
     const rect = btnRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 10, right: Math.max(8, window.innerWidth - rect.right) });
     fetchRows();

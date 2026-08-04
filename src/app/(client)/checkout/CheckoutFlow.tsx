@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, Fragment, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, Fragment, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { money } from '@/lib/money';
@@ -74,6 +74,20 @@ export function CheckoutFlow({
     ? `/checkout?renewOf=${renewOf}&step=payment`
     : `/checkout?duration=${duration}&qty=${qty}&location=${encodeURIComponent(location)}&autoExtend=${autoExtend ? '1' : '0'}&step=payment`;
   const depositLink = `/checkout?kind=deposit&returnTo=${encodeURIComponent(returnTo)}`;
+
+  // Mirror the live cart into the URL (non-renewal) so window.location always
+  // reflects the configured qty/location/auto-extend + current step. This makes
+  // the checkout resumable on refresh AND lets the topbar "Add funds" chip —
+  // which reads window.location at click — return the buyer to their exact spot
+  // (the chip lives in the layout and can't see this component's state).
+  // replaceState adds no history entry; internal steps clamp to details/payment
+  // to match the page's entry-step sanitisation.
+  useEffect(() => {
+    if (renewOf) return;
+    const urlStep = step === 'details' ? 'details' : 'payment';
+    const url = `/checkout?duration=${duration}&qty=${qty}&location=${encodeURIComponent(location)}&autoExtend=${autoExtend ? '1' : '0'}&step=${urlStep}`;
+    window.history.replaceState(window.history.state, '', url);
+  }, [renewOf, duration, qty, location, autoExtend, step]);
 
   // Addressable confirmation URL (trace find #3/#8): instant + settled crypto
   // land here instead of transient wizard state, so reload/Back shows the

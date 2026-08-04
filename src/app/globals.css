@@ -1825,11 +1825,13 @@ thead th .th-label > .help-tip {
 .dash-2col-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
 
 .timeline { padding: 20px; display: flex; flex-direction: column; position: relative; }
-/* Cap raised 254→640 (owner): each event is ~78px, so a normal order (3-8
-   events, e.g. ORD-15207's 3 = 258px) used to trip the 254px cap and show a
-   phantom scrollbar with nothing hidden. 640px fits ≤8 events; only a
-   pathological history (many replacements) still scrolls. */
-.timeline.activity-scroll { max-height: 640px; overflow-y: auto; }
+.timeline.activity-scroll { max-height: 254px; overflow-y: auto; }
+/* Order-detail Activity ONLY (owner): cap raised 254→640. Each event is ~78px,
+   so a normal order (3–8 events, e.g. ORD-15207's 3 = 258px) tripped the 254px
+   cap and showed a phantom scrollbar with nothing hidden. Scoped to
+   .order-detail-split so the compact dashboard / admin activity widgets (which
+   share .timeline.activity-scroll) keep the 254px cap. */
+.order-detail-split .timeline.activity-scroll { max-height: 640px; }
 
 .tl-item { display: flex; gap: 14px; padding-bottom: 16px; position: relative; }
 .tl-item:last-child { padding-bottom: 0; }
@@ -1888,11 +1890,7 @@ a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
   gap: 24px; flex-wrap: wrap;
 }
 .balance-card-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.balance-card-value {
-  font: 700 32px var(--font-sans); color: var(--text);
-  letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
-}
-.balance-card-help { font: 400 12.5px/1.45 var(--font-sans); color: var(--muted); max-width: 360px; }
+/* (.balance-card-value / .balance-card-help removed with the hero amount+caption, owner 2026-08-04) */
 .balance-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* Scrollable data-table — caps at ~10 rows + header and makes the wrapper the

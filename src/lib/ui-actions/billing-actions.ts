@@ -4,6 +4,8 @@
 import * as S from '@/lib/billing-actions';
 import { unwrapAction } from './unwrap';
 
+// Currently unreferenced — the client Add-card UI is a "Coming soon" tile
+// (owner 2026-08-04). Kept wired for when card entry ships.
 export const addPaymentMethodAction = unwrapAction(S.addPaymentMethodAction);
 export const setDefaultPaymentMethodAction = unwrapAction(S.setDefaultPaymentMethodAction);
 export const removePaymentMethodAction = unwrapAction(S.removePaymentMethodAction);

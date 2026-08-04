@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { fmtAdminStamp } from '@/lib/date';
 import { money } from '@/lib/money';
 
@@ -18,7 +18,6 @@ const TONE: Record<string, string> = { SUCCESS: 'success', WARNING: 'warn', DANG
 // wipe that — the watermark advances when the popover CLOSES, so you can
 // actually see what's new while it's open.
 export function NotificationsBell({ initialBalance }: { initialBalance: number }) {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
@@ -34,19 +33,19 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
   // the popover mid-read (owner report). Suppress the scroll-close then.
   const overPop = useRef(false);
 
-  // Add-funds CTA target. On /checkout it must carry a returnTo back to the
-  // in-progress checkout so a top-up doesn't strand the purchase on /billing
-  // (the original reason PR #127 hid the chip here — restored safely per owner).
-  // window.location.search (not useSearchParams) keeps this out of Suspense.
-  const [addFundsHref, setAddFundsHref] = useState('/checkout?kind=deposit');
-  useEffect(() => {
-    if (pathname === '/checkout') {
-      const full = pathname + window.location.search;
-      setAddFundsHref(`/checkout?kind=deposit&returnTo=${encodeURIComponent(full)}`);
-    } else {
-      setAddFundsHref('/checkout?kind=deposit');
-    }
-  }, [pathname]);
+  // Add-funds CTA target, built at CLICK time from the LIVE URL (not a mounted
+  // snapshot): on /checkout it carries returnTo=<current checkout url> so a
+  // top-up returns to the buyer's exact configured cart + step — CheckoutFlow
+  // keeps window.location in sync — and never strands the purchase on /billing
+  // (the reason PR #127 hid the chip; restored safely per owner). Elsewhere it
+  // is a plain deposit. window.location (not useSearchParams) avoids Suspense.
+  const goAddFunds = useCallback(() => {
+    const onCheckout = window.location.pathname === '/checkout';
+    const target = onCheckout
+      ? `/checkout?kind=deposit&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+      : '/checkout?kind=deposit';
+    router.push(target);
+  }, [router]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -75,6 +74,11 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
     if (!openRef.current) return;
     openRef.current = false;
     setOpen(false);
+    // onMouseLeave never fires when the popover unmounts under a stationary
+    // pointer (e.g. Mark-all-read → router.refresh keeps this client component
+    // mounted), so reset the hover guard here or it stays stuck true and
+    // defeats scroll-to-dismiss on the next open.
+    overPop.current = false;
     // Advance the read watermark on CLOSE — everything the user just saw is
     // now read; the dot clears and rows dim on the next open.
     fetch('/api/notifications', { method: 'POST' }).then(() => {
@@ -85,6 +89,7 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
 
   function toggle() {
     if (openRef.current) { close(); return; }
+    overPop.current = false; // clean baseline every open (belt-and-braces)
     const rect = btnRef.current!.getBoundingClientRect();
     // Owner revision: equal breathing room on both sides — 10px below the
     // TOPBAR's bottom edge (anchoring to the bell put the popover's top edge
@@ -128,9 +133,9 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
           <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>
         </span>
         <span className="topbar-balance-value">{money(balance)}</span>
-        <Link className="btn ghost topbar-balance-cta" href={addFundsHref}>
+        <button type="button" className="btn ghost topbar-balance-cta" onClick={goAddFunds}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
-        </Link>
+        </button>
       </div>
 
       {/* Bell */}

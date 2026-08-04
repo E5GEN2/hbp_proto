@@ -2302,7 +2302,7 @@ html:has(.theme-admin) { --border: #353c4f; }
 }
 
 /* --- Activity widget timeline (.tl-meta + canon dot variants) --------- */
-.tl-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.tl-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; overflow-wrap: break-word; min-width: 0; }
 .tl-dot.warn   { background: var(--warning-dim); border-color: var(--warning); }
 .tl-dot.accent { background: var(--accent-dim);  border-color: var(--accent); }
 .theme-admin .tl-body { gap: 2px; }

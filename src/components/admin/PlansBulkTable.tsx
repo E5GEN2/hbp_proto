@@ -23,7 +23,6 @@ type Row = {
 
 const STATE_LABEL: Record<Row['capacityState'], string> = { 'sold-out': 'Sold out', low: 'Low availability', available: 'Available' };
 // Canon Plans .dt: 64 chk + 168 Plan + 168 Capacity State = 400 fixed; --col-total 22.
-const FLEX = (w: number) => `calc(100% * ${w} / 22)`;
 
 export function PlansBulkTable({ plans }: { plans: Row[] }) {
   const router = useRouter();
@@ -62,19 +61,24 @@ export function PlansBulkTable({ plans }: { plans: Row[] }) {
       </div>
 
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt" style={{ minWidth: 1100 }}>
+          {/* ATS colgroup, pan-variant (owner: keep every column). B*=1100 =
+              min-width — pans ≤106px at 1280, zero at ≥1386. Anchors: chk 52,
+              Carrier·Region 130 (wraps), Pool 96 (wraps), Duration 90, Price
+              83, Quota 77, Allocated 106, Available 104, Status 100, Capacity
+              State 142; Plan auto (min ~120). Plain % of 1100. */}
           <colgroup>
-            <col style={{ width: 64 }} />
-            <col style={{ width: 'var(--anchor-text)' }} />
-            <col style={{ width: FLEX(5) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: 'var(--anchor-text)' }} />
+            <col style={{ width: '4.7273%' }} />
+            <col />
+            <col style={{ width: '11.8182%' }} />
+            <col style={{ width: '8.7273%' }} />
+            <col style={{ width: '8.1818%' }} />
+            <col style={{ width: '7.5455%' }} />
+            <col style={{ width: '7.0000%' }} />
+            <col style={{ width: '9.6364%' }} />
+            <col style={{ width: '9.4545%' }} />
+            <col style={{ width: '9.0909%' }} />
+            <col style={{ width: '12.9091%' }} />
           </colgroup>
           <thead><tr>
             <th className="col-chk"></th>
@@ -95,9 +99,9 @@ export function PlansBulkTable({ plans }: { plans: Row[] }) {
             ) : plans.map(p => (
               <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk"><span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} /></td>
-                <td className="col-text"><span className="cell-tip" data-tip={p.name}><Link href={`/admin/plans/${p.id}`} className="td-link">{p.name}</Link></span></td>
-                <td className="col-text muted"><span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span></td>
-                <td className="col-text muted"><span className="cell-tip" data-tip={p.pool}>{p.pool}</span></td>
+                <td className="col-text"><Link href={`/admin/plans/${p.id}`} className="td-link">{p.name}</Link></td>
+                <td className="col-text muted">{p.carrier} · {p.region}</td>
+                <td className="col-text muted">{p.pool}</td>
                 <td className="col-duration">{p.durationDays} days</td>
                 <td className="col-money">{money(p.price)}</td>
                 <td className="col-num">{p.quota}</td>

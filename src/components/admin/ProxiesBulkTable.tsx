@@ -45,7 +45,6 @@ const HIST_REASON: Record<string, { label: string; chip: string }> = {
 };
 // Canon Proxies .dt: 64 chk + 168 Proxy ID = 232 fixed; flex cols sum 29
 // (canon 26 + 3 for the Registered date column added by product ask).
-const FLEX = (w: number) => `calc(100% * ${w} / 29)`;
 
 export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Row[]; historyMode?: boolean }) {
   const router = useRouter();
@@ -101,18 +100,26 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
 
       <div className="table-wrap">
         <table className="dt dt-proxies">
+          {/* ATS colgroup, pan-variant (owner: keep all 11 columns). B*=1120
+              = min-width — pans ≤126px at 1280, zero at ≥1406. Anchors: chk
+              52, Proxy ID 103, Assigned-to 103, Carrier·Region 114 (wraps),
+              Pool 96 (wraps), Hardware ID 110 (td-mono ellipsis+tip), Data
+              30D 87, Uptime 100, Registered 133, Status 124 ("Maintenance"
+              fits; historyMode labels clip-guarded + tooltip); Credentials
+              auto (td-mono ellipsis+tip — the natural absorber).
+              Plain % of 1120. */}
           <colgroup>
-            <col style={{ width: 64 }} />
-            <col style={{ width: 168 }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: 128 }} />{/* Status — fixed anchor, wide enough that the widest chip (Maintenance) never clips (owner P1) */}
+            <col style={{ width: '4.6429%' }} />
+            <col style={{ width: '9.1964%' }} />
+            <col style={{ width: '9.1964%' }} />
+            <col style={{ width: '10.1786%' }} />
+            <col style={{ width: '8.5714%' }} />
+            <col />
+            <col style={{ width: '9.8214%' }} />
+            <col style={{ width: '7.7679%' }} />
+            <col style={{ width: '8.9286%' }} />
+            <col style={{ width: '11.8750%' }} />
+            <col style={{ width: '11.0714%' }} />
           </colgroup>
           <thead><tr>
             <th className="col-chk"></th>
@@ -139,15 +146,15 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
                   <td className="col-chk">{!historyMode && <span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} />}</td>
                   <td className="col-id"><Link href={`/admin/proxies/${p.id}`} className="td-link">{p.id}</Link></td>
                   <td className="col-id">{p.currentOrderId ? <Link href={`/admin/orders/${p.currentOrderId}`} className="td-link">{p.currentOrderId}</Link> : <span className="muted">—</span>}</td>
-                  <td className="col-text muted"><span className="cell-tip" data-tip={`${p.carrier} · ${p.region}`}>{p.carrier} · {p.region}</span></td>
-                  <td className="col-text muted"><span className="cell-tip" data-tip={p.pool}>{p.pool}</span></td>
+                  <td className="col-text muted">{p.carrier} · {p.region}</td>
+                  <td className="col-text muted">{p.pool}</td>
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={`${p.ip}:${p.port}:${p.username}:${p.password}`}>{p.ip}:{p.port}:{p.username}:{p.password}</span></td>
                   <td className="col-text td-mono"><span className="cell-tip" data-tip={p.modem}>{p.modem}</span></td>
                   <td className="col-num">{maint ? '—' : `${(p.trafficUsedMB / 1024).toFixed(1)} GB`}</td>
                   <td className="col-num">{maint ? '—' : `${p.uptime}%`}</td>
                   <td className="col-date">{fmtAdminStamp(historyMode ? p.histReleasedAt : p.registeredAt)}</td>
                   <td className="col-status">{historyMode
-                    ? (() => { const r = HIST_REASON[p.histReason ?? 'RELEASED'] ?? { label: cap((p.histReason ?? 'RELEASED').replace(/_/g, ' ')), chip: 'released' }; return <span className={`chip ${r.chip}`}>{r.label}</span>; })()
+                    ? (() => { const r = HIST_REASON[p.histReason ?? 'RELEASED'] ?? { label: cap((p.histReason ?? 'RELEASED').replace(/_/g, ' ')), chip: 'released' }; return <span className={`chip ${r.chip} cell-tip chip-clip`} data-tip={r.label}>{r.label}</span>; })()
                     : <span className={`chip ${p.status.toLowerCase()}`}>{cap(p.status)}</span>}</td>
                 </tr>
               );

@@ -82,7 +82,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
           {/* ATS colgroup, pan-variant (owner: keep every column). B*=1190 =
               min-width — pans ≤196px at exactly 1280 viewport, zero pan at
               ≥1476. Anchors: chk 52, Order/Client ID 103, Carrier·Region 162
-              (nowrap), Amount 83, Payment 145 ("Refund requested"), Status
+              (nowrap), Amount 98 ("$9,999.99" + pads), Payment 145 ("Refund requested"), Status
               168 ("Renewal not extended"), Created 133, Expires 138; Plan
               auto (~103 at B*). Plain % of 1190. */}
           <colgroup>
@@ -91,7 +91,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
             <col style={{ width: '8.6555%' }} />
             <col />
             <col style={{ width: '13.6134%' }} />
-            <col style={{ width: '6.9748%' }} />
+            <col style={{ width: '8.2353%' }} />
             <col style={{ width: '12.1849%' }} />
             <col style={{ width: '14.1176%' }} />
             <col style={{ width: '11.1765%' }} />

@@ -115,7 +115,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
               <div className="table-wrap">
                 <table className="dt" style={{ minWidth: 642 }}>
                   {/* ATS colgroup, detail-grid budget B=658: Payment ID 107,
-                      Order ID 103, Amount 97 ("$1,290.50"), Status 126
+                      Order ID 103, Amount 98 ("$9,999.99" + pads), Status 126
                       (chip-clip + tooltip for rare long labels), Date 137;
                       Provider · Method auto (wraps word-boundary when narrow).
                       Plain % only; floor 642 = B−16. */}
@@ -123,7 +123,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
                     <col style={{ width: '16.2614%' }} />
                     <col style={{ width: '15.6535%' }} />
                     <col />
-                    <col style={{ width: '14.7416%' }} />
+                    <col style={{ width: '14.8936%' }} />
                     <col style={{ width: '19.1489%' }} />
                     <col style={{ width: '20.8207%' }} />
                   </colgroup>

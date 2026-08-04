@@ -137,13 +137,13 @@ export default async function AdminDashboardPage() {
                 <table className="dt" style={{ minWidth: 788 }}>
                   {/* ATS colgroup, pan-variant (owner: keep every column).
                       B*=788 = min-width; the dashboard grid panel pans below
-                      that. Anchors: Order ID 107, Client ID 103, Amount 87,
+                      that. Anchors: Order ID 107, Client ID 103, Amount 98,
                       Payment 126, Status 138, Created 137; Plan auto (~90). */}
                   <colgroup>
                     <col style={{ width: '13.5787%' }} />
                     <col style={{ width: '13.0711%' }} />
                     <col />
-                    <col style={{ width: '11.0406%' }} />
+                    <col style={{ width: '12.4365%' }} />
                     <col style={{ width: '15.9898%' }} />
                     <col style={{ width: '17.5127%' }} />
                     <col style={{ width: '17.3858%' }} />

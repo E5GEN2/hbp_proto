@@ -59,7 +59,7 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
           {/* ATS colgroup, pan-variant (owner: keep every column). B*=905 =
               min-width; the in-panel wrapper pans below that and the table
               stops compressing. Anchors: Order ID 107, Proxy ID 107, Period
-              140 ("28 May → 27 Jun"), Amount 83, Payment 126 (chip-clip:
+              140 ("28 May → 27 Jun"), Amount 98 ("$9,999.99" + pads), Payment 126 (chip-clip:
               "Refund requested" clips WITH tooltip), Auto-renew 114, Status
               138 ("Pending renewal" fits); Plan auto (min ~90). */}
           <colgroup>
@@ -67,7 +67,7 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
             <col />
             <col style={{ width: '11.8232%' }} />
             <col style={{ width: '15.4696%' }} />
-            <col style={{ width: '9.1713%' }} />
+            <col style={{ width: '10.8287%' }} />
             <col style={{ width: '13.9227%' }} />
             <col style={{ width: '12.5967%' }} />
             <col style={{ width: '15.2486%' }} />

@@ -121,29 +121,31 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                       {/* CTS colgroup (globals.css "CLIENT TABLE SYSTEM").
                           Anchors from REAL rendered measurements at the
                           651px budget (panel inner width @1280, 2-col
-                          grid): Payment ID 104 (header "PAYMENT ID" binds; 20px edge),
-                          Amount 92 (fits the refund "+ $9,999.99" — the
+                          grid): Payment ID 102 (header "PAYMENT ID" binds; 20px edge),
+                          Amount 91 (refund "+ $9,999.99" end-to-clip incl. floor) — the
                           widest string money() can emit under the $10,000
-                          cap; review finding CTS-2), Date 115 ("30 Jul ·
+                          cap; review finding CTS-2), Date 113 ("30 Jul ·
                           18:42" mono, measured 101px end-to-clip-safe), Order ID
-                          87, Status 90 (widest chip "Confirmed"), Invoice
-                          82 ("Pay now" 51.3px + 28 pads + floor-compression
+                          87, Status 89 (chip "Confirmed" end-to-clip), Invoice
+                          81 ("Pay now" 51.3px + 28 pads + floor-compression
                           headroom — this is an ellipsis column, so content
                           must clear the CONTENT box or it turns into
                           "Pay n…"). Each carries A/651 as a percentage;
-                          Type stays auto and absorbs the remainder (89px at
-                          budget, grows first).
+                          Type stays auto and absorbs the remainder (88px at
+                          budget — one-line "Wallet top-up" at ≥1280; the
+                          method line may word-wrap only in the sub-1280
+                          pan/floor regime).
                           ⚠ Chrome drops calc(px + %) on <col> in fixed
                           layout — plain percentages only. Σ = 651px exactly
                           at the anchor budget. */}
                       <colgroup>
-                        <col style={{ width: '15.9754%' }} />
-                        <col style={{ width: '14.1321%' }} />
-                        <col style={{ width: '17.6651%' }} />
-                        <col />
-                        <col style={{ width: '13.3641%' }} />
-                        <col style={{ width: '13.8249%' }} />
-                        <col style={{ width: '12.5960%' }} />
+                        <col style={{ width: '15.6682%' }} />{/* Payment ID 102 */}
+                        <col style={{ width: '13.9785%' }} />{/* Amount 91 */}
+                        <col style={{ width: '17.3579%' }} />{/* Date 113 */}
+                        <col />{/* Type auto (88 @ budget) */}
+                        <col style={{ width: '13.3641%' }} />{/* Order ID 87 */}
+                        <col style={{ width: '13.6713%' }} />{/* Status 89 */}
+                        <col style={{ width: '12.4424%' }} />{/* Invoice 81 */}
                       </colgroup>
                       <thead>
                         <tr>

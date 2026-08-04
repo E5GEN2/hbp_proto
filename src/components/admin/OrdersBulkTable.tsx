@@ -24,7 +24,6 @@ type Row = {
 
 // Canon .dt anchor scheme: L = 64px chk + 164px Order ID + 164px Expires R-anchor
 // = 392px fixed; seven middle cols share the slack by --w weights (col-total 25).
-const FLEX = (w: number) => `calc(100% * ${w} / 25)`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 export function OrdersBulkTable({ orders }: { orders: Row[] }) {
@@ -79,18 +78,24 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
       </div>
 
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt" style={{ minWidth: 1190 }}>
+          {/* ATS colgroup, pan-variant (owner: keep every column). B*=1190 =
+              min-width — pans ≤196px at exactly 1280 viewport, zero pan at
+              ≥1476. Anchors: chk 52, Order/Client ID 103, Carrier·Region 162
+              (nowrap), Amount 98 ("$9,999.99" + pads), Payment 145 ("Refund requested"), Status
+              168 ("Renewal not extended"), Created 133, Expires 138; Plan
+              auto (88 at B*). Plain % of 1190. */}
           <colgroup>
-            <col style={{ width: 64 }} />
-            <col style={{ width: 'var(--anchor-id)' }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(5) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: 'var(--anchor-date)' }} />
+            <col style={{ width: '4.3697%' }} />
+            <col style={{ width: '8.6555%' }} />
+            <col style={{ width: '8.6555%' }} />
+            <col />
+            <col style={{ width: '13.6134%' }} />
+            <col style={{ width: '8.2353%' }} />
+            <col style={{ width: '12.1849%' }} />
+            <col style={{ width: '14.1176%' }} />
+            <col style={{ width: '11.1765%' }} />
+            <col style={{ width: '11.5966%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -116,14 +121,14 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
                 </td>
                 <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
                 <td className="col-id"><span className="cell-tip" data-tip={o.clientId}><Link href={`/admin/clients/${o.clientId}`} className="td-link">{o.clientId}</Link></span></td>
-                <td className="col-text"><span className="cell-tip" data-tip={o.planName}>{o.planName}</span></td>
+                <td className="col-text">{o.planName}</td>
                 <td className="col-text"><span className="cell-tip" data-tip={`${o.planCarrier} · ${o.region}`}>{o.planCarrier} · {o.region}</span></td>
                 <td className="col-money">{money(o.amount)}</td>
-                <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
+                <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()} cell-tip chip-clip`} data-tip={cap(o.paymentStatus.replace(/_/g, ' '))}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
                 <td className="col-status">
                   {o.exception
-                    ? <span className="chip danger">{cap(o.exception.replace(/_/g, ' '))}</span>
-                    : <span className={`chip ${o.status.toLowerCase().replace('_', '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span>}
+                    ? <span className="chip danger cell-tip chip-clip" data-tip={cap(o.exception.replace(/_/g, ' '))}>{cap(o.exception.replace(/_/g, ' '))}</span>
+                    : <span className={`chip ${o.status.toLowerCase().replace('_', '-')} cell-tip chip-clip`} data-tip={cap(o.status.replace(/_/g, ' '))}>{cap(o.status.replace(/_/g, ' '))}</span>}
                 </td>
                 <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
                 <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>

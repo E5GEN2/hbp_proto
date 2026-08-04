@@ -86,7 +86,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
   return (
     <>
       <AdminTopbar crumbs={[{ label: 'Settings' }]} />
-      <main style={{ padding: 24, overflowY: 'auto' }}>
+      <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         <div className="detail-page-shell">
         <div className="panel">
           <div className="tabs" id="settingsTabs">
@@ -138,12 +138,16 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
                     </div>
                   </div>
                   <div className="table-wrap">
-                    <table className="dt">
+                    <table className="dt" style={{ minWidth: 892 }}>
+                      {/* ATS colgroup, budget B=908 (settings-nested table @1280
+                          admin min-width). Anchors: Admin 200, Role 130, Joined
+                          137; Email auto absorbs (~441 at budget). Plain % only
+                          (Chrome drops calc(px+%) on <col>); floor 892 = B−16. */}
                       <colgroup>
-                        <col style={{ width: 220 }} />
-                        <col style={{ width: 'calc(100% * 4 / 9)' }} />
-                        <col style={{ width: 'calc(100% * 3 / 9)' }} />
-                        <col style={{ width: 'calc(100% * 2 / 9)' }} />
+                        <col style={{ width: '22.0264%' }} />
+                        <col />
+                        <col style={{ width: '14.3172%' }} />
+                        <col style={{ width: '15.0881%' }} />
                       </colgroup>
                       <thead><tr>
                         <th className="col-id">Admin</th>
@@ -176,12 +180,14 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
                 <div className="panel-section">
                   <span className="panel-title">Role permissions</span>
                   <div className="table-wrap">
-                    <table className="dt">
+                    <table className="dt" style={{ minWidth: 892 }}>
+                      {/* ATS colgroup, B=908: Super/Ops 105, Support 109;
+                          Permission auto (~589). */}
                       <colgroup>
-                        <col style={{ width: 'calc(100% * 5 / 11)' }} />
-                        <col style={{ width: 'calc(100% * 2 / 11)' }} />
-                        <col style={{ width: 'calc(100% * 2 / 11)' }} />
-                        <col style={{ width: 'calc(100% * 2 / 11)' }} />
+                        <col />
+                        <col style={{ width: '11.5639%' }} />
+                        <col style={{ width: '11.5639%' }} />
+                        <col style={{ width: '12.0044%' }} />
                       </colgroup>
                       <thead><tr>
                         <th className="col-text">Permission</th>

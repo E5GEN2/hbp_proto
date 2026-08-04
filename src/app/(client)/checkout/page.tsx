@@ -193,7 +193,7 @@ export default async function CheckoutPage({ searchParams }: {
 
     const crumbs = [{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: isNewOrder ? 'Complete payment' : 'Complete renewal' }];
     const orderSummary = (
-      <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 20px' }}>
+      <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--surface)', padding: '4px 0' }}>
         <div className="kv-row"><span className="kv-label">{isNewOrder ? 'Order' : 'Renews order'}</span><span className="kv-val mono">{resumeOrder.id}</span></div>
         <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(resumeOrder.plan.durationDays)}</span></div>
         <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{resumeOrder.region}</span></div>

@@ -101,7 +101,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
             <div className="grid-left">
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">Order snapshot</span></div>
-                <div className="panel-body">
+                <div className="panel-body flush">
                   <div className="kv-row"><span className="kv-label">Plan</span><span className="kv-val">{planDisplayName(order.plan.durationDays)}</span></div>
                   <div className="kv-row"><span className="kv-label">Carrier · Region</span><span className="kv-val">{order.plan.carrier} · {order.region}</span></div>
                   <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{order.qty} {order.qty === 1 ? 'proxy' : 'proxies'}</span></div>
@@ -160,7 +160,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
             <div className="grid-right">
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">Lifecycle</span></div>
-                <div className="panel-body">
+                <div className="panel-body flush">
                   <div className="kv-row"><span className="kv-label">Created</span><span className="kv-val">{fmtAdminStamp(order.createdAt)}</span></div>
                   <div className="kv-row"><span className="kv-label">Activated</span><span className="kv-val">{order.activatedAt ? fmtAdminStamp(order.activatedAt) : '—'}</span></div>
                   <div className="kv-row"><span className="kv-label">Expires</span><span className="kv-val">{order.expiresAt ? fmtAdminStamp(order.expiresAt) : '—'}</span></div>

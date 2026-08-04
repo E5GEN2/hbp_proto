@@ -49,15 +49,14 @@
 
   /* Geometry tokens — canon: client-panel.html §2 */
   --page-w: calc(1080px + 16px + var(--aside-w)); /* 1416px */
-  --table-edge-cap: 32px;
+  /* Canonical lining denominator (owner 2026-08-03): edge inset 20 · divider
+     inset 20 · row py 12 — every lined block (tables, kv rows, widget lists)
+     reads the same numbers. Was 32 (tables) / 16 (billing) / 20 (kv,widget). */
+  --table-edge-cap: 20px;
   --table-cell-pad-x: 16px;
   --table-cell-pad-x-tight: 12px;
   --table-cell-pad-x-loose: 20px;
   --row-divider-inset: 20px;
-  --anchor-id: 164px;
-  --anchor-date: 164px;
-  --anchor-status: 144px;
-  --anchor-text: 168px;
 }
 
 /* ===== ADMIN (dark) theme ===== */
@@ -476,15 +475,18 @@ table.dt { table-layout: fixed; }
    (prototype.html:1190) — narrow surfaces (e.g. the half-width billing
    Transactions panel) tighten to 12px, ultra-wide loosen to 20px; edge
    caps stay constant so tables stay anchored to the panel grid. */
+/* ATS: the adaptive tiers are CLIENT-ONLY — admin anchor math needs constant
+   16px inter-pads at every width (the loose tier used to eat header headroom
+   on wide screens). */
 @container (max-width: 800px) {
-  .table thead th, table.dt thead th, .table tbody td, table.dt tbody td { padding-inline: var(--table-cell-pad-x-tight); }
-  .table thead th:first-child, table.dt thead th:first-child, .table tbody td:first-child, table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
-  .table thead th:last-child, table.dt thead th:last-child, .table tbody td:last-child, table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
+  .theme-client .table thead th, .theme-client table.dt thead th, .theme-client .table tbody td, .theme-client table.dt tbody td { padding-inline: var(--table-cell-pad-x-tight); }
+  .theme-client .table thead th:first-child, .theme-client table.dt thead th:first-child, .theme-client .table tbody td:first-child, .theme-client table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
+  .theme-client .table thead th:last-child, .theme-client table.dt thead th:last-child, .theme-client .table tbody td:last-child, .theme-client table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
 }
 @container (min-width: 1281px) {
-  .table thead th, table.dt thead th, .table tbody td, table.dt tbody td { padding-inline: var(--table-cell-pad-x-loose); }
-  .table thead th:first-child, table.dt thead th:first-child, .table tbody td:first-child, table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
-  .table thead th:last-child, table.dt thead th:last-child, .table tbody td:last-child, table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
+  .theme-client .table thead th, .theme-client table.dt thead th, .theme-client .table tbody td, .theme-client table.dt tbody td { padding-inline: var(--table-cell-pad-x-loose); }
+  .theme-client .table thead th:first-child, .theme-client table.dt thead th:first-child, .theme-client .table tbody td:first-child, .theme-client table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
+  .theme-client .table thead th:last-child, .theme-client table.dt thead th:last-child, .theme-client .table tbody td:last-child, .theme-client table.dt tbody td:last-child { padding-right: var(--table-edge-cap); }
 }
 .table td a, .td-link { color: var(--accent-text); font-weight: 500; font-variant-numeric: tabular-nums; }
 .table td a:hover, .td-link:hover { color: var(--accent-hover); text-decoration: underline; }
@@ -497,23 +499,21 @@ table.dt { table-layout: fixed; }
   font: 400 12px var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
-  text-align: center;
+  /* ATS: left everywhere (was center). */
 }
 .col-money.right, .col-num.right, .col-date.right { text-align: right; }
 /* (CTS 2026-08: the old canon right-aligned numeric-header rule for the
    client lived here — deleted. Owner's table system aligns EVERYTHING left;
    see the CLIENT TABLE SYSTEM block at the end of this file.) */
 .col-status { text-align: left; }
-.col-action { text-align: center; }
+.col-action { text-align: left; }
 /* Canon centers the HEADER of numeric/money/date/pct/duration/action columns
    too — but `table.dt thead th` (text-align:left) outranks the bare `.col-*`
    class, so headers were rendering left over their centered data. Restore the
    canon centering with a th-scoped, higher-specificity rule. Scoped to
    .theme-admin so the client portal's tables are untouched by this audit. */
-.theme-admin table.dt thead th.col-num, .theme-admin table.dt thead th.col-money,
-.theme-admin table.dt thead th.col-date, .theme-admin table.dt thead th.col-pct,
-.theme-admin table.dt thead th.col-duration, .theme-admin table.dt thead th.col-volume,
-.theme-admin table.dt thead th.col-action { text-align: center; }
+/* (ATS 2026-08-03: the admin th centering that lived here is retired — the
+   owner's table system aligns EVERYTHING left on both portals.) */
 /* Canon numeric-CELL typography. Canon writes these as `.dt tbody td.col-*`
    (prototype.html:1113-1129) so they outrank the base `.dt tbody td` font;
    the app's bare `.col-*` utilities (0,1,0) lose to `table.dt tbody td`
@@ -532,11 +532,8 @@ table.dt { table-layout: fixed; }
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--muted);
-  /* Canon's base `tbody td` never sets overflow — a fixed-width stamp bleeds
-     a few px into the 16px cell padding instead of ellipsizing ("26 May ·
-     13:10" must not truncate to "26 May · 1…" @1440). The app's base td adds
-     hidden+ellipsis; undo it for these fixed-width kinds only. */
-  overflow: visible;
+  /* (ATS: the old `overflow:visible` bleed-license is gone — anchors are
+     sized so real content always fits; base hidden is containment.) */
 }
 .col-endpoint { font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 /* Stacked-content cells — allow wrapping without ellipsis cutting second line */
@@ -724,7 +721,7 @@ table.dt { table-layout: fixed; }
   border-left: 1.5px solid var(--surface); border-bottom: 1.5px solid var(--surface);
   transform: rotate(-45deg);
 }
-.col-chk { width: 32px; padding-left: 20px; }
+/* (ATS: the .col-chk width utility is gone — colgroup anchors own it.) */
 
 /* Pagination — info left, page-btn nav right; sits at the bottom of the panel. */
 .pagination {
@@ -951,7 +948,7 @@ table.dt { table-layout: fixed; }
 /* Order Summary widget — no row hairlines except the pre-total separator */
 .order-summary .kv-row { background-image: none; }
 .order-summary .kv-row:has(+ .kv-row.total) {
-  background-image: linear-gradient(90deg, transparent 20px, var(--border-subtle) 20px, var(--border-subtle) calc(100% - 20px), transparent calc(100% - 20px));
+  background-image: linear-gradient(90deg, transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset), var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
   background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
 }
 .order-summary .kv-row.total { border-top: 0; margin-top: 0; }
@@ -1047,7 +1044,7 @@ table.dt { table-layout: fixed; }
 .checkout-success .success-title, .checkout-failed .failed-title { font: 650 22px var(--font-sans); color: var(--text); }
 .checkout-failed .failed-message { font: 400 13.5px var(--font-sans); color: var(--text-secondary); max-width: 440px; }
 .checkout-success .success-helper { font: 400 13.5px/1.55 var(--font-sans); color: var(--warning); background: var(--warning-dim); border-radius: var(--radius-md); padding: 12px 16px; max-width: 440px; text-align: center; }
-.checkout-success .success-summary { width: 100%; max-width: 440px; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; background: var(--surface); display: flex; flex-direction: column; gap: 0; }
+.checkout-success .success-summary { width: 100%; max-width: 440px; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 0; background: var(--surface); display: flex; flex-direction: column; gap: 0; }
 .checkout-success .success-actions, .checkout-failed .failed-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
 @media (max-width: 768px) {
@@ -1098,7 +1095,7 @@ table.dt { table-layout: fixed; }
 
 .whitelist-list { display: flex; flex-direction: column; }
 .whitelist-row {
-  display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 20px;
   background-image: linear-gradient(90deg, transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset), var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
   background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
 }
@@ -1236,8 +1233,31 @@ table.dt { table-layout: fixed; }
   border: 1px solid var(--border-strong);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .55);
   letter-spacing: 0; text-align: left;
+  /* Unbreakable tokens (rotation URLs, host:port:user:pass creds — the very
+     strings the tooltip exists to reveal) must wrap inside the 320px box,
+     not paint past the border. */
+  overflow-wrap: anywhere;
+  overflow: hidden;
 }
 .help-floater.visible { display: block; }
+/* ATS: th labels with an inline ⓘ (.th-label) let the icon hang into the
+   cell padding instead of being clipped by the th ellipsis. */
+table.dt thead th:has(.th-label) { overflow: visible; }
+/* Chip columns anchored to the widest COMMON chip: rare overlong labels clip
+   (no ellipsis inside a pill) but carry .cell-tip so hover reveals the full
+   text. */
+.cell-tip.chip-clip {
+  /* Stay an inline pill: .cell-tip's display:block is later in source than
+     .chip's inline-flex and would stretch the chip to full cell width. The
+     max-width cap makes the CHIP itself overflow when the label is too long,
+     so the TipFloater clip-gate fires on the chip, and the clip happens
+     inside the pill. */
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
 /* Cream theme carries far less ambient contrast than the admin dark —
    soften the floater shadow accordingly. (The floater mounts INSIDE the
    portal shell — see TipFloater — so the descendant selector applies and
@@ -1748,8 +1768,6 @@ thead th .th-label > .help-tip {
 .theme-admin .issue-count { font-size: 13px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* Selling Capacity table + state pills */
-.theme-admin .capacity-table thead th { text-align: left; }
-.theme-admin .capacity-table tbody td { text-align: left; }
 .theme-admin .capacity-table tbody tr:hover { background: var(--bg-hover); }
 .theme-admin .capacity-table .plan-link { color: var(--accent); font-weight: 500; cursor: pointer; }
 .theme-admin .capacity-table .plan-link:hover { text-decoration: underline; }
@@ -1765,6 +1783,9 @@ thead th .th-label > .help-tip {
 
 .widget-list { display: flex; flex-direction: column; }
 .widget-list.scroll { max-height: 240px; overflow-y: auto; }
+/* orders/[id] uses `activity-scroll` (matches the timeline cap) — was a dead
+   class: no rule matched, the list grew unbounded. */
+.widget-list.activity-scroll { max-height: 254px; overflow-y: auto; }
 .widget-row {
   display: flex;
   align-items: center;
@@ -1856,7 +1877,7 @@ a.buy-cta-icon:hover { background: var(--accent); color: #fff; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 20px 24px;
+  padding: 20px;
   display: flex; align-items: center; justify-content: space-between;
   gap: 24px; flex-wrap: wrap;
 }
@@ -1889,14 +1910,16 @@ table.dt td.col-text:not(.td-mono) { white-space: normal; }
    nowrap + ellipsis + tooltip — they'd wrap mid-token otherwise. */
 table.dt td.col-text:not(.td-mono) .cell-tip:not(.client-name-link):not(.client-cell-contact) {
   display: block; white-space: normal; overflow: visible; text-overflow: clip;
-  overflow-wrap: anywhere; word-break: break-word;
+  /* ATS: word boundaries only — `anywhere` shattered short strings mid-token
+     in width-starved columns. */
+  overflow-wrap: break-word; word-break: normal;
 }
 /* Status column: no ellipsis dots, but stay clipped (overflow:hidden) so a
    wide chip (e.g. the raw action enum in admin Logs) can't paint over its
    neighbour. The proxies Status column is anchored wide enough to fit. */
 table.dt td.col-status { white-space: nowrap; overflow: hidden; text-overflow: clip; }
-table.dt td.col-chk, table.dt td.col-id, table.dt td.col-num, table.dt td.col-date,
-table.dt th.col-chk, table.dt th.col-id, table.dt th.col-num, table.dt th.col-date { text-overflow: clip; }
+table.dt td.col-chk, table.dt td.col-id, table.dt td.col-num, table.dt td.col-date, table.dt td.col-money,
+table.dt th.col-chk, table.dt th.col-id, table.dt th.col-num, table.dt th.col-date, table.dt th.col-money { text-overflow: clip; }
 
 /* Slim canon scrollbar (prototype §.content / .timeline.activity-scroll: 6px,
    transparent track, --border thumb, 3px radius). The app had only styled
@@ -1932,11 +1955,12 @@ html:has(.theme-admin) { --border: #353c4f; }
    cells with 16px edges inside the half-width panel (th row = 32px). */
 .billing-grid .table-wrap { overflow-x: auto; }
 .billing-grid table.dt thead th,
-.billing-grid table.dt tbody td { padding: 10px 8px; }
+.billing-grid table.dt tbody td { padding: 12px 8px; }
 /* (CTS 2026-08: the hardcoded 16px first/last edge pads that lived here are
-   gone — the CTS block re-declares --table-edge-cap:16px on this table, so
-   the BASE first/last rules (:450-451,:472-473) AND the tr divider inset
-   (:454-458) all read the same 16px. Edges and divider now always agree.) */
+   gone — billing edges come from the global --table-edge-cap (the canonical
+   20px lining denominator), driven onto first/last cells by the CTS block's
+   explicit re-asserts at the end of this file. Edges and the tr divider
+   inset read the same token, so they always agree.) */
 .billing-grid .tx-type   { font: 500 13px/1.4 var(--font-sans); color: var(--text); }
 .billing-grid .tx-method { font: 400 11px/1.35 var(--font-sans); color: var(--muted); margin-top: 2px; }
 .col-num.positive { color: var(--success); }
@@ -2004,10 +2028,10 @@ html:has(.theme-admin) { --border: #353c4f; }
    inset 20px so it doesn't reach the section edge. */
 .toggle-row {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 14px 20px;
+  padding: 12px 20px;
   background-image: linear-gradient(90deg,
-    transparent 20px, var(--border-subtle) 20px,
-    var(--border-subtle) calc(100% - 20px), transparent calc(100% - 20px));
+    transparent var(--row-divider-inset), var(--border-subtle) var(--row-divider-inset),
+    var(--border-subtle) calc(100% - var(--row-divider-inset)), transparent calc(100% - var(--row-divider-inset)));
   background-position: bottom; background-size: 100% 1px; background-repeat: no-repeat;
 }
 .toggle-row:last-child { background-image: none; }
@@ -2286,7 +2310,7 @@ html:has(.theme-admin) { --border: #353c4f; }
 }
 
 /* --- Activity widget timeline (.tl-meta + canon dot variants) --------- */
-.tl-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.tl-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; overflow-wrap: break-word; min-width: 0; }
 .tl-dot.warn   { background: var(--warning-dim); border-color: var(--warning); }
 .tl-dot.accent { background: var(--accent-dim);  border-color: var(--accent); }
 .theme-admin .tl-body { gap: 2px; }
@@ -2762,6 +2786,7 @@ html:has(.theme-admin) { --border: #353c4f; }
   word-break: normal;
 }
 .theme-client table.dt tbody td.col-text { overflow-wrap: break-word; }
+.theme-admin table.dt tbody td.col-text { overflow-wrap: break-word; }
 
 /* ── D. Billing vertical scroll, resurrected: the shell rule
    `.theme-client .panel > .table-wrap` (:581) sets overflow-y:hidden at
@@ -2775,12 +2800,15 @@ html:has(.theme-admin) { --border: #353c4f; }
    again (rule 4: content used to start 16px before the divider and end
    16px past it). 16px is the canon billing edge (client-panel.html:2579).
    ⚠ The explicit first/last rules below are LOAD-BEARING, not redundant:
-   the billing `padding: 10px 8px` shorthand (:1934-1935) is (0,2,3), the
+   the billing `padding: 12px 8px` shorthand is (0,2,3), the
    SAME specificity as the base :first/:last-child edge rules (:450-451,
    :472-473) — and later in source, so it wins that tie and would flatten
    the edges to 8px. These (0,4,3) rules re-assert the token on top
    (review finding CTS-1, 2026-08-03). */
-.theme-client .billing-grid table.dt { --table-edge-cap: 16px; }
+/* (lining 2026-08-03: billing's 16px edge token re-declare is gone — the
+   global --table-edge-cap is now the canonical 20px for every table. The
+   first/last re-asserts below stay: they still beat the .billing-grid
+   padding shorthand's (0,2,3) source-order tie.) */
 .theme-client .billing-grid table.dt thead th:first-child,
 .theme-client .billing-grid table.dt tbody td:first-child { padding-left: var(--table-edge-cap); }
 .theme-client .billing-grid table.dt thead th:last-child,

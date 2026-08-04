@@ -12,7 +12,6 @@ type Rule = {
   autoAssign: boolean; notes: string | null;
 };
 
-const W = (w: number) => `calc(100% * ${w} / 20)`;
 
 export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
   rules: Rule[];
@@ -71,14 +70,17 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
       </div>
 
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt" style={{ minWidth: 892 }}>
+          {/* ATS colgroup, budget B=908: Carrier·Region 166, Default pool 131,
+              Fallback chain 180 (wraps at arrows), Auto-assign 156 ("OFF ·
+              manual picker" fits), actions 124; Notes auto. Plain % only. */}
           <colgroup>
-            <col style={{ width: W(4) }} />
-            <col style={{ width: W(4) }} />
-            <col style={{ width: W(4) }} />
-            <col style={{ width: W(3) }} />
-            <col style={{ width: W(3) }} />
-            <col style={{ width: W(2) }} />
+            <col style={{ width: '18.2819%' }} />
+            <col style={{ width: '14.4273%' }} />
+            <col style={{ width: '19.8238%' }} />
+            <col style={{ width: '17.1806%' }} />
+            <col />
+            <col style={{ width: '13.6564%' }} />
           </colgroup>
           <thead><tr>
             <th className="col-text">Carrier · Region</th>
@@ -99,7 +101,7 @@ export function ProvisioningRulesForm({ rules, carriers, regions, pools }: {
                 <td className="col-text"><span className={`chip ${r.autoAssign ? 'active' : 'muted'}`}>{r.autoAssign ? 'ON' : 'OFF · manual picker'}</span></td>
                 <td className="col-text muted">{r.notes || '—'}</td>
                 <td className="col-action">
-                  <span className="hstack" style={{ justifyContent: 'flex-end' }}>
+                  <span className="hstack" style={{ justifyContent: 'flex-start' }}>
                     <a className="td-link" onClick={() => openEdit(r)}>Edit</a>
                     <a className="td-link" onClick={() => del(r.id, `${r.carrier}/${r.region}`)}>Delete</a>
                   </span>

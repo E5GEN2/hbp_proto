@@ -113,14 +113,19 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Payments</span></div>
               <div className="table-wrap">
-                <table className="dt">
+                <table className="dt" style={{ minWidth: 642 }}>
+                  {/* ATS colgroup, detail-grid budget B=658: Payment ID 107,
+                      Order ID 103, Amount 98 ("$9,999.99" + pads), Status 126
+                      (chip-clip + tooltip for rare long labels), Date 137;
+                      Provider · Method auto (wraps word-boundary when narrow).
+                      Plain % only; floor 642 = B−16. */}
                   <colgroup>
-                    <col style={{ width: 'calc(100% * 3 / 19)' }} />
-                    <col style={{ width: 'calc(100% * 3 / 19)' }} />
-                    <col style={{ width: 'calc(100% * 5 / 19)' }} />
-                    <col style={{ width: 'calc(100% * 2 / 19)' }} />
-                    <col style={{ width: 'calc(100% * 3 / 19)' }} />
-                    <col style={{ width: 'calc(100% * 3 / 19)' }} />
+                    <col style={{ width: '16.2614%' }} />
+                    <col style={{ width: '15.6535%' }} />
+                    <col />
+                    <col style={{ width: '14.8936%' }} />
+                    <col style={{ width: '19.1489%' }} />
+                    <col style={{ width: '20.8207%' }} />
                   </colgroup>
                   <thead><tr>
                     <th className="col-id">Payment ID</th>
@@ -135,11 +140,11 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
                       <tr><td colSpan={6} style={{ padding: '18px 20px', textAlign: 'center', color: 'var(--muted)' }}>No payments.</td></tr>
                     ) : c.payments.slice(0, 10).map(p => (
                       <tr key={p.id}>
-                        <td className="col-id"><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></td>
+                        <td className="col-id"><span className="cell-tip" data-tip={p.id}><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></span></td>
                         <td className="col-id">{p.order ? <Link href={`/admin/orders/${p.order.id}`} className="td-link">{p.order.id}</Link> : <span className="muted">—</span>}</td>
                         <td className="col-text muted">{p.provider} · {p.method}</td>
                         <td className="col-money">{money(Number(p.gross))}</td>
-                        <td className="col-status"><span className={`chip ${PAY_CHIP[p.status] ?? 'expired'}`}>{PAY_LABEL[p.status] ?? p.status}</span></td>
+                        <td className="col-status"><span className={`chip ${PAY_CHIP[p.status] ?? 'expired'} cell-tip chip-clip`} data-tip={PAY_LABEL[p.status] ?? p.status}>{PAY_LABEL[p.status] ?? p.status}</span></td>
                         <td className="col-date">{fmtAdminStamp(p.createdAt)}</td>
                       </tr>
                     ))}

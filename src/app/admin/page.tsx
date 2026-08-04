@@ -5,12 +5,6 @@ import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { underProvisionedCount } from '@/lib/provisioning';
 
-// Flexible .dt column widths — canon Column System (prototype.html :root docs):
-// each flex col = 100% × w / col-total; px anchors + % flexibles are then
-// renormalized together by table-layout: fixed, exactly like the canon
-// calc(var(--w) / var(--col-total) * 100%).
-const FLEX_RO = (w: number) => `calc(100% * ${w} / 19)`;
-const FLEX_CAP = (w: number) => `calc(100% * ${w} / 3)`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 const CAP_LABEL: Record<string, string> = {
@@ -136,15 +130,19 @@ export default async function AdminDashboardPage() {
                 <Link className="panel-action" href="/admin/orders">View all →</Link>
               </div>
               <div className="table-wrap">
-                <table className="dt">
+                <table className="dt" style={{ minWidth: 788 }}>
+                  {/* ATS colgroup, pan-variant (owner: keep every column).
+                      B*=788 = min-width; the dashboard grid panel pans below
+                      that. Anchors: Order ID 107, Client ID 103, Amount 98,
+                      Payment 126, Status 138, Created 137; Plan auto (79 at B*). */}
                   <colgroup>
-                    <col style={{ width: 'var(--anchor-id)' }} />
-                    <col style={{ width: FLEX_RO(4) }} />
-                    <col style={{ width: FLEX_RO(5) }} />
-                    <col style={{ width: FLEX_RO(3) }} />
-                    <col style={{ width: FLEX_RO(3) }} />
-                    <col style={{ width: FLEX_RO(4) }} />
-                    <col style={{ width: 'var(--anchor-date)' }} />
+                    <col style={{ width: '13.5787%' }} />
+                    <col style={{ width: '13.0711%' }} />
+                    <col />
+                    <col style={{ width: '12.4365%' }} />
+                    <col style={{ width: '15.9898%' }} />
+                    <col style={{ width: '17.5127%' }} />
+                    <col style={{ width: '17.3858%' }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -164,10 +162,10 @@ export default async function AdminDashboardPage() {
                       <tr key={o.id}>
                         <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
                         <td className="col-id"><span className="cell-tip" data-tip={o.client.id}><Link href={`/admin/clients/${o.client.id}`} className="td-link">{o.client.id}</Link></span></td>
-                        <td className="col-text muted"><span className="cell-tip" data-tip={o.plan.name}>{o.plan.name}</span></td>
+                        <td className="col-text muted">{o.plan.name}</td>
                         <td className="col-money">{money(Number(o.amount))}</td>
-                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
-                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
+                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()} cell-tip chip-clip`} data-tip={cap(o.paymentStatus.replace(/_/g, ' '))}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
+                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')} cell-tip chip-clip`} data-tip={cap(o.status.replace(/_/g, ' '))}>{cap(o.status.replace(/_/g, ' '))}</span></td>
                         <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
                       </tr>
                     ))}
@@ -183,13 +181,16 @@ export default async function AdminDashboardPage() {
                 <Link className="panel-action" href="/admin/plans">Manage plans →</Link>
               </div>
               <div className="table-wrap">
-                <table className="dt capacity-table">
+                <table className="dt capacity-table" style={{ minWidth: 642 }}>
+                  {/* ATS colgroup, B=658: Quota 77, Allocated 106, Available
+                      104, Capacity state 142; Plan auto (~229 — longest plan
+                      name fits one line). */}
                   <colgroup>
-                    <col style={{ width: 'var(--anchor-text)' }} />
-                    <col style={{ width: FLEX_CAP(1) }} />
-                    <col style={{ width: FLEX_CAP(1) }} />
-                    <col style={{ width: FLEX_CAP(1) }} />
-                    <col style={{ width: 168 }} />
+                    <col />
+                    <col style={{ width: '11.7021%' }} />
+                    <col style={{ width: '16.1094%' }} />
+                    <col style={{ width: '15.8055%' }} />
+                    <col style={{ width: '21.5805%' }} />
                   </colgroup>
                   <thead>
                     <tr>

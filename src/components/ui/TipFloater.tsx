@@ -2,10 +2,33 @@
 import { useEffect } from 'react';
 
 // Canon tooltip floater (prototype.html "TOOLTIP FLOATER") — one body-attached
-// element shared by every `.help-tip` icon and `.cell-tip` truncated cell.
-// Ported 1:1: smart positioning (above the trigger, flipping/clamping at the
-// viewport edges) and the line-box width shrink that keeps left/right padding
-// symmetric after max-width wrapping. Mount once per portal layout.
+// element shared by every `.help-tip` icon, `.cell-tip` truncated cell and
+// bare `[data-tip]` element. Smart positioning (above the trigger, flipping/
+// clamping at the viewport edges) and a line-box width shrink that keeps
+// left/right padding symmetric after max-width wrapping. Mount once per
+// portal layout.
+//
+// Rewritten 2026-08-03 (owner: "окно криво работает") — the fixes, each tied
+// to a measured defect:
+//  - reset inline left/top/width BEFORE measuring: the shrink-to-fit used to
+//    measure while the floater still sat at the PREVIOUS tip's left, so
+//    near-right-edge positions capped the line boxes and produced a skinny
+//    110px×446px column instead of a 313px×121px box;
+//  - `current` trigger memo + relatedTarget guard: crossing child elements
+//    (the <a> inside a cell) fired hide→show→re-measure per boundary — a
+//    visible flicker and a progressive shrink;
+//  - stuck-tip release: rows removed by re-render fire no mouseout; the
+//    onOver no-trigger branch now hides the orphaned tip on the next move;
+//  - bare [data-tip] fallback: chips carry data-tip without .cell-tip (e.g.
+//    the client Maintenance chip) — they never matched either selector;
+//  - side-choice clamp: when neither side fits, pick the LARGER side and cap
+//    height there instead of sliding the tip back over the trigger row;
+//  - scrollbar-aware clamps: window.innerWidth includes the scrollbar
+//    gutter, so right-edge tips could start under the bar; use
+//    documentElement.clientWidth/Height;
+//  - clip gate kept as `>= 1`: scrollWidth/clientWidth are integer-rounded
+//    per spec, so this equals the old `>` gate — the form just states the
+//    intent (a full pixel of real overflow) explicitly.
 export function TipFloater() {
   useEffect(() => {
     const floater = document.createElement('div');
@@ -21,11 +44,19 @@ export function TipFloater() {
     const host = document.querySelector('.theme-admin, .theme-client') ?? document.body;
     host.appendChild(floater);
 
+    let current: Element | null = null;
+
     function show(trigger: Element) {
       const text = (trigger as HTMLElement).dataset.tip;
       if (!text) return;
+      current = trigger;
       floater.textContent = text;
+      // Reset geometry BEFORE measuring — a stale left/top from the previous
+      // show caps the line boxes against the viewport edge (skinny-column bug).
       floater.style.width = '';
+      floater.style.maxHeight = '';
+      floater.style.left = '0px';
+      floater.style.top = '0px';
       floater.classList.add('visible');
 
       try {
@@ -44,39 +75,87 @@ export function TipFloater() {
       const rect = trigger.getBoundingClientRect();
       const tw = floater.offsetWidth;
       const th = floater.offsetHeight;
-      const vw = window.innerWidth, vh = window.innerHeight;
+      // clientWidth/Height exclude scrollbar gutters (innerWidth does not) —
+      // right-edge tips otherwise start under the admin scrollbar.
+      const vw = document.documentElement.clientWidth;
+      const vh = document.documentElement.clientHeight;
       const margin = 8;
-      let top = rect.top - th - margin;
+      const above = rect.top - margin;
+      const below = vh - rect.bottom - margin;
+      let top: number;
+      if (th <= above) {
+        top = rect.top - th - margin;
+      } else if (th <= below) {
+        top = rect.bottom + margin;
+      } else {
+        // Neither side fits whole: take the larger side and cap the height
+        // there — never slide back over the trigger row.
+        if (above >= below) {
+          floater.style.maxHeight = Math.max(0, above) + 'px';
+          top = margin;
+        } else {
+          floater.style.maxHeight = Math.max(0, below) + 'px';
+          top = rect.bottom + margin;
+        }
+      }
       let left = rect.left + rect.width / 2 - tw / 2;
-      if (top < margin) top = rect.bottom + margin;
-      if (top + th > vh - margin) top = Math.max(margin, vh - th - margin);
       if (left < margin) left = margin;
       if (left + tw > vw - margin) left = vw - tw - margin;
       floater.style.top = top + 'px';
       floater.style.left = left + 'px';
     }
-    const hide = () => floater.classList.remove('visible');
+    const hide = () => { floater.classList.remove('visible'); current = null; };
+
+    function resolveTrigger(t: Element): Element | null {
+      const ht = t.closest('.help-tip');
+      if (ht) return ht;
+      const ct = t.closest('.cell-tip');
+      // .cell-tip opens ONLY when the text is actually clipped (a full
+      // integer pixel of overflow — scrollWidth/clientWidth are rounded).
+      if (ct && ct.scrollWidth - ct.clientWidth >= 1) return ct;
+      if (ct) return null;
+      // Bare data-tip carriers (status chips etc.) tip unconditionally,
+      // like .help-tip.
+      const dt = t.closest('[data-tip]');
+      if (dt) return dt;
+      return null;
+    }
 
     function onOver(e: MouseEvent) {
-      const t = e.target as Element;
-      const ht = t.closest('.help-tip');
-      if (ht) { show(ht); return; }
-      // .cell-tip opens ONLY when the text is actually clipped.
-      const ct = t.closest('.cell-tip');
-      if (ct && ct.scrollWidth > ct.clientWidth) show(ct);
+      const trig = resolveTrigger(e.target as Element);
+      if (!trig) {
+        // Rows re-rendered under the cursor fire no mouseout — release the
+        // orphaned tip on the next movement instead of leaving it stuck.
+        if (current) hide();
+        return;
+      }
+      // Same trigger, still visible: crossing child boundaries must not
+      // hide→show→re-measure (flicker + progressive shrink).
+      if (trig === current && floater.classList.contains('visible')) return;
+      show(trig);
     }
     function onOut(e: MouseEvent) {
-      if ((e.target as Element).closest('.help-tip, .cell-tip')) hide();
+      const trig = (e.target as Element).closest('.help-tip, .cell-tip, [data-tip]');
+      if (!trig) return;
+      // Moving onto a child of the same trigger is not a leave.
+      if (e.relatedTarget instanceof Node && trig.contains(e.relatedTarget)) return;
+      hide();
+    }
+    function onScroll() {
+      // Keep the tip if the pointer is still over its trigger (the row moved
+      // with the scroll); re-anchor instead of vanishing.
+      if (current instanceof HTMLElement && current.matches(':hover')) show(current);
+      else hide();
     }
 
     document.addEventListener('mouseover', onOver);
     document.addEventListener('mouseout', onOut);
-    document.addEventListener('scroll', hide, true);
+    document.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', hide);
     return () => {
       document.removeEventListener('mouseover', onOver);
       document.removeEventListener('mouseout', onOut);
-      document.removeEventListener('scroll', hide, true);
+      document.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', hide);
       floater.remove();
     };

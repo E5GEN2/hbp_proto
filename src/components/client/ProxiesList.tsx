@@ -34,9 +34,9 @@ const PAGE_SIZE = 10;
    column by ~0.8 (the PR #121 id-clip saga was this). CTS anchors instead:
    atomic columns carry A/994 as a percentage of the 994px budget (table
    inner width @1280); Carrier·Region stays auto and absorbs the remainder
-   (158px at budget). Anchors: chk 64px · Proxy ID 164 (--anchor-id) ·
+   (170px at budget). Anchors: chk 52 (20px edge + 16 chk + 16 pad) · Proxy ID 164 ·
    Assigned-to 116 · Auto rotation 136 (header "AUTO ROTATION" binds) ·
-   Uptime 108 · Speed 104 · Health 144 (--anchor-status). Σ = 994 exactly. */
+   Uptime 108 · Speed 104 · Health 144. Σ = 994 exactly. */
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 
@@ -250,7 +250,7 @@ export function ProxiesList({ rows, initialSearch = '', initialCarrier = '' }: {
       <div className="table-wrap">
         <table className="dt dt-proxies">
           <colgroup>
-            <col style={{ width: 64 }} />
+            <col style={{ width: '5.2313%' }} />
             <col style={{ width: '16.4990%' }} />
             <col style={{ width: '11.6700%' }} />
             <col />

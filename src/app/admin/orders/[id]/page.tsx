@@ -327,14 +327,19 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Assignment history</span></div>
               <div className="table-wrap">
-                <table className="dt">
+                <table className="dt" style={{ minWidth: 642 }}>
+                  {/* ATS colgroup, detail-grid budget B=658: Proxy ID 107,
+                      Carrier·Region 114 (wraps), Assigned 133, By 104,
+                      actions 108 ("Replace" fits); Status auto — the chip
+                      stacks over its release-meta line so long reasons stay
+                      fully readable (cr-stack). Plain %; floor 642 = B−16. */}
                   <colgroup>
-                    <col style={{ width: 'calc(100% * 3 / 20)' }} />
-                    <col style={{ width: 'calc(100% * 4 / 20)' }} />
-                    <col style={{ width: 'calc(100% * 3 / 20)' }} />
-                    <col style={{ width: 'calc(100% * 5 / 20)' }} />
-                    <col style={{ width: 'calc(100% * 2 / 20)' }} />
-                    <col style={{ width: 'calc(100% * 3 / 20)' }} />
+                    <col style={{ width: '16.2614%' }} />
+                    <col style={{ width: '17.3252%' }} />
+                    <col style={{ width: '20.2128%' }} />
+                    <col />
+                    <col style={{ width: '15.8055%' }} />
+                    <col style={{ width: '16.4134%' }} />
                   </colgroup>
                   <thead><tr>
                     <th className="col-id">Proxy ID</th>
@@ -357,12 +362,12 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                         const meta = a.releasedAt ? `${fmtAdminStamp(a.releasedAt)}${a.reasonDetail ? ` · ${a.reasonDetail}` : ''}` : '';
                         return (
                           <tr key={a.id}>
-                            <td className="col-id"><Link href={`/admin/proxies/${a.proxyId}`} className="td-link">{a.proxyId}</Link></td>
+                            <td className="col-id"><span className="cell-tip" data-tip={a.proxyId}><Link href={`/admin/proxies/${a.proxyId}`} className="td-link">{a.proxyId}</Link></span></td>
                             <td className="col-text muted">{a.proxy.carrier} · {a.proxy.region}</td>
                             <td className="col-date">{fmtAdminStamp(a.assignedAt)}</td>
-                            <td className="col-status">
+                            <td className="col-status cr-stack">
                               <span className={`chip ${stateClass}`}>{stateLabel}</span>
-                              {meta && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{meta}</span>}
+                              {meta && <div className="muted" style={{ fontSize: 11, marginTop: 2, whiteSpace: 'normal', overflowWrap: 'break-word' }}>{meta}</div>}
                             </td>
                             <td className="col-actor"><span className="badge-soft">{actorName.get(a.actorId) ?? a.actorId}</span></td>
                             <td className="col-action">

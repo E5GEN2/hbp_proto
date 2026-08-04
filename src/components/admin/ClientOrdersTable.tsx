@@ -22,8 +22,6 @@ type Row = {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 const dateOnly = (d: Date) => fmtAdminStamp(d).split('·')[0].trim();
-// Canon Client-Detail Orders table: 8 flex cols, --col-total 26.
-const FLEX = (w: number) => `calc(100% * ${w} / 26)`;
 
 const FILTERS: Record<string, (o: Row) => boolean> = {
   all: () => true,
@@ -56,16 +54,22 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
         />
       </div>
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt" style={{ minWidth: 905 }}>
+          {/* ATS colgroup, pan-variant (owner: keep every column). B*=905 =
+              min-width; the in-panel wrapper pans below that and the table
+              stops compressing. Anchors: Order ID 107, Proxy ID 107, Period
+              140 ("28 May → 27 Jun"), Amount 98 ("$9,999.99" + pads), Payment 126 (chip-clip:
+              "Refund requested" clips WITH tooltip), Auto-renew 114, Status
+              138 ("Pending renewal" fits); Plan auto (min ~75). */}
           <colgroup>
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(5) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(5) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(3) }} />
+            <col style={{ width: '11.8232%' }} />
+            <col />
+            <col style={{ width: '11.8232%' }} />
+            <col style={{ width: '15.4696%' }} />
+            <col style={{ width: '10.8287%' }} />
+            <col style={{ width: '13.9227%' }} />
+            <col style={{ width: '12.5967%' }} />
+            <col style={{ width: '15.2486%' }} />
           </colgroup>
           <thead><tr>
             <th className="col-id">Order ID</th>
@@ -86,15 +90,15 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
                 <td className="col-text muted"><span className="cell-tip" data-tip={o.planName}>{o.planName}</span></td>
                 <td className="col-id">
                   {o.proxies.length === 0 ? <span className="muted">—</span>
-                    : o.proxies.length === 1 ? <Link href={`/admin/proxies/${o.proxies[0]}`} className="td-link">{o.proxies[0]}</Link>
+                    : o.proxies.length === 1 ? <span className="cell-tip" data-tip={o.proxies[0]}><Link href={`/admin/proxies/${o.proxies[0]}`} className="td-link">{o.proxies[0]}</Link></span>
                     : <Link href={`/admin/orders/${o.id}`} className="td-link">Proxies <span className="muted">({o.proxies.length})</span></Link>}
                 </td>
                 <td className="col-date"><span className="period-cell"><span className="period-range">{dateOnly(o.periodStart)} → {o.periodEnd ? dateOnly(o.periodEnd) : '—'}</span></span></td>
                 <td className="col-money">{money(o.amount)}</td>
                 <td className="col-status">
                   {o.paymentId
-                    ? <Link href={`/admin/payments/${o.paymentId}`} className="td-link"><span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''}`}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span></Link>
-                    : <span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''}`}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span>}
+                    ? <Link href={`/admin/payments/${o.paymentId}`} className="td-link"><span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''} cell-tip chip-clip`} data-tip={PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span></Link>
+                    : <span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''} cell-tip chip-clip`} data-tip={PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span>}
                 </td>
                 <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'}`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
                 <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>

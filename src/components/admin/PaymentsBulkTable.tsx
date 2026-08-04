@@ -22,7 +22,6 @@ type Row = {
 
 // Canon .dt anchor scheme: 64px chk + 164px Payment ID + 164px Date R-anchor
 // = 392px fixed; middle cols share the slack by --w weights (col-total 19).
-const FLEX = (w: number) => `calc(100% * ${w} / 19)`;
 const CONFIRMABLE = new Set(['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW']);
 
 export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
@@ -66,16 +65,20 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
       </div>
 
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt" style={{ minWidth: 978 }}>
+          {/* ATS colgroup, budget B=994: chk 52, Payment/Order/Client ID 103,
+              Amount 83, Status 145, Date 137; Provider · Method auto (~268 —
+              long Stripe auto-renew strings wrap at word boundaries).
+              Plain %; floor 978 = B−16. */}
           <colgroup>
-            <col style={{ width: 64 }} />
-            <col style={{ width: 'var(--anchor-id)' }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(6) }} />
-            <col style={{ width: FLEX(2) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: 'var(--anchor-date)' }} />
+            <col style={{ width: '5.2313%' }} />
+            <col style={{ width: '10.3622%' }} />
+            <col style={{ width: '10.3622%' }} />
+            <col style={{ width: '10.3622%' }} />
+            <col />
+            <col style={{ width: '8.3501%' }} />
+            <col style={{ width: '14.5875%' }} />
+            <col style={{ width: '13.7827%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -100,7 +103,7 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
                 <td className="col-id"><span className="cell-tip" data-tip={p.id}><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></span></td>
                 <td className="col-id">{p.orderId ? <span className="cell-tip" data-tip={p.orderId}><Link href={`/admin/orders/${p.orderId}`} className="td-link">{p.orderId}</Link></span> : <span className="muted">—</span>}</td>
                 <td className="col-id">{p.clientId ? <span className="cell-tip" data-tip={p.clientId}><Link href={`/admin/clients/${p.clientId}`} className="client-link">{p.clientId}</Link></span> : <span className="muted">—</span>}</td>
-                <td className="col-text muted"><span className="cell-tip" data-tip={`${p.provider} · ${p.method}`}>{p.provider} · {p.method}</span></td>
+                <td className="col-text muted">{p.provider} · {p.method}</td>
                 <td className="col-money">{money(p.gross)}</td>
                 <td className="col-status"><span className={`chip ${p.statusChip}`}>{p.statusLabel}</span></td>
                 <td className="col-date">{fmtAdminStamp(p.createdAt)}</td>

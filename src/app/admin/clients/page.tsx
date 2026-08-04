@@ -19,7 +19,6 @@ const PAY_EVENT: Record<string, string> = {
 
 // Canon Clients .dt anchor scheme: 360px Client + 164px Client ID + 240px Last
 // event = 764px fixed; middle cols share the slack by --w weights (col-total 9).
-const FLEX = (w: number) => `calc(100% * ${w} / 9)`;
 
 export default async function AdminClientsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const view = searchParams.status ?? 'all';
@@ -108,15 +107,20 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
           </div>
 
           <div className="table-wrap">
-            <table className="dt">
+            <table className="dt" style={{ minWidth: 978 }}>
+              {/* ATS colgroup, budget B=994: Client 310 (composite name/email
+                  keeps its own nowrap+ellipsis+tooltip), Client ID 103,
+                  Orders 83, LTV 90 ("$129,000"), Status 110, Risk 95
+                  (chip-clip), Last event auto (~203, wraps ≤2 lines).
+                  Plain %; floor 978 = B−16. */}
               <colgroup>
-                <col style={{ width: 360 }} />
-                <col style={{ width: 'var(--anchor-id)' }} />
-                <col style={{ width: FLEX(2) }} />
-                <col style={{ width: FLEX(2) }} />
-                <col style={{ width: FLEX(3) }} />
-                <col style={{ width: FLEX(2) }} />
-                <col style={{ width: 240 }} />
+                <col style={{ width: '31.1871%' }} />
+                <col style={{ width: '10.3622%' }} />
+                <col style={{ width: '8.3501%' }} />
+                <col style={{ width: '9.0543%' }} />
+                <col style={{ width: '11.0664%' }} />
+                <col style={{ width: '9.5573%' }} />
+                <col />
               </colgroup>
               <thead><tr>
                 <th className="col-text">Client</th>
@@ -159,11 +163,11 @@ export default async function AdminClientsPage({ searchParams }: { searchParams:
                       <td className="col-status"><span className={`chip ${status}`}>{cap(status)}</span></td>
                       <td className="col-status">
                         {c.risk === 'NONE' ? <span className="risk-clean">—</span>
-                          : c.risk === 'REVIEW' ? <span className="chip review">Review</span>
-                          : <span className="chip flag">Flagged</span>}
+                          : c.risk === 'REVIEW' ? <span className="chip review cell-tip chip-clip" data-tip="Review">Review</span>
+                          : <span className="chip flag cell-tip chip-clip" data-tip="Flagged">Flagged</span>}
                       </td>
                       {ev
-                        ? <td className="col-text"><span className="cell-tip" data-tip={`${fmtAdminStamp(ev.date)} · ${ev.label}`}><span className="td-mono">{fmtAdminStamp(ev.date)}</span> <span className="muted">· {ev.label}</span></span></td>
+                        ? <td className="col-text"><span className="td-mono">{fmtAdminStamp(ev.date)}</span> <span className="muted">· {ev.label}</span></td>
                         : <td className="col-text muted">—</td>}
                     </tr>
                   );

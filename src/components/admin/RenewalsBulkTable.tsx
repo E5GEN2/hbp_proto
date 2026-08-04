@@ -26,7 +26,6 @@ export type RenewalRow = {
 
 // Canon .dt anchor scheme: L = 64px chk + 164px Order ID = 228px fixed (--anchor-l);
 // no right anchor — seven middle cols share the slack by --w weights (--col-total: 26).
-const FLEX = (w: number) => `calc(100% * ${w} / 26)`;
 
 // Single-row Extend label varies by tab (semantics differ, backend is the same
 // extendOrder flow): Extend (expiring) · Revive (grace/expired) · Resolve (paid
@@ -138,17 +137,21 @@ export function RenewalsBulkTable({ rows, view }: { rows: RenewalRow[]; view: st
       </div>
 
       <div className="table-wrap">
-        <table className="dt">
+        <table className="dt" style={{ minWidth: 978 }}>
+          {/* ATS colgroup, budget B=994: chk 52, Order/Client/Proxy ID 103,
+              Expires 133, Last reminder 133, Status 143 ("Pending payment"),
+              Auto-renew 118 (header binds); Plan auto (~106, wraps).
+              Plain %; floor 978 = B−16. */}
           <colgroup>
-            <col style={{ width: 64 }} />
-            <col style={{ width: 'var(--anchor-id)' }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(4) }} />
-            <col style={{ width: FLEX(5) }} />
-            <col style={{ width: FLEX(3) }} />
-            <col style={{ width: FLEX(4) }} />
+            <col style={{ width: '5.2313%' }} />
+            <col style={{ width: '10.3622%' }} />
+            <col style={{ width: '10.3622%' }} />
+            <col style={{ width: '10.3622%' }} />
+            <col />
+            <col style={{ width: '13.3803%' }} />
+            <col style={{ width: '13.3803%' }} />
+            <col style={{ width: '14.3863%' }} />
+            <col style={{ width: '11.8712%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -180,7 +183,7 @@ export function RenewalsBulkTable({ rows, view }: { rows: RenewalRow[]; view: st
                       ? <span className="cell-tip" data-tip={o.proxyId}><Link href={`/admin/proxies/${o.proxyId}`} className="td-link">{o.proxyId}</Link></span>
                       : <span className="chip released">Released</span>}
                 </td>
-                <td className="col-text muted"><span className="cell-tip" data-tip={o.planName}>{o.planName}</span></td>
+                <td className="col-text muted">{o.planName}</td>
                 <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>
                 <td className={`col-date ${o.lastReminderAt ? '' : 'muted'}`}>{o.lastReminderAt ? fmtAdminStamp(o.lastReminderAt) : '—'}</td>
                 <td className="col-status">{statusChip(o)}</td>

@@ -128,14 +128,19 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
           </div>
 
           <div className="table-wrap">
-            <table className="dt">
+            <table className="dt" style={{ minWidth: 978 }}>
+              {/* ATS colgroup, budget B=994: Admin 176, Role 105, Action 235
+                  ("ORDER.CREDENTIALS_DELIVERED" chip fits), Object ID 103,
+                  Timestamp 133; Details auto (~242, wraps word-boundary —
+                  the old fixed 320px starved every other column). Plain %;
+                  floor 978 = B−16. */}
               <colgroup>
-                <col style={{ width: 'calc(100% * 4 / 18)' }} />
-                <col style={{ width: 'calc(100% * 2 / 18)' }} />
-                <col style={{ width: 'calc(100% * 5 / 18)' }} />
-                <col style={{ width: 'calc(100% * 3 / 18)' }} />
-                <col style={{ width: 'calc(100% * 4 / 18)' }} />
-                <col style={{ width: 320 }} />
+                <col style={{ width: '17.7062%' }} />
+                <col style={{ width: '10.5634%' }} />
+                <col style={{ width: '23.6419%' }} />
+                <col style={{ width: '10.3622%' }} />
+                <col style={{ width: '13.3803%' }} />
+                <col />
               </colgroup>
               <thead>
                 <tr>
@@ -176,7 +181,7 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Re
                           : l.objectId ? <span>{l.objectId}</span> : <span className="muted">—</span>}
                       </td>
                       <td className="col-date">{fmtAdminStamp(l.at)}</td>
-                      <td className="col-text muted"><span className="cell-tip" data-tip={l.detail}>{renderDetail(l.detail)}</span></td>
+                      <td className="col-text muted">{renderDetail(l.detail)}</td>
                     </tr>
                   );
                 })}

@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { fmtAdminStamp } from '@/lib/date';
 import { money } from '@/lib/money';
 
@@ -18,12 +18,6 @@ const TONE: Record<string, string> = { SUCCESS: 'success', WARNING: 'warn', DANG
 // wipe that — the watermark advances when the popover CLOSES, so you can
 // actually see what's new while it's open.
 export function NotificationsBell({ initialBalance }: { initialBalance: number }) {
-  const pathname = usePathname();
-  // On /checkout the topbar "Add funds" chip (no returnTo) would strand an
-  // in-progress purchase on /billing — the inline "Add funds" in the payment
-  // step (which carries returnTo) is the only correct affordance here (trace
-  // find #15). Keep the balance readout, drop the CTA on this route.
-  const onCheckout = pathname === '/checkout';
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
@@ -34,6 +28,24 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const popRef = useRef<HTMLDivElement | null>(null);
   const openRef = useRef(false);
+  // True while the pointer is over the popover — a trackpad-momentum scroll
+  // over a SHORT (non-scrolling) list spills to the page and used to dismiss
+  // the popover mid-read (owner report). Suppress the scroll-close then.
+  const overPop = useRef(false);
+
+  // Add-funds CTA target, built at CLICK time from the LIVE URL (not a mounted
+  // snapshot): on /checkout it carries returnTo=<current checkout url> so a
+  // top-up returns to the buyer's exact configured cart + step — CheckoutFlow
+  // keeps window.location in sync — and never strands the purchase on /billing
+  // (the reason PR #127 hid the chip; restored safely per owner). Elsewhere it
+  // is a plain deposit. window.location (not useSearchParams) avoids Suspense.
+  const goAddFunds = useCallback(() => {
+    const onCheckout = window.location.pathname === '/checkout';
+    const target = onCheckout
+      ? `/checkout?kind=deposit&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+      : '/checkout?kind=deposit';
+    router.push(target);
+  }, [router]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -62,6 +74,11 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
     if (!openRef.current) return;
     openRef.current = false;
     setOpen(false);
+    // onMouseLeave never fires when the popover unmounts under a stationary
+    // pointer (e.g. Mark-all-read → router.refresh keeps this client component
+    // mounted), so reset the hover guard here or it stays stuck true and
+    // defeats scroll-to-dismiss on the next open.
+    overPop.current = false;
     // Advance the read watermark on CLOSE — everything the user just saw is
     // now read; the dot clears and rows dim on the next open.
     fetch('/api/notifications', { method: 'POST' }).then(() => {
@@ -72,6 +89,7 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
 
   function toggle() {
     if (openRef.current) { close(); return; }
+    overPop.current = false; // clean baseline every open (belt-and-braces)
     const rect = btnRef.current!.getBoundingClientRect();
     // Owner revision: equal breathing room on both sides — 10px below the
     // TOPBAR's bottom edge (anchoring to the bell put the popover's top edge
@@ -91,8 +109,10 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
       close();
     };
     const onScroll = (e: Event) => {
-      // Scrolling INSIDE the popover body must not close it
-      if (popRef.current?.contains(e.target as Node)) return;
+      // Scrolling INSIDE the popover body must not close it — and neither must
+      // a trackpad gesture while the pointer is OVER the popover but the short
+      // list has nothing to scroll, so the wheel spills to the page.
+      if (popRef.current?.contains(e.target as Node) || overPop.current) return;
       close();
     };
     document.addEventListener('mousedown', onDown);
@@ -113,11 +133,9 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
           <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>
         </span>
         <span className="topbar-balance-value">{money(balance)}</span>
-        {!onCheckout && (
-          <Link className="btn ghost topbar-balance-cta" href="/checkout?kind=deposit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
-          </Link>
-        )}
+        <button type="button" className="btn ghost topbar-balance-cta" onClick={goAddFunds}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
+        </button>
       </div>
 
       {/* Bell */}
@@ -126,7 +144,9 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
         {unread > 0 && <span className="notif-dot" />}
       </button>
       {open && pos && (
-        <div ref={popRef} className="notif-popover" style={{ top: pos.top, right: pos.right, display: 'block' }}>
+        <div ref={popRef} className="notif-popover" style={{ top: pos.top, right: pos.right, display: 'block' }}
+          onMouseEnter={() => { overPop.current = true; }}
+          onMouseLeave={() => { overPop.current = false; }}>
           <div className="notif-popover-header">
             <span className="notif-popover-title">Notifications</span>
             <span className="notif-popover-count">{unread > 0 ? `${unread} new` : 'All caught up'}</span>

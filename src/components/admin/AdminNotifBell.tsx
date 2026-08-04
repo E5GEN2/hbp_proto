@@ -17,6 +17,7 @@ export function AdminNotifBell() {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const popRef = useRef<HTMLDivElement | null>(null);
+  const overPop = useRef(false);
 
   const fetchRows = useCallback(async () => {
     try {
@@ -37,6 +38,7 @@ export function AdminNotifBell() {
 
   function toggle() {
     if (open) { setOpen(false); return; }
+    overPop.current = false; // clean baseline: onMouseLeave won't fire if a prior popover unmounted under the pointer
     const rect = btnRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 10, right: Math.max(8, window.innerWidth - rect.right) });
     fetchRows();
@@ -51,12 +53,18 @@ export function AdminNotifBell() {
       setOpen(false);
     };
     const close = () => setOpen(false);
+    const onScroll = (e: Event) => {
+      // A trackpad gesture over the popover (or its short, non-scrolling list)
+      // must not dismiss it — only a genuine page scroll elsewhere does.
+      if (popRef.current?.contains(e.target as Node) || overPop.current) return;
+      close();
+    };
     document.addEventListener('mousedown', onDown);
-    document.addEventListener('scroll', close, true);
+    document.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('scroll', close, true);
+      document.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, [open]);
@@ -73,7 +81,9 @@ export function AdminNotifBell() {
         {rows.length > 0 && <span className="notif-dot" />}
       </button>
       {open && pos && (
-        <div ref={popRef} className="notif-popover" style={{ top: pos.top, right: pos.right, display: 'block' }}>
+        <div ref={popRef} className="notif-popover" style={{ top: pos.top, right: pos.right, display: 'block' }}
+          onMouseEnter={() => { overPop.current = true; }}
+          onMouseLeave={() => { overPop.current = false; }}>
           <div className="notif-popover-header">
             <span className="notif-popover-title">Notifications</span>
             <span className="notif-popover-count">{rows.length === 0 ? 'All clear' : `${rows.length} to review`}</span>

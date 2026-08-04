@@ -391,6 +391,11 @@ export default async function CheckoutPage({ searchParams }: {
       autoProvision: p.autoProvision,
       available: Math.max(0, p.availableQuota - (allocationByPlan.get(p.id) ?? 0)),
     }));
+    // Sold-out locations sink to the bottom of the Location list (owner) — a
+    // stable sort keeps the price order within each group, and makes the
+    // DEFAULT selection (planSummaries[0]) an AVAILABLE location instead of a
+    // sold-out one (e.g. 7 Days defaulted to Texas · sold out over free NY).
+    planSummaries.sort((a, b) => (a.available === 0 ? 1 : 0) - (b.available === 0 ? 1 : 0));
   }
 
   // Hint banner copy
@@ -401,10 +406,16 @@ export default async function CheckoutPage({ searchParams }: {
   const crumbs = renewalOrder
     ? [{ label: 'Orders', href: '/orders' }, { label: `Order ${renewalOrder.id}`, href: `/orders/${renewalOrder.id}` }, { label: 'Renew' }]
     : [{ label: 'Catalog', href: '/catalog' }, { label: 'Checkout' }];
+  // The catalog plan cards are hard <a> links (they reset the runtime nav
+  // stack), so the backlink row would otherwise be empty here — give it the
+  // logical parent explicitly (owner: restore the checkout backlink).
+  const backFallback = renewalOrder
+    ? { path: `/orders/${renewalOrder.id}`, label: `Order ${renewalOrder.id}` }
+    : { path: '/catalog', label: 'Catalog' };
 
   return (
     <>
-      <ClientTopbar breadcrumb={crumbs} balance={Number(me.balance)} />
+      <ClientTopbar breadcrumb={crumbs} balance={Number(me.balance)} backFallback={backFallback} />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
         {headerHint && (
           <div className="t-note" style={{

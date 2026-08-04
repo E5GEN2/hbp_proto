@@ -19,11 +19,6 @@ const TONE: Record<string, string> = { SUCCESS: 'success', WARNING: 'warn', DANG
 // actually see what's new while it's open.
 export function NotificationsBell({ initialBalance }: { initialBalance: number }) {
   const pathname = usePathname();
-  // On /checkout the topbar "Add funds" chip (no returnTo) would strand an
-  // in-progress purchase on /billing — the inline "Add funds" in the payment
-  // step (which carries returnTo) is the only correct affordance here (trace
-  // find #15). Keep the balance readout, drop the CTA on this route.
-  const onCheckout = pathname === '/checkout';
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
@@ -34,6 +29,24 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const popRef = useRef<HTMLDivElement | null>(null);
   const openRef = useRef(false);
+  // True while the pointer is over the popover — a trackpad-momentum scroll
+  // over a SHORT (non-scrolling) list spills to the page and used to dismiss
+  // the popover mid-read (owner report). Suppress the scroll-close then.
+  const overPop = useRef(false);
+
+  // Add-funds CTA target. On /checkout it must carry a returnTo back to the
+  // in-progress checkout so a top-up doesn't strand the purchase on /billing
+  // (the original reason PR #127 hid the chip here — restored safely per owner).
+  // window.location.search (not useSearchParams) keeps this out of Suspense.
+  const [addFundsHref, setAddFundsHref] = useState('/checkout?kind=deposit');
+  useEffect(() => {
+    if (pathname === '/checkout') {
+      const full = pathname + window.location.search;
+      setAddFundsHref(`/checkout?kind=deposit&returnTo=${encodeURIComponent(full)}`);
+    } else {
+      setAddFundsHref('/checkout?kind=deposit');
+    }
+  }, [pathname]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -91,8 +104,10 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
       close();
     };
     const onScroll = (e: Event) => {
-      // Scrolling INSIDE the popover body must not close it
-      if (popRef.current?.contains(e.target as Node)) return;
+      // Scrolling INSIDE the popover body must not close it — and neither must
+      // a trackpad gesture while the pointer is OVER the popover but the short
+      // list has nothing to scroll, so the wheel spills to the page.
+      if (popRef.current?.contains(e.target as Node) || overPop.current) return;
       close();
     };
     document.addEventListener('mousedown', onDown);
@@ -113,11 +128,9 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
           <svg viewBox="0 0 24 24"><path d="M21 7H5a2 2 0 00-2 2v8a2 2 0 002 2h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7V6a2 2 0 012-2h13" /><circle cx="17" cy="13" r="1.5" fill="currentColor" /></svg>
         </span>
         <span className="topbar-balance-value">{money(balance)}</span>
-        {!onCheckout && (
-          <Link className="btn ghost topbar-balance-cta" href="/checkout?kind=deposit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
-          </Link>
-        )}
+        <Link className="btn ghost topbar-balance-cta" href={addFundsHref}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add funds
+        </Link>
       </div>
 
       {/* Bell */}
@@ -126,7 +139,9 @@ export function NotificationsBell({ initialBalance }: { initialBalance: number }
         {unread > 0 && <span className="notif-dot" />}
       </button>
       {open && pos && (
-        <div ref={popRef} className="notif-popover" style={{ top: pos.top, right: pos.right, display: 'block' }}>
+        <div ref={popRef} className="notif-popover" style={{ top: pos.top, right: pos.right, display: 'block' }}
+          onMouseEnter={() => { overPop.current = true; }}
+          onMouseLeave={() => { overPop.current = false; }}>
           <div className="notif-popover-header">
             <span className="notif-popover-title">Notifications</span>
             <span className="notif-popover-count">{unread > 0 ? `${unread} new` : 'All caught up'}</span>

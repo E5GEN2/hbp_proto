@@ -1,10 +1,31 @@
 'use client';
-import { passwordPolicyError, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
+import { passwordPolicyError, passwordChecklist } from '@/lib/password-policy';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import * as CA from '@/lib/ui-actions/client-actions';
 import { FormSelect } from '@/components/ui/FormSelect';
+
+// Password input with a show/hide toggle. Defined at module scope (not inside
+// a form) so toggling reveal never remounts the input. Mirrors the register
+// page's affordances — owner wants the same on the settings change-password.
+function PwInput({ value, onChange, autoComplete }: { value: string; onChange: (v: string) => void; autoComplete: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pw-input">
+      <input className="form-input" type={show ? 'text' : 'password'} autoComplete={autoComplete} value={value} onChange={e => onChange(e.target.value)} />
+      <button type="button" className="pw-reveal" onClick={() => setShow(s => !s)} aria-label={show ? 'Hide password' : 'Show password'} title={show ? 'Hide password' : 'Show password'}>
+        {show
+          ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 2l20 20M6.7 6.7A11 11 0 0 0 1 12s4 7 11 7a10.8 10.8 0 0 0 5.3-1.4M9.9 4.2A11.6 11.6 0 0 1 12 4c7 0 11 8 11 8a19 19 0 0 1-3 3.7M9.5 9.5a3.5 3.5 0 0 0 5 5" /></svg>
+          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3.2" /></svg>}
+      </button>
+    </div>
+  );
+}
+
+function PwCheck({ ok, label }: { ok: boolean; label: string }) {
+  return <span style={{ color: ok ? 'var(--success)' : 'var(--muted)', fontSize: 11.5, marginRight: 12 }}>{ok ? '✓' : '·'} {label}</span>;
+}
 
 export function ProfileForm({ initial }: {
   initial: { name: string; telegram: string | null; country: string | null };
@@ -77,21 +98,30 @@ export function ChangePasswordForm() {
     });
   }
 
+  const checks = passwordChecklist(a);
+  const mismatch = b.length > 0 && a !== b;
   return (
     <>
-      <div className="settings-form-grid">
-        <div className="settings-field full">
+      {/* Single column so Current / New / Confirm are all the SAME width
+          (owner), with the register-style live checklist + show-password. */}
+      <div className="settings-form-grid cols-1">
+        <div className="settings-field">
           <label className="settings-field-label">Current password</label>
-          <input className="form-input" type="password" autoComplete="current-password" value={cur} onChange={e => setCur(e.target.value)} />
+          <PwInput value={cur} onChange={setCur} autoComplete="current-password" />
         </div>
         <div className="settings-field">
           <label className="settings-field-label">New password</label>
-          <input className="form-input" type="password" autoComplete="new-password" value={a} onChange={e => setA(e.target.value)} />
-          <div className="form-help" style={{ marginTop: 4 }}>{PASSWORD_POLICY_HINT}</div>
+          <PwInput value={a} onChange={setA} autoComplete="new-password" />
+          <div style={{ marginTop: 2 }}>
+            <PwCheck ok={checks.length} label="8+ characters" />
+            <PwCheck ok={checks.upper} label="Uppercase letter" />
+            <PwCheck ok={checks.digit} label="Digit" />
+          </div>
         </div>
         <div className="settings-field">
           <label className="settings-field-label">Confirm new password</label>
-          <input className="form-input" type="password" autoComplete="new-password" value={b} onChange={e => setB(e.target.value)} />
+          <PwInput value={b} onChange={setB} autoComplete="new-password" />
+          {mismatch && <div className="form-help" style={{ marginTop: 4, color: 'var(--danger)' }}>Passwords don&rsquo;t match</div>}
         </div>
       </div>
       <div className="settings-actions">

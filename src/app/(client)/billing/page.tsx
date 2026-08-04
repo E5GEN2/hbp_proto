@@ -8,16 +8,16 @@ import { fmtAdminStamp } from '@/lib/date';
 import { PaymentMethodsPanel } from '@/components/client/PaymentMethods';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 
-// Type-column primary label. Mirrors canon `paymentDescription`, except the
-// order case reads "Payment" not "Order payment" (owner, CTS 2026-08-02):
-// the longer label cannot fit the Type column's 73px content box at the
-// 1280-viewport budget and forced a two-line wrap; the order itself is
-// already identified by the adjacent Order ID column.
+// Type-column primary label. Mirrors canon `paymentDescription`. Owner
+// revision 2026-08-04: an ORDER payment drops the generic word "Payment" and
+// shows the method itself (Crypto / Balance / Visa ••…) — the row is already
+// identified as an order by the adjacent Order ID column, so "Payment" was
+// pure noise. Refund / Deposit keep their type word (+ method subline).
 function txDescription(p: { status: string; orderId: string | null; method: string }) {
   if (p.status === 'REFUNDED') return 'Refund';
   if (!p.orderId && /^(deposit|wallet top.?up|top.?up)/i.test(p.method || '')) return 'Deposit';
-  if (!p.orderId) return p.method || 'Payment';
-  return 'Payment';
+  if (!p.orderId) return shortMethod(p.method) || 'Payment';
+  return shortMethod(p.method) || 'Payment';
 }
 
 // Strip the deposit-flow prefixes from the method string (the Type cell already
@@ -82,9 +82,10 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
               {/* Balance hero — wide stat tile above the Transactions panel */}
               <div className="balance-card">
                 <div className="balance-card-left">
+                  {/* Owner: the balance amount + caption are removed from this
+                      hero block; the running balance still shows on the
+                      "Account balance" card in Payment methods. */}
                   <div className="panel-title">Account balance</div>
-                  <div className="balance-card-value">{money(balance)}</div>
-                  <div className="balance-card-help">Use your balance to pay for new orders and renewals.</div>
                 </div>
                 <div className="balance-card-actions">
                   <Link href="/checkout?kind=deposit" className="btn primary">
@@ -171,7 +172,9 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                               <td className="col-date mono">{fmtAdminStamp(p.createdAt)}</td>
                               <td className="col-text">
                                 <div className="tx-type">{desc}</div>
-                                {method && <div className="tx-method">{method}</div>}
+                                {/* Order rows now show the method AS the type,
+                                    so skip the duplicate method subline. */}
+                                {method && method !== desc && <div className="tx-method">{method}</div>}
                               </td>
                               <td className="col-id">
                                 {p.order

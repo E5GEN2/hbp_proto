@@ -8,7 +8,7 @@ import { signalStructural } from '@/lib/nav-history';
 
 type Crumb = { label: string; href?: string };
 
-export function ClientTopbar({ title, breadcrumb, balance }: { title?: string; breadcrumb?: Crumb[]; balance: number }) {
+export function ClientTopbar({ title, breadcrumb, balance, backFallback }: { title?: string; breadcrumb?: Crumb[]; balance: number; backFallback?: { path: string; label: string } }) {
   // Current-page label for the nav-history stack (canon getPageDisplayLabel).
   const currentLabel = breadcrumb && breadcrumb.length ? breadcrumb[breadcrumb.length - 1].label : (title ?? '');
 
@@ -39,7 +39,7 @@ export function ClientTopbar({ title, breadcrumb, balance }: { title?: string; b
           <NotificationsBell initialBalance={balance} />
         </div>
       </header>
-      <NavBacklink label={currentLabel} />
+      <NavBacklink label={currentLabel} fallback={backFallback} />
     </>
   );
 }

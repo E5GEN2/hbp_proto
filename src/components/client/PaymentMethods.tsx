@@ -1,11 +1,9 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
 import * as BA from '@/lib/ui-actions/billing-actions';
-import { FormSelect } from '@/components/ui/FormSelect';
 
 type Method = {
   id: string;
@@ -27,7 +25,6 @@ const CardIcon = () => (
 export function PaymentMethodsPanel({ methods, balance }: { methods: Method[]; balance: number }) {
   const router = useRouter();
   const toast = useToast();
-  const [addOpen, setAddOpen] = useState(false);
   const [pending, start] = useTransition();
 
   // Account balance pinned to the very top (system fixture, can't move),
@@ -72,7 +69,7 @@ export function PaymentMethodsPanel({ methods, balance }: { methods: Method[]; b
               : (m.last4 ? `…${m.last4}` : '');
           const expLabel = m.exp
             ? `Expires ${m.exp}`
-            : isBalance ? 'Always available' : m.kind === 'CRYPTO' ? 'No expiry' : '';
+            : m.kind === 'CRYPTO' ? 'No expiry' : ''; // owner: drop "Always available" on the balance card
           // Canon: every non-default method offers «Set as default» — Balance
           // included; Remove never applies to locked methods.
           const canSetDefault = !m.isDefault;
@@ -98,74 +95,14 @@ export function PaymentMethodsPanel({ methods, balance }: { methods: Method[]; b
             </div>
           );
         })}
-        <button className="method-add-card" onClick={() => setAddOpen(true)}>
+        {/* Card entry is not wired for launch — inert tile with a "Coming
+            soon" note (owner); the mock add-card modal was removed. */}
+        <div className="method-add-card is-disabled" aria-disabled="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
           <span className="method-add-card-label">Add payment method</span>
-        </button>
+          <span className="method-add-card-soon">Coming soon</span>
+        </div>
       </div>
-      <AddPaymentMethodModal open={addOpen} onClose={() => setAddOpen(false)} />
     </>
-  );
-}
-
-function AddPaymentMethodModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter();
-  const toast = useToast();
-  const [brand, setBrand] = useState('Visa');
-  const [number, setNumber] = useState('');
-  const [exp, setExp] = useState('');
-  const [cvc, setCvc] = useState('');
-  const [setDefault, setSetDefault] = useState(true);
-  const [pending, start] = useTransition();
-
-  function submit() {
-    start(async () => {
-      try {
-        await BA.addPaymentMethodAction({ brand, number, exp, setDefault });
-        toast('Card added', brand, 'success');
-        setNumber(''); setExp(''); setCvc('');
-        onClose();
-        router.refresh();
-      } catch (e: any) { toast('Add failed', e.message, 'danger'); }
-    });
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="Add payment method"
-      footer={<>
-        <button className="btn" onClick={onClose} disabled={pending}>Cancel</button>
-        <button className="btn primary" onClick={submit} disabled={pending || !number || !exp}>{pending ? '…' : 'Add card'}</button>
-      </>}
-    >
-      <div className="t-note" style={{ marginBottom: 12 }}>
-        Mock card — production would use Stripe Elements. No actual numbers are sent anywhere.
-      </div>
-      <div className="form-grid-2">
-        <div style={{ gridColumn: '1 / -1' }}>
-          <label className="form-label">Brand</label>
-          <FormSelect
-            value={brand}
-            onChange={setBrand}
-            options={[{ value: 'Visa' }, { value: 'Mastercard' }, { value: 'American Express' }, { value: 'Discover' }]}
-          />
-        </div>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <label className="form-label">Card number</label>
-          <input className="form-input mono" value={number} onChange={e => setNumber(e.target.value)} placeholder="4242 4242 4242 4242" />
-        </div>
-        <div>
-          <label className="form-label">Expiry (MM/YY)</label>
-          <input className="form-input mono" value={exp} onChange={e => setExp(e.target.value)} placeholder="12/27" />
-        </div>
-        <div>
-          <label className="form-label">CVC</label>
-          <input className="form-input mono" value={cvc} onChange={e => setCvc(e.target.value)} placeholder="123" />
-        </div>
-        <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
-          <span className="t-body">Set as default</span>
-          <span className={`toggle ${setDefault ? 'on' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setSetDefault(v => !v)} />
-        </div>
-      </div>
-    </Modal>
   );
 }

@@ -277,7 +277,7 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
         <div className="table-wrap" style={{ marginTop: 16 }}>
           <table className="dt">
             <colgroup>
-              <col style={{ width: 48 }} />
+              <col style={{ width: 60 }} />
               <col style={{ width: '14%' }} />
               <col style={{ width: '20%' }} />
               <col style={{ width: '16%' }} />
@@ -306,11 +306,11 @@ export function ProxyRegisterForm({ catalog }: { catalog: Catalog }) {
                       ? <span className="cell-tip" data-tip={`${l.draft.ip}:${l.draft.port}${l.draft.rotationUrl ? ` · rotate: ${l.draft.rotationUrl}` : ''}`}>{l.draft.ip}:{l.draft.port}</span>
                       : '—'}
                   </td>
-                  <td className="col-text td-mono">{l.draft?.username ?? '—'}</td>
+                  <td className="col-text td-mono"><span className="cell-tip" data-tip={l.draft?.username ?? '—'}>{l.draft?.username ?? '—'}</span></td>
                   <td className="col-status">
                     {l.draft
                       ? <span className="chip available">OK</span>
-                      : <span style={{ color: 'var(--danger)', fontSize: 11 }}>{l.error}</span>}
+                      : <span style={{ color: 'var(--danger)', fontSize: 11, whiteSpace: 'normal', overflowWrap: 'break-word', display: 'block' }}>{l.error}</span>}
                   </td>
                 </tr>
               ))}

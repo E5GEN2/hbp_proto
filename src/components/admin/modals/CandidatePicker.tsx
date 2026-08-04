@@ -31,18 +31,29 @@ export function CandidatePicker({
         {p.carrier} · {p.region}{mismatch && <span className="chip warning" style={{ marginLeft: 8 }}>≠ plan</span>}
       </td>
       <td className="col-text">{p.pool}</td>
-      <td className="col-text td-mono">{p.ip}:{p.port}</td>
+      <td className="col-text td-mono"><span className="cell-tip" data-tip={`${p.ip}:${p.port}`}>{p.ip}:{p.port}</span></td>
       <td className="col-status"><span className={`chip ${p.health.toLowerCase()}`}>{cap(p.health)}</span></td>
     </tr>
   );
   const sectionRow = (label: string) => (
     <tr>
-      <td colSpan={6} style={{ padding: '8px 12px', fontSize: 10.5, fontWeight: 650, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--muted)', background: 'var(--surface-2)' }}>{label}</td>
+      <td colSpan={6} style={{ padding: '8px 20px', fontSize: 10.5, fontWeight: 650, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--muted)', background: 'var(--surface-2)' }}>{label}</td>
     </tr>
   );
   return (
     <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-      <table className="dt" style={{ marginBottom: 0 }}>
+      <table className="dt" style={{ marginBottom: 0, minWidth: 662 }}>
+        {/* ATS colgroup, modal budget B=678: chk 52, Proxy 103, Pool 108,
+            Credentials 150 (td-mono ellipsis + tooltip), Health 98;
+            Carrier·Region auto (~167). Plain % only; floor 662 = B−16. */}
+        <colgroup>
+          <col style={{ width: '7.6696%' }} />
+          <col style={{ width: '15.1917%' }} />
+          <col />
+          <col style={{ width: '15.9292%' }} />
+          <col style={{ width: '22.1239%' }} />
+          <col style={{ width: '14.4543%' }} />
+        </colgroup>
         <thead><tr><th className="col-chk"></th><th className="col-id">Proxy</th><th className="col-text">Carrier · Region</th><th className="col-text">Pool</th><th className="col-text">Credentials</th><th className="col-status">Health</th></tr></thead>
         <tbody>
           {matching.length === 0 && others.length === 0 && (

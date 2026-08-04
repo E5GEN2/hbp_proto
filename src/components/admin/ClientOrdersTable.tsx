@@ -22,7 +22,6 @@ type Row = {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 const dateOnly = (d: Date) => fmtAdminStamp(d).split('·')[0].trim();
-// Canon Client-Detail Orders table: 8 flex cols, --col-total 26.
 
 const FILTERS: Record<string, (o: Row) => boolean> = {
   all: () => true,
@@ -61,7 +60,7 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
               stops compressing. Anchors: Order ID 107, Proxy ID 107, Period
               140 ("28 May → 27 Jun"), Amount 98 ("$9,999.99" + pads), Payment 126 (chip-clip:
               "Refund requested" clips WITH tooltip), Auto-renew 114, Status
-              138 ("Pending renewal" fits); Plan auto (min ~90). */}
+              138 ("Pending renewal" fits); Plan auto (min ~75). */}
           <colgroup>
             <col style={{ width: '11.8232%' }} />
             <col />

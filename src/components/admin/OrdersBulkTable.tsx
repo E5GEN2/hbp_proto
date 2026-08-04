@@ -84,7 +84,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
               ≥1476. Anchors: chk 52, Order/Client ID 103, Carrier·Region 162
               (nowrap), Amount 98 ("$9,999.99" + pads), Payment 145 ("Refund requested"), Status
               168 ("Renewal not extended"), Created 133, Expires 138; Plan
-              auto (~103 at B*). Plain % of 1190. */}
+              auto (88 at B*). Plain % of 1190. */}
           <colgroup>
             <col style={{ width: '4.3697%' }} />
             <col style={{ width: '8.6555%' }} />

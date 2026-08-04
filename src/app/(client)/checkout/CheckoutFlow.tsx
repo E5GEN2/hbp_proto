@@ -235,7 +235,7 @@ export function CheckoutFlow({
             <div className="checkout-details-row">
               <div className="panel">
                 <div className="panel-header"><span className="panel-title">{label} · Mobile proxies</span></div>
-                <div className="panel-body flush">
+                <div className="panel-body">
                   <div className="duration-meta">
                     <div>
                       <div className="duration-price">{money(plan.price)}</div>
@@ -256,7 +256,7 @@ export function CheckoutFlow({
                 <div className="checkout-side-stack">
                   <div className="panel">
                     <div className="panel-header"><span className="panel-title">Renewal</span></div>
-                    <div className="panel-body">
+                    <div className="panel-body flush">
                       <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val">{renewOf}</span></div>
                       <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
                       <div className="kv-row"><span className="kv-label">Proxies</span><span className="kv-val">{qty}</span></div>

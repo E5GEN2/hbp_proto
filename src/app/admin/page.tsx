@@ -5,10 +5,6 @@ import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { underProvisionedCount } from '@/lib/provisioning';
 
-// Flexible .dt column widths — canon Column System (prototype.html :root docs):
-// each flex col = 100% × w / col-total; px anchors + % flexibles are then
-// renormalized together by table-layout: fixed, exactly like the canon
-// calc(var(--w) / var(--col-total) * 100%).
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 const CAP_LABEL: Record<string, string> = {
@@ -138,7 +134,7 @@ export default async function AdminDashboardPage() {
                   {/* ATS colgroup, pan-variant (owner: keep every column).
                       B*=788 = min-width; the dashboard grid panel pans below
                       that. Anchors: Order ID 107, Client ID 103, Amount 98,
-                      Payment 126, Status 138, Created 137; Plan auto (~90). */}
+                      Payment 126, Status 138, Created 137; Plan auto (79 at B*). */}
                   <colgroup>
                     <col style={{ width: '13.5787%' }} />
                     <col style={{ width: '13.0711%' }} />
@@ -168,8 +164,8 @@ export default async function AdminDashboardPage() {
                         <td className="col-id"><span className="cell-tip" data-tip={o.client.id}><Link href={`/admin/clients/${o.client.id}`} className="td-link">{o.client.id}</Link></span></td>
                         <td className="col-text muted">{o.plan.name}</td>
                         <td className="col-money">{money(Number(o.amount))}</td>
-                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()}`}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
-                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
+                        <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()} cell-tip chip-clip`} data-tip={cap(o.paymentStatus.replace(/_/g, ' '))}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
+                        <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')} cell-tip chip-clip`} data-tip={cap(o.status.replace(/_/g, ' '))}>{cap(o.status.replace(/_/g, ' '))}</span></td>
                         <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
                       </tr>
                     ))}

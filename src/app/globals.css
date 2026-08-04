@@ -57,10 +57,6 @@
   --table-cell-pad-x-tight: 12px;
   --table-cell-pad-x-loose: 20px;
   --row-divider-inset: 20px;
-  --anchor-id: 164px;
-  --anchor-date: 164px;
-  --anchor-status: 144px;
-  --anchor-text: 168px;
 }
 
 /* ===== ADMIN (dark) theme ===== */
@@ -1250,7 +1246,18 @@ table.dt thead th:has(.th-label) { overflow: visible; }
 /* Chip columns anchored to the widest COMMON chip: rare overlong labels clip
    (no ellipsis inside a pill) but carry .cell-tip so hover reveals the full
    text. */
-.cell-tip.chip-clip { text-overflow: clip; }
+.cell-tip.chip-clip {
+  /* Stay an inline pill: .cell-tip's display:block is later in source than
+     .chip's inline-flex and would stretch the chip to full cell width. The
+     max-width cap makes the CHIP itself overflow when the label is too long,
+     so the TipFloater clip-gate fires on the chip, and the clip happens
+     inside the pill. */
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
 /* Cream theme carries far less ambient contrast than the admin dark —
    soften the floater shadow accordingly. (The floater mounts INSIDE the
    portal shell — see TipFloater — so the descendant selector applies and
@@ -1911,8 +1918,8 @@ table.dt td.col-text:not(.td-mono) .cell-tip:not(.client-name-link):not(.client-
    wide chip (e.g. the raw action enum in admin Logs) can't paint over its
    neighbour. The proxies Status column is anchored wide enough to fit. */
 table.dt td.col-status { white-space: nowrap; overflow: hidden; text-overflow: clip; }
-table.dt td.col-chk, table.dt td.col-id, table.dt td.col-num, table.dt td.col-date,
-table.dt th.col-chk, table.dt th.col-id, table.dt th.col-num, table.dt th.col-date { text-overflow: clip; }
+table.dt td.col-chk, table.dt td.col-id, table.dt td.col-num, table.dt td.col-date, table.dt td.col-money,
+table.dt th.col-chk, table.dt th.col-id, table.dt th.col-num, table.dt th.col-date, table.dt th.col-money { text-overflow: clip; }
 
 /* Slim canon scrollbar (prototype §.content / .timeline.activity-scroll: 6px,
    transparent track, --border thumb, 3px radius). The app had only styled
@@ -1950,9 +1957,10 @@ html:has(.theme-admin) { --border: #353c4f; }
 .billing-grid table.dt thead th,
 .billing-grid table.dt tbody td { padding: 12px 8px; }
 /* (CTS 2026-08: the hardcoded 16px first/last edge pads that lived here are
-   gone — the CTS block re-declares --table-edge-cap:16px on this table, so
-   the BASE first/last rules (:450-451,:472-473) AND the tr divider inset
-   (:454-458) all read the same 16px. Edges and divider now always agree.) */
+   gone — billing edges come from the global --table-edge-cap (the canonical
+   20px lining denominator), driven onto first/last cells by the CTS block's
+   explicit re-asserts at the end of this file. Edges and the tr divider
+   inset read the same token, so they always agree.) */
 .billing-grid .tx-type   { font: 500 13px/1.4 var(--font-sans); color: var(--text); }
 .billing-grid .tx-method { font: 400 11px/1.35 var(--font-sans); color: var(--muted); margin-top: 2px; }
 .col-num.positive { color: var(--success); }
@@ -2184,7 +2192,7 @@ html:has(.theme-admin) { --border: #353c4f; }
 .theme-admin .detail-chips { margin-top: 4px; }
 .kv { display: flex; flex-direction: column; }
 .kv-key { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
-.theme-admin .kv-row { align-items: center; }
+.theme-admin .kv-row { padding: 10px 20px; align-items: center; }
 .theme-admin .kv-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
 
 /* --- exception chip + banner ------------------------------------------ */
@@ -2778,6 +2786,7 @@ html:has(.theme-admin) { --border: #353c4f; }
   word-break: normal;
 }
 .theme-client table.dt tbody td.col-text { overflow-wrap: break-word; }
+.theme-admin table.dt tbody td.col-text { overflow-wrap: break-word; }
 
 /* ── D. Billing vertical scroll, resurrected: the shell rule
    `.theme-client .panel > .table-wrap` (:581) sets overflow-y:hidden at
@@ -2791,7 +2800,7 @@ html:has(.theme-admin) { --border: #353c4f; }
    again (rule 4: content used to start 16px before the divider and end
    16px past it). 16px is the canon billing edge (client-panel.html:2579).
    ⚠ The explicit first/last rules below are LOAD-BEARING, not redundant:
-   the billing `padding: 10px 8px` shorthand (:1934-1935) is (0,2,3), the
+   the billing `padding: 12px 8px` shorthand is (0,2,3), the
    SAME specificity as the base :first/:last-child edge rules (:450-451,
    :472-473) — and later in source, so it wins that tie and would flatten
    the edges to 8px. These (0,4,3) rules re-assert the token on top

@@ -67,7 +67,7 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
       <div className="table-wrap">
         <table className="dt" style={{ minWidth: 978 }}>
           {/* ATS colgroup, budget B=994: chk 52, Payment/Order/Client ID 103,
-              Amount 98 ("$9,999.99" + pads), Status 145, Date 137; Provider · Method auto (~268 —
+              Amount 98 ("$9,999.99" + pads), Status 145, Date 137; Provider · Method auto (~253 —
               long Stripe auto-renew strings wrap at word boundaries).
               Plain %; floor 978 = B−16. */}
           <colgroup>

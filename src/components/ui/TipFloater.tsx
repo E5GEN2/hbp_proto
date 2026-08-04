@@ -26,9 +26,9 @@ import { useEffect } from 'react';
 //  - scrollbar-aware clamps: window.innerWidth includes the scrollbar
 //    gutter, so right-edge tips could start under the bar; use
 //    documentElement.clientWidth/Height;
-//  - sub-pixel clip gate: fractional %-column widths make scrollWidth exceed
-//    clientWidth by <1px on cells whose ellipsis never actually fires —
-//    require a full 1px before showing a cell tip.
+//  - clip gate kept as `>= 1`: scrollWidth/clientWidth are integer-rounded
+//    per spec, so this equals the old `>` gate — the form just states the
+//    intent (a full pixel of real overflow) explicitly.
 export function TipFloater() {
   useEffect(() => {
     const floater = document.createElement('div');
@@ -110,9 +110,8 @@ export function TipFloater() {
       const ht = t.closest('.help-tip');
       if (ht) return ht;
       const ct = t.closest('.cell-tip');
-      // .cell-tip opens ONLY when the text is actually clipped. Require a
-      // full 1px of overflow: fractional %-columns make scrollWidth exceed
-      // clientWidth by sub-pixel amounts on cells that render fully.
+      // .cell-tip opens ONLY when the text is actually clipped (a full
+      // integer pixel of overflow — scrollWidth/clientWidth are rounded).
       if (ct && ct.scrollWidth - ct.clientWidth >= 1) return ct;
       if (ct) return null;
       // Bare data-tip carriers (status chips etc.) tip unconditionally,

@@ -22,7 +22,6 @@ type Row = {
 };
 
 const STATE_LABEL: Record<Row['capacityState'], string> = { 'sold-out': 'Sold out', low: 'Low availability', available: 'Available' };
-// Canon Plans .dt: 64 chk + 168 Plan + 168 Capacity State = 400 fixed; --col-total 22.
 
 export function PlansBulkTable({ plans }: { plans: Row[] }) {
   const router = useRouter();

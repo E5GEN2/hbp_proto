@@ -99,7 +99,7 @@ export function ProxiesBulkTable({ proxies, historyMode = false }: { proxies: Ro
       </div>
 
       <div className="table-wrap">
-        <table className="dt dt-proxies">
+        <table className="dt dt-proxies" style={{ minWidth: 1120 }}>
           {/* ATS colgroup, pan-variant (owner: keep all 11 columns). B*=1120
               = min-width — pans ≤126px at 1280, zero at ≥1406. Anchors: chk
               52, Proxy ID 103, Assigned-to 103, Carrier·Region 114 (wraps),

@@ -1,9 +1,13 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { BRAND_NAME } from '@/lib/brand';
 import { SiteLogo } from './SiteLogo';
 import { SiteBacklink } from './SiteBacklink';
 
-export const metadata: Metadata = { title: 'Sign in — HBP' };
+// Group default title (login + forgot/reset/verify inherit it). Register overrides
+// via its own nested layout. Brand comes from the env-driven config so the future
+// Comet-market deployment gets "Sign in — Comet" without a code change.
+export const metadata: Metadata = { title: `Sign in — ${BRAND_NAME}` };
 
 // Auth shell, styled to match the marketing site: same cream + dotted background,
 // the Comet logo pill at the top (same place as the site nav), an optional

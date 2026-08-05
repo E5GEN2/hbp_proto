@@ -85,7 +85,7 @@ function FlagToggle({ label, tip, on, onClick, pending, notWired }: { label: str
     <div className="form-field">
       <label className="hstack">
         <span className={`toggle-v2 ${on ? 'on' : ''}`} style={{ cursor: pending ? 'wait' : 'pointer' }} onClick={onClick} />
-        <span>{label}</span>
+        <span className="toggle-label">{label}</span>
         {notWired && <span className="chip muted" style={{ marginLeft: 4 }}>Not wired — Phase 2</span>}
         {tip && <HelpTip>{tip}</HelpTip>}
       </label>

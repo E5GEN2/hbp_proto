@@ -61,6 +61,13 @@
 
 /* ===== ADMIN (dark) theme ===== */
 .theme-admin {
+  /* Re-establish the base text colour for the whole admin subtree. `body`
+     sets `color: var(--text-secondary)` which resolves at the LIGHT theme
+     (cream) since body is the client default — the admin shell only swaps the
+     variable, not the already-computed `color`, so any element without an
+     explicit colour inherited the dark cream-theme text and rendered nearly
+     invisible on the dark admin bg (owner: Settings toggle labels unreadable). */
+  color: var(--text-secondary);
   --bg: #11141d;
   --surface: #1a1f2c;
   --surface-2: #232938;
@@ -2443,6 +2450,9 @@ html:has(.theme-admin) { --border: #353c4f; }
 .t-note   { font: 400 12.5px/1.55 var(--font-sans); color: var(--muted); }
 .hstack { display: flex; align-items: center; gap: 8px; }
 .hstack.between { justify-content: space-between; }
+/* Toggle/flag row label — canonical readable primary text (was a bare,
+   colourless span inheriting the dark base colour). */
+.toggle-label { font: 500 13px var(--font-sans); color: var(--text); }
 .vstack { display: flex; flex-direction: column; gap: 4px; }
 .td-primary { color: var(--text); font-weight: 500; }
 

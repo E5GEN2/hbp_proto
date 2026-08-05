@@ -9,7 +9,7 @@
  */
 
 import { prisma } from './prisma';
-import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyId, nextAssignmentId } from './id';
+import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyIdBatch, nextAssignmentId } from './id';
 import { renewalUnitPrice } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
@@ -1632,8 +1632,6 @@ export type RegisterProxyInput = {
   rotationUrl?: string | null;
 };
 
-const nextProxyIdInTx = (tx: Tx) => nextProxyId(tx);
-
 // Batch registration (register-proxy page: manual rows or file import).
 // All-or-nothing: any invalid item aborts the whole batch with the item
 // number in the message, so a half-imported file can't happen.
@@ -1647,6 +1645,10 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
     const catalogItems = await tx.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION', 'POOL'] } } });
     const lookup = (kind: string) => new Map(catalogItems.filter(c => c.kind === kind).map(c => [c.value.toLowerCase(), c.value]));
     const carriers = lookup('CARRIER'), regions = lookup('REGION'), pools = lookup('POOL');
+
+    // Allocate the whole batch's ids up front (owner rule): first random, rest
+    // sequential from it — so a registration reads PXY-48213, PXY-48214, ….
+    const batchIds = await nextProxyIdBatch(tx, inputs.length);
 
     const seenEndpoints = new Set<string>();
     const proxyIds: string[] = [];
@@ -1681,7 +1683,7 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
       });
       if (existing) throw new Error(`${at}: ${endpoint} is already registered as ${existing.id}`);
 
-      const id = await nextProxyIdInTx(tx);
+      const id = batchIds[i];
       await tx.proxy.create({
         data: {
           id,

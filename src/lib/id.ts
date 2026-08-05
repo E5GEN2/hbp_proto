@@ -3,32 +3,38 @@ import { prisma } from './prisma';
 
 // ID allocation (audit B-5 close-out).
 //
-// ORD-/PAY- ids are RANDOM by product rule (2026-07-06): they must not leak
-// order volume or be guessable, only uniqueness is guaranteed. 5 crypto-random
-// digits (user's call — matches the legacy ORD-00002 look) + a pre-check; the
-// primary key is the hard guarantee. The 5-digit space is 100k ids shared with
-// the legacy sequential rows — if several draws in a row are taken (only
-// plausible once the table holds tens of thousands of rows), the generator
-// widens to 6+ digits instead of failing the sale.
+// ORD-/PAY-/TCK- ids are RANDOM by product rule: they must not leak volume or
+// be guessable, only uniqueness is guaranteed. 5 crypto-random digits + a
+// pre-check; the primary key is the hard guarantee. On the rare repeated draw
+// the generator widens to 6+ digits instead of failing.
 //
-// Everything else (INV/USR/PXY/ASN/TCK) stays sequential — invoices deliberately
-// so (accounting) — via Postgres sequences (migration 20260706090000), which
-// are atomic under concurrency, unlike the old table-scan max+1.
+// PXY- is RANDOM PER BATCH (owner 2026-08-04): the FIRST proxy of a registration
+// batch gets a random base, the REST run sequentially from it (PXY-48213,
+// PXY-48214, …) — random base hides volume, the contiguous run keeps one
+// order's proxies grouped and easy to read. See nextProxyIdBatch.
+//
+// INV/USR/ASN stay sequential — invoices deliberately so (accounting) — via
+// Postgres sequences (migration 20260706090000), atomic under concurrency.
+// (proxy_id_seq / ticket_id_seq are now unused, kept only to avoid a migration.)
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
 // Web Crypto (globalThis.crypto) — available in Node 20 AND the edge bundle
 // webpack builds for instrumentation.ts; the 'crypto' Node builtin is not.
-function randomDigits(len: number) {
-  const max = 10 ** len;
-  const limit = Math.floor(0x1_0000_0000 / max) * max; // rejection sampling: keep uniform
+// Uniform integer in [0, maxExclusive) via rejection sampling.
+function uniformInt(maxExclusive: number) {
+  const limit = Math.floor(0x1_0000_0000 / maxExclusive) * maxExclusive;
   const buf = new Uint32Array(1);
   let x: number;
   do {
     globalThis.crypto.getRandomValues(buf);
     x = buf[0];
   } while (x >= limit);
-  return (x % max).toString().padStart(len, '0');
+  return x % maxExclusive;
+}
+
+function randomDigits(len: number) {
+  return uniformInt(10 ** len).toString().padStart(len, '0');
 }
 
 async function uniqueRandomId(prefix: string, exists: (id: string) => Promise<boolean>) {
@@ -68,9 +74,26 @@ export async function nextUserId(db: Db = prisma) {
   return `USR-${String(n).padStart(5, '0')}`;
 }
 
+// A batch of `count` proxy ids: FIRST random, the REST sequential from it
+// (owner rule). The whole run keeps one digit-width and the entire range is
+// checked free before returning (the PK is still the hard uniqueness guarantee).
+export async function nextProxyIdBatch(db: Db = prisma, count: number): Promise<string[]> {
+  if (count < 1) return [];
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const len = 5 + Math.max(0, attempt - 3);
+    const span = 10 ** len;
+    if (count > span - 1) throw new Error('Proxy batch too large for the id space');
+    // base in [1, span-count] → base+count-1 < span, so no rollover / width jump.
+    const base = 1 + uniformInt(span - count);
+    const ids = Array.from({ length: count }, (_, k) => `PXY-${String(base + k).padStart(len, '0')}`);
+    const clash = await db.proxy.findFirst({ where: { id: { in: ids } }, select: { id: true } });
+    if (!clash) return ids;
+  }
+  throw new Error('Could not allocate a unique PXY id batch');
+}
+
 export async function nextProxyId(db: Db = prisma) {
-  const n = await nextFromSequence(db, 'proxy_id_seq');
-  return `PXY-${String(n).padStart(5, '0')}`;
+  return (await nextProxyIdBatch(db, 1))[0];
 }
 
 export async function nextAssignmentId(db: Db = prisma) {
@@ -78,9 +101,9 @@ export async function nextAssignmentId(db: Db = prisma) {
   return `ASN-${String(n).padStart(5, '0')}`;
 }
 
-export async function nextTicketId(db: Db = prisma) {
-  const n = await nextFromSequence(db, 'ticket_id_seq');
-  return `TCK-${String(n).padStart(5, '0')}`;
+export function nextTicketId(db: Db = prisma) {
+  return uniqueRandomId('TCK-', async id =>
+    Boolean(await db.ticket.findUnique({ where: { id }, select: { id: true } })));
 }
 
 export function randomPaymentMethodId() {

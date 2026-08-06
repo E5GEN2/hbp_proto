@@ -77,9 +77,17 @@ export const authOptions: NextAuthOptions = {
         // apply without waiting for token expiry.
         const u = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { status: true, role: true, emailVerifiedAt: true },
+          select: { status: true, role: true, emailVerifiedAt: true, email: true },
         });
         if (!u || u.status === 'BLOCKED') return null as any;
+        // USR-id recycling guard (2026-08-06 incident): the launch-prep
+        // sequence reset re-minted ids that still-valid 7-day JWTs reference,
+        // so a stale token's id could resolve to a DIFFERENT, newer user and
+        // silently sign the holder in as them. Email is unique per user and
+        // never recycled — if the token's email no longer matches the row at
+        // token.id, the token is stale; refuse it so getServerSession() is
+        // null and every guard bounces to /login for a fresh sign-in.
+        if (token.email && u.email !== token.email) return null as any;
         session.user.id = token.id;
         session.user.role = u.role;
         // Same freshness as the block check — a verification flip is visible

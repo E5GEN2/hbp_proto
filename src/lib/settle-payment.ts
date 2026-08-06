@@ -10,6 +10,8 @@ import { money } from './money';
 import { creditBalance } from './balance';
 import { reprovisionRenewedOrder } from './transitions';
 import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
+import { sendAdminTelegram, adminNewOrderAlert } from './telegram';
+import { appUrl } from './app-url';
 
 export type SettleResult =
   | { ok: true; already: true }
@@ -144,6 +146,7 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   // Purchase-time snapshot, not the plan's current flag (report №3).
   const wantsAutoProvision = order.autoProvision;
   let finalActive = false;
+  let finalAssigned = 0;
 
   await prisma.$transaction(async tx => {
     await tx.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: now } });
@@ -183,6 +186,7 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
       wantsAutoProvision && fullyAssigned ? 'ACTIVE' as const
       : 'PROVISIONING' as const;
     finalActive = finalStatus === 'ACTIVE';
+    finalAssigned = assignedCount;
     const finalActivated = finalStatus === 'ACTIVE' ? now : null;
     const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
     const finalException = wantsAutoProvision && !fullyAssigned ? 'PAID_NOT_PROVISIONED' as const : null;
@@ -224,6 +228,19 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   });
 
   await sendEmail({ to: clientEmail, ...orderPaidEmail(order.id, finalActive) });
+  await sendAdminTelegram(adminNewOrderAlert({
+    orderId: order.id,
+    clientName: payment.client.name ?? payment.client.id,
+    clientId: order.clientId,
+    planName: order.plan.name,
+    qty: order.qty,
+    amount: money(Number(order.amount)),
+    method: payment.method,
+    status: finalActive ? 'ACTIVE' : 'PROVISIONING',
+    assigned: finalAssigned,
+    adminUrl: appUrl(`/admin/orders/${order.id}`),
+    via,
+  }));
   return { ok: true, kind: 'order' };
 }
 

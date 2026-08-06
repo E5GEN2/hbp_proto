@@ -87,7 +87,12 @@ export async function nextProxyIdBatch(db: Db = prisma, count: number): Promise<
     const base = 1 + uniformInt(span - count);
     const ids = Array.from({ length: count }, (_, k) => `PXY-${String(base + k).padStart(len, '0')}`);
     const clash = await db.proxy.findFirst({ where: { id: { in: ids } }, select: { id: true } });
-    if (!clash) return ids;
+    if (clash) continue;
+    // Hard-deleted proxies free their PK, but audit logs still name the old
+    // id — re-minting it would silently re-point that history at a different
+    // modem. Log rows act as the tombstone ([objectType, objectId] indexed).
+    const ghost = await db.log.findFirst({ where: { objectType: 'PROXY', objectId: { in: ids } }, select: { id: true } });
+    if (!ghost) return ids;
   }
   throw new Error('Could not allocate a unique PXY id batch');
 }

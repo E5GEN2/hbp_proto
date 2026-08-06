@@ -9,6 +9,7 @@ import { ReplaceProxyModal } from './modals/ReplaceProxyModal';
 import { MarkPaidModal } from './modals/MarkPaidModal';
 import { RefundModal } from './modals/RefundModal';
 import { MarkFaultyModal } from './modals/MarkFaultyModal';
+import { EditProxyModal, type EditProxyInitial } from './modals/EditProxyModal';
 import { RiskModal } from './modals/RiskModal';
 import { BlockClientModal } from './modals/BlockClientModal';
 import { CancelOrderModal } from './modals/CancelOrderModal';
@@ -113,6 +114,48 @@ export function ExtendButton({
 }
 
 /* ─── PROXY BUTTONS ────────────────────────────────────────────────── */
+
+export function EditProxyButton({ proxyId, initial }: { proxyId: string; initial: EditProxyInitial }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>Edit</button>
+      <EditProxyModal open={open} onClose={() => setOpen(false)} proxyId={proxyId} initial={initial} />
+    </>
+  );
+}
+
+export function DeleteProxyButton({ proxyId }: { proxyId: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  return (
+    <>
+      <button className="btn danger" onClick={() => setOpen(true)}>Delete</button>
+      <ConfirmAction
+        open={open} onClose={() => setOpen(false)}
+        title="Delete proxy"
+        entityLabel={`Proxy · ${proxyId}`}
+        message="Permanently removes this proxy from the system. This cannot be undone."
+        impact={[
+          'Proxy row is deleted — its ID disappears from the proxies list',
+          'Past assignment history for this proxy is removed from order records',
+          'Whitelist entries are removed',
+          'Audit log entries are kept',
+        ]}
+        requireReason
+        confirmLabel="Delete proxy"
+        confirmTone="danger"
+        onConfirm={async ({ reason }) => {
+          await A.deleteProxyAction(proxyId, reason!);
+          toast('Proxy deleted', proxyId, 'warning');
+          router.replace('/admin/proxies');
+          router.refresh();
+        }}
+      />
+    </>
+  );
+}
 
 export function MarkFaultyButton({ proxyId }: { proxyId: string }) {
   const [open, setOpen] = useState(false);

@@ -11,6 +11,8 @@ import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
 import { npEnabled, npCreatePayment, npCoin, belowMinMessage, type NpDirectPayment } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
+import { sendAdminTelegram, adminNewOrderAlert } from '@/lib/telegram';
+import { appUrl } from '@/lib/app-url';
 
 const Schema = z.object({
   planId: z.string(),
@@ -172,6 +174,10 @@ export async function POST(req: Request) {
 
   const now = new Date();
 
+  // Admin TG alert for instantly-paid orders (balance/card) — built inside the
+  // tx, sent after commit. Crypto orders alert from settle-payment instead.
+  let adminAlert: string | null = null;
+
   try {
   await prisma.$transaction(async tx => {
     // 0. Authoritative capacity re-check INSIDE the transaction (audit B-5) —
@@ -321,6 +327,21 @@ export async function POST(req: Request) {
         link: `/orders/${orderId}`,
       },
     });
+
+    if (isInstant) {
+      adminAlert = adminNewOrderAlert({
+        orderId,
+        clientName: user.name ?? user.id,
+        clientId: user.id,
+        planName: plan.name,
+        qty,
+        amount: money(total),
+        method: paymentMethod === 'balance' ? 'Balance' : 'Card',
+        status: finalStatus,
+        assigned: assignedIds.length,
+        adminUrl: appUrl(`/admin/orders/${orderId}`),
+      });
+    }
   });
   } catch (e: any) {
     if (e?.message === 'CAPACITY_EXHAUSTED') {
@@ -331,6 +352,8 @@ export async function POST(req: Request) {
     }
     throw e;
   }
+
+  if (adminAlert) await sendAdminTelegram(adminAlert);
 
   return NextResponse.json({ ok: true, orderId, ...(npPay ? { payment: payPanelPayload(paymentId, npPay) } : {}) });
 }

@@ -13,8 +13,9 @@ import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyIdBatch
 import { renewalUnitPrice } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
-import { sendTelegram } from './telegram';
+import { sendTelegram, sendAdminTelegram, adminNewOrderAlert } from './telegram';
 import { sendEmail, incidentEmail, escapeHtml } from './email';
+import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import bcrypt from 'bcryptjs';
@@ -57,7 +58,9 @@ async function log(tx: Tx, actorId: string | null, action: string, objectType: L
 export async function markPaymentPaid({
   paymentId, actor, source, externalRef,
 }: { paymentId: string; actor: Actor; source?: string; externalRef?: string }) {
-  return prisma.$transaction(async tx => {
+  // Built inside the tx, sent after commit (no HTTP inside $transaction).
+  let adminAlert: string | null = null;
+  const result = await prisma.$transaction(async tx => {
     const pay = await tx.payment.findUnique({
       where: { id: paymentId },
       include: { order: { include: { plan: true } }, client: true },
@@ -144,6 +147,25 @@ export async function markPaymentPaid({
         willActivate && fullyAssigned ? 'SUCCESS' : 'INFO',
         `/orders/${ord.id}`,
       );
+
+      // "New order" alert only when the order first becomes paid — a repeat
+      // payment on an already-PAID order (e.g. a renewal confirm) is not a
+      // new order and must not re-alert.
+      if (ord.paymentStatus !== 'PAID') {
+        adminAlert = adminNewOrderAlert({
+          orderId: ord.id,
+          clientName: pay.client.name ?? pay.client.id,
+          clientId: pay.client.id,
+          planName: plan.name,
+          qty: ord.qty,
+          amount: money(Number(pay.gross)),
+          method: pay.method,
+          status: willActivate && fullyAssigned ? 'ACTIVE' : 'PROVISIONING',
+          assigned: assignedCount,
+          adminUrl: appUrl(`/admin/orders/${ord.id}`),
+          via: `confirmed by ${actor.name ?? actor.id}`,
+        });
+      }
     }
 
     await log(tx, actor.id, 'PAYMENT.CONFIRM', 'PAYMENT', paymentId,
@@ -151,6 +173,8 @@ export async function markPaymentPaid({
 
     return { ok: true };
   });
+  if (adminAlert) await sendAdminTelegram(adminAlert);
+  return result;
 }
 
 /**
@@ -1487,7 +1511,9 @@ const nextPaymentIdInTx = (_tx: Tx) => nextPaymentId();
 const nextInvoiceIdInTx = (tx: Tx) => nextInvoiceId(tx);
 
 export async function createOrderByAdmin({ input, actor }: { input: NewOrderInput; actor: Actor }) {
-  return prisma.$transaction(async tx => {
+  // Built inside the tx, sent after commit (no HTTP inside $transaction).
+  let adminAlert: string | null = null;
+  const result = await prisma.$transaction(async tx => {
     const client = await tx.user.findUnique({ where: { id: input.clientId } });
     if (!client || client.role !== 'CLIENT') throw new Error('Client not found');
     if (client.status === 'BLOCKED') throw new Error('Client is blocked');
@@ -1614,8 +1640,28 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     await log(tx, actor.id, 'ORDER.CREATE', 'ORDER', orderId,
       `Admin-created · ${client.name} (${client.id}) · ${plan.name} · qty ${input.qty} · ${input.paymentMethod} · ${money(total)} · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`);
 
+    // Alert only when the order is born paid (comp/stripe). Crypto/invoice
+    // orders alert later, when the payment actually confirms.
+    if (isInstant) {
+      adminAlert = adminNewOrderAlert({
+        orderId,
+        clientName: client.name ?? client.id,
+        clientId: client.id,
+        planName: plan.name,
+        qty: input.qty,
+        amount: money(total),
+        method: input.paymentMethod,
+        status: finalStatus,
+        assigned: candidatesToAssign.length,
+        adminUrl: appUrl(`/admin/orders/${orderId}`),
+        via: `admin · ${actor.name ?? actor.id}`,
+      });
+    }
+
     return { ok: true, orderId };
   });
+  if (adminAlert) await sendAdminTelegram(adminAlert);
+  return result;
 }
 
 export type RegisterProxyInput = {
@@ -1709,6 +1755,103 @@ export async function registerProxies({ inputs, actor }: { inputs: RegisterProxy
     }
     return { ok: true, proxyIds };
   }, { timeout: 30000 });
+}
+
+/**
+ * Admin edits a registered proxy's password and/or rotation URL — the portal
+ * mirror of a credential change made upstream on the modem farm. The client
+ * keeps the same host:port:login; only the edited fields change, so an
+ * actively-served client is bell-notified to re-copy from the portal.
+ */
+export async function updateProxyCredentials({ proxyId, password, rotationUrl, actor }: {
+  proxyId: string; password: string; rotationUrl: string | null; actor: Actor;
+}) {
+  const pw = password.trim();
+  const url = rotationUrl?.trim() || null;
+  // Same invariants as registerProxies — credentials render and re-import as
+  // host:port:login:password, so a colon inside the token breaks the format.
+  if (!pw) throw new Error('Password is required');
+  if (pw.includes(':')) throw new Error("Password must not contain ':'");
+  if (pw.length > 128) throw new Error('Password too long (max 128 characters)');
+  if (url && !/^https?:\/\//i.test(url)) throw new Error('Rotation URL must start with http:// or https://');
+  if (url && url.length > 512) throw new Error('Rotation URL too long (max 512 characters)');
+
+  return prisma.$transaction(async tx => {
+    const proxy = await tx.proxy.findUnique({
+      where: { id: proxyId },
+      include: { assignments: { where: { releasedAt: null }, take: 1, include: { order: { select: { clientId: true } } } } },
+    });
+    if (!proxy) throw new Error('Proxy not found');
+
+    const pwChanged = proxy.password !== pw;
+    const urlChanged = (proxy.rotationUrl ?? null) !== url;
+    if (!pwChanged && !urlChanged) return { ok: true, changed: false };
+
+    await tx.proxy.update({
+      where: { id: proxyId },
+      data: {
+        password: pw,
+        rotationUrl: url,
+        ...(pwChanged ? { passwordRotatedAt: new Date() } : {}),
+      },
+    });
+
+    const open = proxy.assignments[0];
+    if (open) {
+      await notify(tx, open.order.clientId,
+        pwChanged
+          ? `Proxy ${proxyId} credentials updated — re-copy them from the portal`
+          : `Proxy ${proxyId} rotation URL updated`,
+        'INFO', `/proxies/${proxyId}`);
+    }
+
+    // Values deliberately kept out of the audit trail (password), and the
+    // rotation URL may embed a secret token — record only WHAT changed.
+    const what = [
+      pwChanged ? 'password' : null,
+      urlChanged ? (url ? 'rotation URL' : 'rotation URL cleared') : null,
+    ].filter(Boolean).join(' · ');
+    await log(tx, actor.id, 'PROXY.EDIT', 'PROXY', proxyId,
+      `Edited by ${actor.name ?? actor.id} · ${what}${open ? ` · client notified (${open.order.clientId})` : ''}`);
+
+    return { ok: true, changed: true };
+  });
+}
+
+/**
+ * Hard-delete a registered proxy (owner decision 2026-08-06: block while it
+ * serves an order; otherwise remove it completely). assignments.proxyId is
+ * FK RESTRICT, so the proxy's RELEASED assignment history must be removed in
+ * the same tx — order pages lose those history rows (accepted trade-off of a
+ * hard delete; Proxy has no deletedAt column). Whitelist rows cascade.
+ * Audit Log rows are kept — the PROXY.DELETE entry records what existed.
+ */
+export async function deleteProxy({ proxyId, reason, actor }: {
+  proxyId: string; reason: string; actor: Actor;
+}) {
+  const why = reason.trim();
+  if (!why) throw new Error('A reason is required');
+  return prisma.$transaction(async tx => {
+    const proxy = await tx.proxy.findUnique({
+      where: { id: proxyId },
+      include: { assignments: { where: { releasedAt: null }, take: 1, select: { orderId: true } } },
+    });
+    if (!proxy) throw new Error('Proxy not found');
+    const open = proxy.assignments[0];
+    if (open || proxy.status === 'ASSIGNED' || proxy.status === 'PROVISIONING') {
+      throw new Error(`${proxyId} is serving ${open ? `order ${open.orderId}` : 'an order'} — Release or Replace it first, then delete.`);
+    }
+
+    const history = await tx.assignment.deleteMany({ where: { proxyId } });
+    await tx.entityNote.deleteMany({ where: { objectType: 'PROXY', objectId: proxyId } });
+    await tx.proxy.delete({ where: { id: proxyId } });
+
+    await log(tx, actor.id, 'PROXY.DELETE', 'PROXY', proxyId,
+      `Deleted by ${actor.name ?? actor.id} · ${why} · ${proxy.carrier} · ${proxy.region} · ${proxy.pool} · ${proxy.modem} · ${proxy.ip}:${proxy.port}`
+      + (history.count > 0 ? ` · ${history.count} historical assignment${history.count === 1 ? '' : 's'} removed` : ''));
+
+    return { ok: true, removedHistory: history.count };
+  });
 }
 
 export async function addEntityNote({

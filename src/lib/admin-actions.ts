@@ -196,6 +196,22 @@ export const registerProxiesAction = guarded(async function registerProxiesActio
   return r;
 });
 
+export const updateProxyCredentialsAction = guarded(async function updateProxyCredentialsAction(
+  proxyId: string, input: { password: string; rotationUrl: string | null },
+) {
+  const actor = await getAdminActor();
+  const r = await T.updateProxyCredentials({ proxyId, password: input.password, rotationUrl: input.rotationUrl, actor });
+  bust();
+  return r;
+});
+
+export const deleteProxyAction = guarded(async function deleteProxyAction(proxyId: string, reason: string) {
+  const actor = await getAdminActor();
+  const r = await T.deleteProxy({ proxyId, reason, actor });
+  bust();
+  return r;
+});
+
 export const addNoteAction = guarded(async function addNoteAction(
   objectType: 'ORDER' | 'PAYMENT' | 'PROXY' | 'CLIENT' | 'PLAN',
   objectId: string,

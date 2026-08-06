@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { fmtAdminStamp } from '@/lib/date';
-import { MarkFaultyButton, ReleaseProxyButton, ReturnToPoolButton, MarkHealthyButton, MaintenanceButton, ReplaceProxyButton } from '@/components/admin/ActionButtons';
+import { MarkFaultyButton, ReleaseProxyButton, ReturnToPoolButton, MarkHealthyButton, MaintenanceButton, ReplaceProxyButton, EditProxyButton, DeleteProxyButton } from '@/components/admin/ActionButtons';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
@@ -47,6 +47,7 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
           </div>
           <div className="detail-header-actions">
             <AddNoteToolbar objectType="PROXY" objectId={proxy.id} label="Add note" />
+            <EditProxyButton proxyId={proxy.id} initial={{ password: proxy.password, rotationUrl: proxy.rotationUrl }} />
             {(proxy.status === 'AVAILABLE' || proxy.status === 'ASSIGNED' || proxy.status === 'MAINTENANCE') && (
               <MaintenanceButton proxyId={proxy.id} inMaintenance={proxy.status === 'MAINTENANCE'} />
             )}
@@ -55,6 +56,8 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
             {active && (proxy.status === 'ASSIGNED' || proxy.status === 'FAULTY') && <ReplaceProxyButton proxyId={proxy.id} orderId={active.orderId} />}
             {(proxy.status === 'ASSIGNED' || proxy.status === 'FAULTY') && <ReleaseProxyButton proxyId={proxy.id} />}
             {proxy.status !== 'FAULTY' && <MarkFaultyButton proxyId={proxy.id} />}
+            {/* Hard delete — only when not serving an order (server re-checks). */}
+            {!active && proxy.status !== 'ASSIGNED' && proxy.status !== 'PROVISIONING' && <DeleteProxyButton proxyId={proxy.id} />}
           </div>
         </div>
 

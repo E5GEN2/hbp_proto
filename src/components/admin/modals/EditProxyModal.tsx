@@ -33,7 +33,7 @@ export function EditProxyModal({
     const pw = form.password.trim();
     const url = form.rotationUrl.trim();
     if (!pw) { setErr('Password is required.'); return; }
-    if (pw.includes(':')) { setErr("Password must not contain ':'."); return; }
+    if (pw !== initial.password && pw.includes(':')) { setErr("Password must not contain ':'."); return; }
     if (url && !/^https?:\/\//i.test(url)) { setErr('Rotation URL must start with http:// or https://.'); return; }
     start(async () => {
       try {

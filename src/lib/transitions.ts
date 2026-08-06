@@ -149,9 +149,9 @@ export async function markPaymentPaid({
       );
 
       // "New order" alert only when the order first becomes paid — a repeat
-      // payment on an already-PAID order (e.g. a renewal confirm) is not a
-      // new order and must not re-alert.
-      if (ord.paymentStatus !== 'PAID') {
+      // payment on an already-paid order (renewal confirm on a PAID, FREE
+      // comp, or legacy CONFIRMED order) is not a new order, no re-alert.
+      if (!['PAID', 'FREE', 'CONFIRMED'].includes(ord.paymentStatus)) {
         adminAlert = adminNewOrderAlert({
           orderId: ord.id,
           clientName: pay.client.name ?? pay.client.id,
@@ -1650,7 +1650,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         planName: plan.name,
         qty: input.qty,
         amount: money(total),
-        method: input.paymentMethod,
+        method: input.paymentMethod === 'comp' ? 'Comp' : 'Card',
         status: finalStatus,
         assigned: candidatesToAssign.length,
         adminUrl: appUrl(`/admin/orders/${orderId}`),
@@ -1768,11 +1768,7 @@ export async function updateProxyCredentials({ proxyId, password, rotationUrl, a
 }) {
   const pw = password.trim();
   const url = rotationUrl?.trim() || null;
-  // Same invariants as registerProxies — credentials render and re-import as
-  // host:port:login:password, so a colon inside the token breaks the format.
   if (!pw) throw new Error('Password is required');
-  if (pw.includes(':')) throw new Error("Password must not contain ':'");
-  if (pw.length > 128) throw new Error('Password too long (max 128 characters)');
   if (url && !/^https?:\/\//i.test(url)) throw new Error('Rotation URL must start with http:// or https://');
   if (url && url.length > 512) throw new Error('Rotation URL too long (max 512 characters)');
 
@@ -1786,6 +1782,14 @@ export async function updateProxyCredentials({ proxyId, password, rotationUrl, a
     const pwChanged = proxy.password !== pw;
     const urlChanged = (proxy.rotationUrl ?? null) !== url;
     if (!pwChanged && !urlChanged) return { ok: true, changed: false };
+    // Password format invariants apply only to a NEW value — an unchanged
+    // legacy password must never block a rotation-URL-only edit. Same rules
+    // as registerProxies: credentials render/re-import as
+    // host:port:login:password, so a colon inside the token breaks the format.
+    if (pwChanged) {
+      if (pw.includes(':')) throw new Error("Password must not contain ':'");
+      if (pw.length > 128) throw new Error('Password too long (max 128 characters)');
+    }
 
     await tx.proxy.update({
       where: { id: proxyId },
@@ -1832,6 +1836,12 @@ export async function deleteProxy({ proxyId, reason, actor }: {
   const why = reason.trim();
   if (!why) throw new Error('A reason is required');
   return prisma.$transaction(async tx => {
+    // Row-lock the proxy first (mirrors the order lock in assignProxyManually):
+    // a concurrent assignment INSERT takes FOR KEY SHARE on this row for its FK
+    // check, so FOR UPDATE serializes delete-vs-assign — the loser sees the
+    // committed truth instead of interleaving into silent data loss.
+    await tx.$queryRaw`SELECT id FROM proxies WHERE id = ${proxyId} FOR UPDATE`;
+
     const proxy = await tx.proxy.findUnique({
       where: { id: proxyId },
       include: { assignments: { where: { releasedAt: null }, take: 1, select: { orderId: true } } },
@@ -1842,9 +1852,17 @@ export async function deleteProxy({ proxyId, reason, actor }: {
       throw new Error(`${proxyId} is serving ${open ? `order ${open.orderId}` : 'an order'} — Release or Replace it first, then delete.`);
     }
 
-    const history = await tx.assignment.deleteMany({ where: { proxyId } });
+    // Purge RELEASED history only — an open assignment that slipped past the
+    // gate must survive so proxy.delete trips the FK RESTRICT and rolls the
+    // whole tx back instead of silently destroying a live assignment.
+    const history = await tx.assignment.deleteMany({ where: { proxyId, releasedAt: { not: null } } });
     await tx.entityNote.deleteMany({ where: { objectType: 'PROXY', objectId: proxyId } });
-    await tx.proxy.delete({ where: { id: proxyId } });
+    try {
+      await tx.proxy.delete({ where: { id: proxyId } });
+    } catch (e: any) {
+      if (e?.code === 'P2003') throw new Error(`${proxyId} is serving an order — Release or Replace it first, then delete.`);
+      throw e;
+    }
 
     await log(tx, actor.id, 'PROXY.DELETE', 'PROXY', proxyId,
       `Deleted by ${actor.name ?? actor.id} · ${why} · ${proxy.carrier} · ${proxy.region} · ${proxy.pool} · ${proxy.modem} · ${proxy.ip}:${proxy.port}`

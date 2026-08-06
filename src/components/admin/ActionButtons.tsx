@@ -140,7 +140,7 @@ export function DeleteProxyButton({ proxyId }: { proxyId: string }) {
         impact={[
           'Proxy row is deleted — its ID disappears from the proxies list',
           'Past assignment history for this proxy is removed from order records',
-          'Whitelist entries are removed',
+          'Whitelist entries and admin notes are removed',
           'Audit log entries are kept',
         ]}
         requireReason

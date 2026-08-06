@@ -18,6 +18,9 @@ export async function sendTelegram(chatId: string | null | undefined, text: stri
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+      // Sends are awaited on hot paths (checkout response, IPN ack) — a hung
+      // Telegram API must never stall them beyond a few seconds.
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
       console.warn('[telegram] send failed', res.status, await res.text().catch(() => ''));
@@ -50,8 +53,10 @@ export function adminTelegramEnabled() {
   return telegramEnabled() && !!process.env.TELEGRAM_ADMIN_CHAT_ID;
 }
 
-/** Best-effort alert to the admin ops chat. Never throws, never blocks a flow. */
+/** Best-effort alert to the admin ops chat. Never throws; bounded by the
+    5s send timeout, so it cannot stall a checkout/IPN response. */
 export async function sendAdminTelegram(text: string): Promise<boolean> {
+  if (!adminTelegramEnabled()) return false;
   return sendTelegram(process.env.TELEGRAM_ADMIN_CHAT_ID, text);
 }
 

@@ -369,19 +369,37 @@ export async function runSweep(): Promise<SweepResult> {
         if (r.changed) timedOutPayments++;
         continue;
       }
-      await prisma.payment.update({ where: { id: p.id }, data: { status: 'CANCELLED' } });
-      timedOutPayments++;
-      await log('PAYMENT.CANCEL', 'PAYMENT', p.id, 'Cancelled by sweep — no confirmation within 72h');
-      if (p.order && p.order.status === 'NEW') {
-        await prisma.order.update({
-          where: { id: p.order.id },
-          data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Payment window expired (72h)', autoRenew: false, renewalBucket: null },
+      // ── ORDER payment: cancel on the same 72h window, both writes guarded ──
+      //   Optimistic concurrency, mirroring failAwaitingPayment: a late
+      //   `finished` IPN can settle THIS payment (AWAITING→CONFIRMED) and
+      //   activate its NEW order (NEW→PROVISIONING/ACTIVE, proxies assigned)
+      //   between the snapshot above and here. An unguarded cancel would clobber
+      //   a just-paid order + its payment. The payment flip is a status-guarded
+      //   updateMany (no-op when settle won the race), and the order is re-read
+      //   IN-tx so a since-activated order is never cancelled. Both writes are
+      //   in one tx so a cancelled payment never orphans a still-NEW order.
+      //   (Late ORDER payments are not yet resurrectable — that's the deposits-
+      //   only expiry policy; extending it to orders stays deferred.)
+      const cancel = await prisma.$transaction(async tx => {
+        const res = await tx.payment.updateMany({ where: { id: p.id, status: 'AWAITING' }, data: { status: 'CANCELLED' } });
+        if (res.count === 0) return null; // settled / moved out of AWAITING concurrently — leave it
+        await tx.log.create({ data: { actorId: null, action: 'PAYMENT.CANCEL', objectType: 'PAYMENT', objectId: p.id, detail: 'Cancelled by sweep — no confirmation within 72h' } });
+        if (!p.orderId) return { orderCancelled: false };
+        const ord = await tx.order.findUnique({ where: { id: p.orderId }, select: { status: true, clientId: true } });
+        if (ord?.status !== 'NEW') return { orderCancelled: false }; // activated since the snapshot — keep it
+        await tx.order.update({
+          where: { id: p.orderId },
+          data: { status: 'CANCELLED', cancelledAt: new Date(now), cancelledReason: 'Payment window expired (72h)', autoRenew: false, renewalBucket: null },
         });
-        cancelledOrders++;
-        await notify(p.order.clientId,
-          `Order ${p.order.id} was cancelled — payment wasn't received within 72 hours`,
-          'INFO', `/orders/${p.order.id}`);
-        await log('ORDER.CANCEL', 'ORDER', p.order.id, 'Cancelled by sweep — payment window expired');
+        await tx.notification.create({
+          data: { id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId: ord.clientId, title: `Order ${p.orderId} was cancelled — payment wasn't received within 72 hours`, kind: 'INFO', link: `/orders/${p.orderId}` },
+        });
+        await tx.log.create({ data: { actorId: null, action: 'ORDER.CANCEL', objectType: 'ORDER', objectId: p.orderId, detail: 'Cancelled by sweep — payment window expired' } });
+        return { orderCancelled: true };
+      });
+      if (cancel) {
+        timedOutPayments++;
+        if (cancel.orderCancelled) cancelledOrders++;
       }
     }
 

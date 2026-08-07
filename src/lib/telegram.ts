@@ -93,3 +93,26 @@ export function adminNewOrderAlert(o: {
     esc(o.adminUrl),
   ].join('\n');
 }
+
+/** Crypto payment that arrived but did NOT auto-settle — the "client paid a
+    late/expired rate address, order stuck" case. Pushes the exact payment to
+    the ops chat so nobody hunts for it in the NOWPayments dashboard. */
+export function adminCryptoAttentionAlert(o: {
+  paymentId: string;
+  reason: string;          // 'underpaid' | 'charge expired with funds' | …
+  clientName: string;
+  clientId: string;
+  received: string;        // e.g. '48.5 USDTTRC20' (may be '?')
+  expected: string;        // e.g. '50 USDTTRC20'
+  orderRef: string;        // ORD-… or 'balance top-up'
+  adminUrl: string;        // absolute link to /admin/payments/<id>
+}) {
+  return [
+    `⚠️ <b>Crypto payment needs review — ${esc(o.paymentId)}</b>`,
+    `Reason: ${esc(o.reason)}`,
+    `Client: ${esc(o.clientName)} (${esc(o.clientId)}) · ${esc(o.orderRef)}`,
+    `Received ${esc(o.received)} of ${esc(o.expected)}`,
+    `Confirm or refund here:`,
+    esc(o.adminUrl),
+  ].join('\n');
+}

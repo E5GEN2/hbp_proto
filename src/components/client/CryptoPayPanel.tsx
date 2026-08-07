@@ -277,25 +277,22 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
   }
 
   const msLeft = pay.payExpiresAt != null ? pay.payExpiresAt - now : null;
-  const expired = msLeft != null && msLeft <= 0;
   const line = statusLine(npStatus);
 
-  // Recovery view — the charge is no longer payable: either the IPN reported it
-  // dead (`failed`) OR the fixed-rate window lapsed client-side (`expired`,
-  // owner item 6). Both collapse the stale QR/address into ONE obvious action
-  // so the client isn't left wondering where to get a fresh address. Clicking
-  // regenerates at the current rate with a fresh countdown (parent swaps
-  // payData → the panel remounts via key). If they already paid the old
-  // address, a late `finished` IPN still settles it (resurrectFailed).
-  if (failed || expired) {
+  // Recovery view — shown ONLY when the IPN reports the charge terminally dead
+  // (`failed`/expired after the 7-day deposit window). We deliberately do NOT
+  // collapse the panel when the on-screen rate countdown hits zero (owner
+  // 2026-08-07, "Layer 1"): the deposit address stays valid for days, so a
+  // late payer must keep seeing it — telling them it's "no longer valid" was
+  // exactly what pushed funds to a supposedly-dead address. A late payment is
+  // reconciled by the IPN (small drift auto-covered; larger → admin confirms).
+  if (failed) {
     return (
       <div className="checkout-processing">
         <div className="panel checkout-processing-card">
-          <div className="processing-title">{expired && !failed ? 'Rate window expired' : 'Payment window closed'}</div>
+          <div className="processing-title">Payment window closed</div>
           <div className="t-note" style={{ maxWidth: 420 }}>
-            {expired && !failed
-              ? 'The locked exchange rate has expired, so this address is no longer valid.'
-              : 'This charge is no longer active — the rate window closed (or the charge was cancelled) before a payment arrived.'}
+            This charge is no longer active — it was cancelled or timed out before a payment cleared.
             {onRegenerate ? ' Get a fresh address to pay at the current rate — the price in USD stays the same.' : ''}
             {' '}If you already sent the funds, don’t resend — contact support and nothing is lost.
           </div>
@@ -352,9 +349,9 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
           {line.text}
         </div>
 
-        {msLeft != null && (
+        {msLeft != null && msLeft > 0 && !npStatus && (
           <div className="t-note">
-            Rate locked for <span className="mono">{fmtLeft(msLeft)}</span> — send the exact amount before the window closes.
+            Best rate held for <span className="mono">{fmtLeft(msLeft)}</span>. You can still pay after that — the address stays valid; send the amount shown and we’ll confirm your payment (support sorts out any difference).
           </div>
         )}
         <div className="t-note">This page updates automatically once the transaction is detected — keep the tab open or come back later; {settleNote}.</div>

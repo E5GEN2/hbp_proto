@@ -5,6 +5,7 @@ import { sendEmail, autoRenewedEmail, autoRenewFailedGraceEmail, autoRenewFailed
 import { sendTelegram } from './telegram';
 import { autoBackfillEnabled } from './runtime-flags';
 import { backfillOrderProxies, refreshProvisionException } from './transitions';
+import { failAwaitingPayment } from './settle-payment';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -31,8 +32,13 @@ import type { RenewalBucket } from '@prisma/client';
  *      Expiring-soon: H24 / D3 / D7 for approaching expiry, GRACE while inside
  *      the plan's grace window after expiry, EXPIRED past it. RENEWED is sticky
  *      until the order re-enters the ≤7d window.
- *   3. AWAITING payments older than 72h → CANCELLED; their still-NEW orders are
- *      cancelled too (payment window expired).
+ *   3. AWAITING payments older than 72h expire. TOPUP deposits flip to FAILED
+ *      (resurrectable — a real deposit paid on day 4–7 still credits when the
+ *      finished IPN arrives; NOWPayments addresses live ~7 days, and settle
+ *      only resurrects a FAILED charge — a CANCELLED one is swallowed by
+ *      idempotency and the money is lost). ORDER payments → CANCELLED, and
+ *      their still-NEW orders are cancelled too. Owner crypto-deposit-expiry
+ *      policy 2026-08-07 (scope: deposits).
  *
  * Auto-renew execution signed off by the owner 2026-07-06 (balance → card →
  * grace/expire waterfall + email on every outcome).
@@ -342,12 +348,27 @@ export async function runSweep(): Promise<SweepResult> {
       }
     }
 
-    // ── 3. Time out stale AWAITING payments (+ their still-NEW orders) ──────
+    // ── 3. Time out stale AWAITING payments after 72h ──────────────────────
+    //   TOPUP deposits flip to FAILED (via failAwaitingPayment — idempotent,
+    //   AWAITING-only, WARNING bell "Deposit didn't complete", PAYMENT.FAIL
+    //   log), NOT CANCELLED: the NOWPayments address lives ~7 days, so a real
+    //   deposit paid on day 4–7 still credits when the finished IPN resurrects
+    //   the FAILED charge (settle resurrects only FAILED — a CANCELLED charge
+    //   is swallowed by idempotency and the money is lost). ORDER payments keep
+    //   the CANCELLED path and cancel their still-NEW orders. Owner
+    //   crypto-deposit-expiry policy 2026-08-07 (scope: deposits).
     const stale = await prisma.payment.findMany({
       where: { status: 'AWAITING', createdAt: { lte: new Date(now - AWAITING_TIMEOUT_MS) } },
       include: { order: { select: { id: true, status: true, clientId: true } } },
     });
     for (const p of stale) {
+      if (p.kind === 'TOPUP') {
+        // Deposit: fail (resurrectable), don't cancel. No external HTTP inside
+        // — failAwaitingPayment only writes the bell + log in its own tx.
+        const r = await failAwaitingPayment(p.id, 'expired — no payment within 3 days');
+        if (r.changed) timedOutPayments++;
+        continue;
+      }
       await prisma.payment.update({ where: { id: p.id }, data: { status: 'CANCELLED' } });
       timedOutPayments++;
       await log('PAYMENT.CANCEL', 'PAYMENT', p.id, 'Cancelled by sweep — no confirmation within 72h');
@@ -361,10 +382,6 @@ export async function runSweep(): Promise<SweepResult> {
           `Order ${p.order.id} was cancelled — payment wasn't received within 72 hours`,
           'INFO', `/orders/${p.order.id}`);
         await log('ORDER.CANCEL', 'ORDER', p.order.id, 'Cancelled by sweep — payment window expired');
-      } else if (p.orderId === null) {
-        await notify(p.clientId,
-          `Deposit ${p.id} was cancelled — no on-chain confirmation within 72 hours`,
-          'INFO', '/billing');
       }
     }
 

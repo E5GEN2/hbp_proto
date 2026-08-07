@@ -13,10 +13,11 @@ import { npInvoiceUrl } from '@/lib/nowpayments';
 // shows the method itself (Crypto / Balance / Visa ••…) — the row is already
 // identified as an order by the adjacent Order ID column, so "Payment" was
 // pure noise. Refund / Deposit keep their type word (+ method subline).
-function txDescription(p: { status: string; orderId: string | null; method: string }) {
+function txDescription(p: { status: string; kind: string; method: string }) {
   if (p.status === 'REFUNDED') return 'Refund';
-  if (!p.orderId && /^(deposit|wallet top.?up|top.?up)/i.test(p.method || '')) return 'Deposit';
-  if (!p.orderId) return shortMethod(p.method) || 'Payment';
+  // kind is the single source of truth (was a brittle regex on the method
+  // string, which mislabelled crypto deposits whose method is just "Crypto").
+  if (p.kind === 'TOPUP') return 'Deposit';
   return shortMethod(p.method) || 'Payment';
 }
 
@@ -162,7 +163,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                       <tbody>
                         {filtered.map(p => {
                           const refunded = p.status === 'REFUNDED';
-                          const desc = txDescription({ status: p.status, orderId: p.orderId, method: p.method });
+                          const desc = txDescription({ status: p.status, kind: p.kind, method: p.method });
                           const method = shortMethod(p.method);
                           const signed = (refunded ? '+ ' : '') + money(Number(p.gross));
                           return (

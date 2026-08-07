@@ -180,6 +180,7 @@ export const depositAction = guarded(async function depositAction({ amount: rawA
     await tx.payment.create({
       data: {
         id: payId,
+        kind: 'TOPUP',
         orderId: null,
         clientId,
         provider: method === 'card' ? 'Stripe' : npEnabled() ? 'NOWPayments' : 'CoinPayments',

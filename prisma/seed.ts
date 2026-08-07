@@ -569,6 +569,7 @@ async function main() {
   await prisma.payment.create({
     data: {
       id: 'PAY-88999',
+      kind: 'TOPUP',
       orderId: null,
       clientId: demoUser.id,
       provider: 'Balance',
@@ -587,6 +588,7 @@ async function main() {
   await prisma.payment.create({
     data: {
       id: 'PAY-88997',
+      kind: 'TOPUP',
       orderId: null,
       clientId: demoUser.id,
       provider: 'Balance',

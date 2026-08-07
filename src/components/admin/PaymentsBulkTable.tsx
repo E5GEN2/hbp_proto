@@ -9,6 +9,7 @@ import { fmtAdminStamp } from '@/lib/date';
 
 type Row = {
   id: string;
+  kind: string; // 'ORDER' | 'TOPUP'
   orderId: string | null;
   clientId: string | null;
   provider: string;
@@ -65,14 +66,15 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
       </div>
 
       <div className="table-wrap">
-        <table className="dt" style={{ minWidth: 978 }}>
-          {/* ATS colgroup, budget B=994: chk 52, Payment/Order/Client ID 103,
-              Amount 98 ("$9,999.99" + pads), Status 145, Date 137; Provider · Method auto (~253 —
-              long Stripe auto-renew strings wrap at word boundaries).
-              Plain %; floor 978 = B−16. */}
+        <table className="dt" style={{ minWidth: 1060 }}>
+          {/* colgroup (9 cols): chk 5.23, Payment ID 10.36, Type 7, Order/Client
+              ID 10.36, Provider·Method auto (~195, wraps at word boundaries),
+              Amount 9.86, Status 14.59, Date 13.78. minWidth bumped 978→1060 for
+              the added Type column. */}
           <colgroup>
             <col style={{ width: '5.2313%' }} />
             <col style={{ width: '10.3622%' }} />
+            <col style={{ width: '7%' }} />
             <col style={{ width: '10.3622%' }} />
             <col style={{ width: '10.3622%' }} />
             <col />
@@ -84,6 +86,7 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
             <tr>
               <th className="col-chk"></th>
               <th className="col-id">Payment ID</th>
+              <th className="col-text">Type</th>
               <th className="col-id">Order ID</th>
               <th className="col-id">Client ID</th>
               <th className="col-text">Provider · Method</th>
@@ -94,13 +97,16 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
           </thead>
           <tbody>
             {payments.length === 0 ? (
-              <tr><td colSpan={8}><div className="empty"><div className="empty-desc">No payments match the current view.</div></div></td></tr>
+              <tr><td colSpan={9}><div className="empty"><div className="empty-desc">No payments match the current view.</div></div></td></tr>
             ) : payments.map(p => (
               <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk">
                   <span className={`chk ${selected.has(p.id) ? 'checked' : ''}`} onClick={() => toggle(p.id)} />
                 </td>
                 <td className="col-id"><span className="cell-tip" data-tip={p.id}><Link href={`/admin/payments/${p.id}`} className="td-link">{p.id}</Link></span></td>
+                <td className="col-text">{p.kind === 'TOPUP'
+                  ? <span style={{ color: 'var(--accent)', fontWeight: 500 }}>Deposit</span>
+                  : <span className="muted">Order</span>}</td>
                 <td className="col-id">{p.orderId ? <span className="cell-tip" data-tip={p.orderId}><Link href={`/admin/orders/${p.orderId}`} className="td-link">{p.orderId}</Link></span> : <span className="muted">—</span>}</td>
                 <td className="col-id">{p.clientId ? <span className="cell-tip" data-tip={p.clientId}><Link href={`/admin/clients/${p.clientId}`} className="client-link">{p.clientId}</Link></span> : <span className="muted">—</span>}</td>
                 <td className="col-text muted">{p.provider} · {p.method}</td>

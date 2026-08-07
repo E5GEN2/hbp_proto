@@ -89,6 +89,7 @@ export default async function PaymentDetail({ params }: { params: { id: string }
                 <div className="panel-header"><span className="panel-title">Payment summary</span></div>
                 <div className="kv">
                   <div className="kv-row"><span className="kv-key">Payment ID</span><span className="kv-val">{p.id}</span></div>
+                  <div className="kv-row"><span className="kv-key">Type</span><span className="kv-val">{p.kind === 'TOPUP' ? 'Balance deposit' : 'Order payment'}</span></div>
                   {p.order && <div className="kv-row"><span className="kv-key">Order</span><span className="kv-val"><Link href={`/admin/orders/${p.order.id}`} className="td-link">{p.order.id}</Link></span></div>}
                   {p.order?.plan && <div className="kv-row"><span className="kv-key">Plan</span><span className="kv-val">{p.order.plan.name}</span></div>}
                   <div className="kv-row"><span className="kv-key">Date</span><span className="kv-val">{fmtAdminStamp(p.createdAt)}</span></div>

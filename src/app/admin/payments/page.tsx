@@ -25,10 +25,12 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
   const view = searchParams.view ?? 'all';
   const q = searchParams.q?.trim() ?? '';
   const provider = searchParams.provider ?? '';
+  const type = searchParams.type === 'ORDER' || searchParams.type === 'TOPUP' ? searchParams.type : '';
   const page = Math.max(1, parseInt(searchParams.page ?? '1', 10));
 
   const baseWhere: any = {};
   if (provider) baseWhere.provider = provider;
+  if (type) baseWhere.kind = type;
   if (q) {
     baseWhere.OR = [
       { id: { contains: q, mode: 'insensitive' } },
@@ -65,6 +67,8 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
 
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(searchParams)) if (v) sp.set(k, v);
+  // Drop an invalid ?type= so it doesn't ride along in tab/pagination links.
+  if (!type) sp.delete('type');
 
   return (
     <>
@@ -80,6 +84,10 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
               { value: 'Balance', label: 'Balance' },
               { value: 'Bank transfer', label: 'Bank transfer' },
               { value: 'Comp', label: 'Comp' },
+            ]},
+            { kind: 'select', name: 'type', label: 'Type: all', size: 'sm', options: [
+              { value: 'ORDER', label: 'Order payment' },
+              { value: 'TOPUP', label: 'Deposit' },
             ]},
           ]}
           exportLabel="Export CSV"
@@ -100,6 +108,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
 
           <PaymentsBulkTable payments={payments.map(p => ({
             id: p.id,
+            kind: p.kind,
             orderId: p.order?.id ?? null,
             clientId: p.client?.id ?? null,
             provider: p.provider,

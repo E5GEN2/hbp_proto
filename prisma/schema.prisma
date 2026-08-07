@@ -230,6 +230,16 @@ enum PaymentStatus {
   MANUAL_REVIEW
 }
 
+// Explicit discriminator for the two payment shapes that share this table:
+// an ORDER payment settles/provisions a proxy order (orderId set); a TOPUP
+// credits the client's balance (orderId null). Was inferred from orderId
+// being null (and, on the client billing screen, a brittle regex on the
+// method string) — a source of real bugs; now first-class.
+enum PaymentKind {
+  ORDER
+  TOPUP
+}
+
 enum OrderException {
   PAID_NOT_PROVISIONED
   RENEWAL_NOT_EXTENDED
@@ -322,6 +332,7 @@ model Order {
 
 model Payment {
   id              String        @id // PAY-#####
+  kind            PaymentKind   @default(ORDER) // ORDER = pays an order; TOPUP = balance deposit (orderId null)
   orderId         String?
   clientId        String
   provider        String

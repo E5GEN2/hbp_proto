@@ -29,7 +29,10 @@ function LoginForm() {
     const res = await signIn('credentials', { redirect: false, email, password });
     if (res?.error) {
       setLoading(false);
-      setErr('Sign-in failed. Check your credentials.');
+      // authorize() throws a specific message when rate-limited; a wrong
+      // password returns null → NextAuth's generic "CredentialsSignin". Show
+      // the specific message, keep the generic one otherwise.
+      setErr(res.error && res.error !== 'CredentialsSignin' ? res.error : 'Sign-in failed. Check your credentials.');
       return;
     }
     // A client who registered but never confirmed their email still gets

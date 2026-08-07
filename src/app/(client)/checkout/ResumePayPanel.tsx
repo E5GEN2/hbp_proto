@@ -82,18 +82,19 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, child
   );
 }
 
-export function DepositResumePanel({ amountUsd, initial }: { amountUsd: number; initial: PayPanelData }) {
+export function DepositResumePanel({ amountUsd, initial, returnTo }: { amountUsd: number; initial: PayPanelData; returnTo?: string }) {
+  const back = returnTo ?? '/billing';
   return (
     <CryptoPayPanel
       pay={initial}
       amountUsd={amountUsd}
       settleNote="your balance is credited either way"
-      onSettled={() => window.location.assign('/billing')}
+      onSettled={() => window.location.assign(back)}
       // No regenerate for deposits — an expired top-up is simply abandoned and
       // the client starts a fresh one from the deposit wizard.
     >
       <Link href="/checkout?kind=deposit" className="btn ghost">Start a new deposit</Link>
-      <Link href="/billing" className="btn ghost">← Back to billing</Link>
+      <Link href={back} className="btn ghost">← Back to {returnTo ? 'checkout' : 'billing'}</Link>
     </CryptoPayPanel>
   );
 }

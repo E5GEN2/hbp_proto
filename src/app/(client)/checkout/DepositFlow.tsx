@@ -1,11 +1,11 @@
 'use client';
 import { useState, useTransition, Fragment, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
 import { depositAction } from '@/lib/ui-actions/client-actions';
-import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
+import { CoinSelect, useCoinList } from '@/components/client/CryptoPayPanel';
+import { CRYPTO_MIN_USD } from '@/lib/np-coins';
 
 const PRESETS = [25, 50, 100, 250];
 const WALLET = 'TRX9aB7eFmZxXk4mPzRq8nGdLcVtJwS6Hb';
@@ -17,7 +17,6 @@ const IconCard = () => <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" hei
 const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3M14 20h3M20 14v7M17 17v4" /></svg>;
 
 export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCrypto = true }: { presetAmount?: number; returnTo?: string; allowCard?: boolean; allowCrypto?: boolean }) {
-  const router = useRouter();
   const toast = useToast();
   // Number.isFinite kills the NaN hole: /checkout?kind=deposit&amount=abc used
   // to survive `?? 50` (NaN is not nullish) and render “$NaN” (P1-5).
@@ -29,23 +28,21 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // In-portal crypto (NP direct payments): coin picked in the payment step;
-  // payData present → the processing step renders the in-portal pay panel.
+  // In-portal crypto (NP direct payments): coin picked in the payment step. On
+  // creation we hard-nav to the addressable resume URL (see pay()), so the pay
+  // panel is server-rendered and survives the wizard's post-action remount.
   // Empty coin list = NP not configured → the legacy mock flow stays intact.
   const [payCoin, setPayCoin] = useState<string | null>(null);
-  const [payData, setPayData] = useState<PayPanelData | null>(null);
-  const coinList = useCoinList(step === 'payment' || step === 'processing');
+  const coinList = useCoinList(step === 'payment');
   const directCrypto = (coinList.coins?.length ?? 0) > 0;
 
   const amountNum = typeof amount === 'number' ? amount : parseFloat(amount);
   const ok = !isNaN(amountNum) && amountNum >= 1 && amountNum <= 10000;
 
-  // Chosen coin's live USD minimum (e.g. USDT-TRC20 ≈ $11.78 vs BTC ≈ $0.86).
-  // When it's known and the amount is under it, we block Pay with a clear
-  // inline note instead of letting the server reject after the fact — the old
-  // behaviour was a toast (easily missed) with the amount/step context lost.
-  const selCoin = payCoin ? coinList.coins?.find(c => c.code === payCoin) : undefined;
-  const belowMin = method === 'crypto' && !!selCoin && selCoin.minUsd != null && amountNum < selCoin.minUsd;
+  // Flat crypto floor: NOWPayments' real create minimum is ~$7 (≈$9 for
+  // USDT-TRC20) and its per-coin min endpoint is unreliable, so we gate on one
+  // predictable $10 floor up front instead of a server rejection after Pay.
+  const belowMin = method === 'crypto' && amountNum < CRYPTO_MIN_USD;
 
   function pay() {
     if (!ok) return toast('Invalid amount', 'Must be between $1 and $10,000', 'warning');
@@ -54,11 +51,12 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
       try {
         const r = await depositAction({ amount: amountNum, method, ...(method === 'crypto' && payCoin ? { payCoin } : {}) });
         setPaymentId(r.paymentId);
-        // Real crypto: the response carries the in-portal payment (address /
-        // amount / expiry) — pay right here; the webhook credits the balance.
+        // Real crypto: a payment (address/amount/expiry) was created. Hard-nav
+        // to the addressable resume URL so the pay panel is server-rendered and
+        // survives the wizard's post-action remount — that remount was dumping
+        // the user back to the amount step and spawning duplicate deposits.
         if (r.payment) {
-          setPayData(r.payment);
-          setStep('processing');
+          window.location.assign(`/checkout?kind=deposit&resume=${r.paymentId}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`);
           return;
         }
         if (r.instant) {
@@ -129,9 +127,9 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
               </>
             )}
             {noMethods && <div className="help-text">Top-ups are temporarily unavailable — payment providers are disabled. Please contact support.</div>}
-            {belowMin && selCoin && (
+            {belowMin && (
               <div className="help-text" style={{ color: 'var(--warning)' }}>
-                Minimum for {selCoin.label} ({selCoin.network}) is {money(selCoin.minUsd!)}. Increase the amount or pick another network.
+                Minimum crypto top-up is {money(CRYPTO_MIN_USD)}. Increase the amount{allowCard ? ' or use a card' : ''}.
               </div>
             )}
             {err && <div className="help-text" style={{ color: 'var(--danger)' }}>{err}</div>}
@@ -145,7 +143,7 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
               disabled={pending || noMethods || belowMin || (method === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
               onClick={pay}>
               {pending ? 'Processing…'
-                : belowMin ? 'Amount below coin minimum'
+                : belowMin ? `Minimum is ${money(CRYPTO_MIN_USD)}`
                 : method === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue'
                 : `Pay ${money(amountNum)}`}
             </button>
@@ -153,23 +151,10 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
         </div>
       )}
 
-      {step === 'processing' && payData && (
-        <CryptoPayPanel
-          key={payData.paymentId}
-          pay={payData}
-          amountUsd={amountNum}
-          title="Awaiting payment"
-          settleNote="your balance is credited either way"
-          onSettled={() => setStep('success')}
-          // No regenerate for deposits — an expired top-up charge is simply
-          // abandoned (FAILED) and the client starts a fresh one.
-        >
-          <button className="btn ghost" onClick={() => { setPayData(null); setStep('details'); }}>← Start a new deposit</button>
-          <Link href={returnTo ?? '/billing'} className="btn ghost">Back to {returnTo ? 'checkout' : 'billing'}</Link>
-        </CryptoPayPanel>
-      )}
-
-      {step === 'processing' && !payData && (
+      {/* Real crypto pay panel is server-rendered at ?resume=PAY-… (pay() hard-
+          navs there); this 'processing' step is only the legacy mock flow when
+          NOWPayments isn't configured. */}
+      {step === 'processing' && (
         <div className="checkout-processing">
           <div className="panel checkout-processing-card">
             <div className="processing-title">Awaiting payment</div>

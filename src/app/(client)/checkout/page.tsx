@@ -91,12 +91,15 @@ export default async function CheckoutPage({ searchParams }: {
     if (searchParams.resume?.startsWith('PAY-')) {
       const pay = await prisma.payment.findUnique({ where: { id: searchParams.resume } });
       if (!pay || pay.clientId !== session!.user.id || pay.orderId) notFound();
+      // Carry a safe returnTo so a deposit started from a checkout returns there
+      // after it settles (else falls back to Billing).
+      const resumeReturn = searchParams.returnTo ? (safeReturn(decodeURIComponent(searchParams.returnTo)) ?? undefined) : undefined;
       if (pay.status === 'AWAITING' && pay.payAddress) {
         return (
           <>
             <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Complete deposit' }]} balance={Number(me.balance)} />
             <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} />
+              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} returnTo={resumeReturn} />
             </main>
           </>
         );

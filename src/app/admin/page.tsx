@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
@@ -16,6 +17,7 @@ const CAP_LABEL: Record<string, string> = {
 };
 
 export default async function AdminDashboardPage() {
+  await requireAdmin();
   const [
     paidToday, revenue30dAgg, activeOrders, activeClients, expiringToday, inGrace,
     recentOrders, capacityRows, healthBuckets,

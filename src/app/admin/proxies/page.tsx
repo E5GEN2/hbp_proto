@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
@@ -9,6 +10,7 @@ import { ProxiesBulkTable } from '@/components/admin/ProxiesBulkTable';
 const PER_PAGE = 12;
 
 export default async function AdminProxiesPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const q = searchParams.q?.trim() ?? '';
   const carrier = searchParams.carrier ?? '';
   const region = searchParams.region ?? '';

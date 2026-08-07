@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
@@ -56,6 +57,7 @@ function renderDetail(s: string | null) {
 }
 
 export default async function AdminLogsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const t = searchParams.type ?? 'all';
   const q = searchParams.q?.trim() ?? '';
   const actorId = searchParams.actor ?? '';

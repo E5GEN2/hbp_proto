@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { SystemFlagsForm } from '@/components/admin/settings/SystemFlagsForm';
@@ -62,6 +63,7 @@ const PERMISSIONS: { label: string; super: string; ops: string; support: string 
 ];
 
 export default async function AdminSettingsPage({ searchParams }: { searchParams: { tab?: string } }) {
+  await requireAdmin();
   const tab = searchParams.tab ?? 'providers';
   const [settings, catalogItems, templates, provisioningRules, admins] = await Promise.all([
     prisma.systemSetting.findMany(),

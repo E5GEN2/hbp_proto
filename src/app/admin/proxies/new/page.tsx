@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/prisma';
+import { requireAdmin } from '@/lib/require-admin';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { ProxyRegisterForm } from '@/components/admin/ProxyRegisterForm';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminRegisterProxyPage() {
+  await requireAdmin();
   const items = await prisma.catalogItem.findMany({
     where: { kind: { in: ['CARRIER', 'REGION', 'POOL'] } },
     orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }],

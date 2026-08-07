@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
@@ -20,6 +21,7 @@ const VIEW_STATUS: Record<string, string[]> = {
 };
 
 export default async function AdminPaymentsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const view = searchParams.view ?? 'all';
   const q = searchParams.q?.trim() ?? '';
   const provider = searchParams.provider ?? '';

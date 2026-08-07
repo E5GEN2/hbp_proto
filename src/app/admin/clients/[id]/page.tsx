@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
@@ -15,6 +16,7 @@ const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).jo
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 export default async function AdminClientDetail({ params }: { params: { id: string } }) {
+  await requireAdmin();
   const c = await prisma.user.findUnique({
     where: { id: params.id },
     include: {

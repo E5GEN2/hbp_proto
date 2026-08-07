@@ -26,7 +26,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [excGroups, grace, awaitingPayments, refundRequests, underProvisioned] = await Promise.all([
+  const [excGroups, grace, awaitingPayments, refundRequests, underProvisioned, partiallyPaid] = await Promise.all([
     prisma.order.groupBy({
       by: ['exception'],
       where: { exception: { not: null } },
@@ -36,6 +36,10 @@ export async function GET() {
     prisma.payment.count({ where: { status: { in: ['AWAITING', 'PENDING', 'MANUAL_REVIEW'] } } }),
     prisma.payment.count({ where: { status: 'REFUND_REQUESTED' } }),
     underProvisionedCount(),
+    // Crypto that arrived but under-covered the price (late/rate-drift payment):
+    // still AWAITING with NP's own status mirrored as partially_paid. These are
+    // the "money's here, order stuck" payments support used to hunt for.
+    prisma.payment.count({ where: { status: 'AWAITING', npStatus: 'partially_paid' } }),
   ]);
 
   const excCount = new Map(excGroups.map(g => [g.exception as string, g._count._all]));
@@ -60,6 +64,9 @@ export async function GET() {
   }
   if (grace) {
     rows.push({ tone: 'warn', title: `${grace} in grace period`, meta: 'Needs renewal decision', href: '/admin/renewals' });
+  }
+  if (partiallyPaid) {
+    rows.push({ tone: 'danger', title: `${partiallyPaid} crypto payment${partiallyPaid === 1 ? '' : 's'} underpaid`, meta: 'Money arrived — confirm or refund in Payments', href: '/admin/payments' });
   }
   if (awaitingPayments) {
     rows.push({ tone: 'accent', title: `${awaitingPayments} payment${awaitingPayments === 1 ? '' : 's'} awaiting confirmation`, meta: 'Click to review in Payments', href: '/admin/payments' });

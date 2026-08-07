@@ -166,6 +166,26 @@ export async function markPaymentPaid({
           via: `confirmed by ${actor.name ?? actor.id}`,
         });
       }
+    } else {
+      // Balance top-up (no order) — mirror settleAwaitingPayment's deposit
+      // branch. Without this, an admin "Mark paid" on a crypto deposit (e.g.
+      // confirming an underpaid/late top-up surfaced by the crypto-attention
+      // alert) flips the payment to CONFIRMED but credits NOTHING, and the
+      // idempotency guard then makes it permanent (2026-08-07 review). All
+      // ops are DB-only, so this stays inside the transaction.
+      const amount = Number(pay.gross);
+      const newBal = await creditBalance(tx, pay.clientId, amount);
+      await tx.balanceLedgerEntry.create({
+        data: { userId: pay.clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: paymentId, note: `Deposit confirmed by ${actor.name ?? actor.id}` },
+      });
+      const existingInv = await tx.invoice.findUnique({ where: { paymentId } });
+      if (!existingInv) {
+        const invoiceId = await nextInvoiceId();
+        await tx.invoice.create({ data: { id: invoiceId, paymentId, orderId: null, clientId: pay.clientId, amount } });
+      }
+      await notify(tx, pay.clientId,
+        `Deposit of ${money(amount)} added to your balance · new bal ${money(newBal)}`,
+        'SUCCESS', '/billing');
     }
 
     await log(tx, actor.id, 'PAYMENT.CONFIRM', 'PAYMENT', paymentId,

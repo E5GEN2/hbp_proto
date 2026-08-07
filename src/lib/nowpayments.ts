@@ -69,7 +69,13 @@ export async function npCreatePayment(input: {
       order_id: input.paymentId,
       order_description: input.description,
       ipn_callback_url: appUrl('/api/webhooks/nowpayments'),
-      is_fixed_rate: true,
+      // Floating rate (owner decision 2026-08-07, "Layer 1"): no 10–20 min
+      // rate lock, so a late payer isn't punished with an underpayment when
+      // the window lapses. NOTE: whether this takes effect can depend on the
+      // NOWPayments account's rate mode — if the account enforces fixed rate,
+      // flip it to classic/floating in the dashboard for this to apply. The
+      // client pay panel no longer presents the address as "dead" either way.
+      is_fixed_rate: false,
       is_fee_paid_by_user: true,
     }),
   });

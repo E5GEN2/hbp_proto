@@ -250,8 +250,20 @@ export async function failAwaitingPayment(paymentId: string, reason: string): Pr
   const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
   if (!payment || payment.status !== 'AWAITING') return { ok: true, changed: false };
 
+  let flipped = false;
   await prisma.$transaction(async tx => {
-    await tx.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
+    // Guard the flip on status INSIDE the tx (optimistic concurrency): a late
+    // `finished` IPN can drive settleAwaitingPayment to credit the balance and
+    // flip AWAITING→CONFIRMED between the read above and this write. An update
+    // keyed on id alone would clobber that CONFIRMED row back to FAILED —
+    // mislabelling money that IS in the balance, firing a false "didn't
+    // complete" bell, and (the charge being resurrectable) leaving the client's
+    // `finished` IPN resends stuck in a duplicate-invoice 500 loop. updateMany
+    // with the status predicate makes the flip a no-op when settle won the race
+    // (or another sweep already moved it out of AWAITING).
+    const res = await tx.payment.updateMany({ where: { id: payment.id, status: 'AWAITING' }, data: { status: 'FAILED' } });
+    if (res.count === 0) return; // settled / already terminal concurrently — leave it, no bell/log
+    flipped = true;
     if (payment.orderId) {
       const order = await tx.order.findUnique({ where: { id: payment.orderId } });
       // Only a brand-new unpaid order flips to FAILED; a settled order with a
@@ -283,5 +295,5 @@ export async function failAwaitingPayment(paymentId: string, reason: string): Pr
       },
     });
   });
-  return { ok: true, changed: true };
+  return { ok: true, changed: flipped };
 }

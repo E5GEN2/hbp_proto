@@ -49,7 +49,21 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
   const [me, payments, methods] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.payment.findMany({
-      where: { clientId: userId },
+      // Hide long-dead crypto deposits from the client ledger: a TOPUP that
+      // failed/cancelled and is now older than 7 days is pure noise (the
+      // NOWPayments address is long expired, no money ever moved). Kept while
+      // < 7 days old so the client still sees a recent "didn't complete" and
+      // can retry. CONFIRMED deposits are NEVER hidden (accounting/history);
+      // admin /payments stays unfiltered (data untouched in the DB). Owner
+      // crypto-deposit-expiry policy 2026-08-07.
+      where: {
+        clientId: userId,
+        NOT: {
+          kind: 'TOPUP',
+          status: { in: ['FAILED', 'CANCELLED'] },
+          createdAt: { lt: new Date(Date.now() - 7 * 86_400_000) },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       include: { invoice: true, order: { select: { id: true } } },
     }),

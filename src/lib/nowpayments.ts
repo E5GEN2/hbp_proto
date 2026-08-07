@@ -8,8 +8,6 @@
 
 import crypto from 'crypto';
 import { appUrl } from './app-url';
-import { money } from './money';
-import { npCoinDisplay } from './np-coins';
 
 function apiBase() {
   return process.env.NOWPAYMENTS_SANDBOX === 'true'
@@ -38,7 +36,7 @@ export function npInvoiceUrl(invoiceId: string) {
 // Coin whitelist lives in np-coins.ts (pure data — client components import it
 // directly; this file is server-only because of node:crypto). Re-exported so
 // server code keeps a single import site.
-export { NP_COINS, npCoin, type NpCoin } from './np-coins';
+export { NP_COINS, npCoin, CRYPTO_MIN_USD, type NpCoin } from './np-coins';
 
 export type NpDirectPayment = {
   npPaymentId: string;   // NP-side numeric id → payments.externalRef
@@ -106,43 +104,11 @@ export async function npCreatePayment(input: {
     expiresAt: expiresAt && !isNaN(expiresAt.getTime()) ? expiresAt : null,
   };
 }
-
-// Per-coin USD minimum for the picker (min-amount endpoint, fiat_equivalent).
-// Cached in-process for 5 minutes — minimums drift with rates, not per-request.
-// A failed lookup yields null (coin stays selectable; npCreatePayment surfaces
-// NP's own minimum error if the client picks it anyway).
-const minCache = new Map<string, { at: number; minUsd: number | null }>();
-const MIN_TTL_MS = 5 * 60_000;
-export async function npMinAmountUsd(code: string): Promise<number | null> {
-  const hit = minCache.get(code);
-  if (hit && Date.now() - hit.at < MIN_TTL_MS) return hit.minUsd;
-  let minUsd: number | null = null;
-  try {
-    const r = await fetch(
-      `${apiBase()}/min-amount?currency_from=${encodeURIComponent(code.toLowerCase())}&fiat_equivalent=usd`,
-      { headers: { 'x-api-key': process.env.NOWPAYMENTS_API_KEY! } },
-    );
-    if (r.ok) {
-      const j: any = await r.json().catch(() => null);
-      const v = Number(j?.fiat_equivalent);
-      if (Number.isFinite(v) && v > 0) minUsd = v;
-    }
-  } catch { /* network blip — treat as unknown */ }
-  minCache.set(code, { at: Date.now(), minUsd });
-  return minUsd;
-}
-
-// Server-side belt-and-braces for the picker's client min-gating (review find
-// A): a stale/crafted client could still POST a below-minimum amount. Returns
-// a clean, coin-aware message to send as a 400, or null when it's fine (a
-// failed min lookup fails open — npCreatePayment then surfaces NP's own error).
-export async function belowMinMessage(code: string, amountUsd: number): Promise<string | null> {
-  const min = await npMinAmountUsd(code);
-  if (min != null && amountUsd < min) {
-    return `The minimum for ${npCoinDisplay(code)} is ${money(min)} — pick another coin or increase the amount.`;
-  }
-  return null;
-}
+// NOTE: the old npMinAmountUsd()/belowMinMessage() per-coin gating (via NP's
+// /v1/min-amount endpoint) was removed 2026-08-07 — that endpoint reports
+// figures that don't match real create-payment behaviour. Crypto amounts are
+// now gated by the flat CRYPTO_MIN_USD floor (see np-coins.ts). Do not
+// reintroduce per-coin min-amount gating.
 
 // IPN authenticity: HMAC-SHA512 over the JSON body re-serialized with keys
 // sorted (NOWPayments' documented recipe), compared against x-nowpayments-sig.

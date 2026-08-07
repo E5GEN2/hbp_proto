@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { durationLabel, tierFeatures, planDisplayName } from '@/lib/catalog';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
+import { CRYPTO_MIN_USD } from '@/lib/np-coins';
 import { CompletePaymentActions } from './CompletePaymentActions';
 import { signalStructural } from '@/lib/nav-history';
 
@@ -65,11 +66,10 @@ export function CheckoutFlow({
   const plan = useMemo(() => plans.find(p => p.region === location) ?? plans[0], [plans, location]);
   const total = plan.price * qty;
   const balanceOk = balance >= total;
-  // Chosen coin's live USD minimum (e.g. USDT-TRC20 ≈ $11.78): block a
-  // sub-minimum crypto order up front with a clear note instead of a
-  // server-side rejection after "Buy now".
-  const selCoin = payCoin ? coinList.coins?.find(c => c.code === payCoin) : undefined;
-  const belowMin = paymentMethod === 'crypto' && !!selCoin && selCoin.minUsd != null && total < selCoin.minUsd;
+  // Flat crypto floor ($10): NOWPayments' real create minimum is ~$7–9 and its
+  // per-coin min endpoint is unreliable, so block a sub-$10 crypto order up
+  // front with a clear note instead of a server-side rejection after "Buy now".
+  const belowMin = paymentMethod === 'crypto' && total < CRYPTO_MIN_USD;
   const label = durationLabel(duration);
   // Deposit round-trip must preserve the CONFIGURED cart (trace finds #6/#14/#16):
   // renewOf is load-bearing (its absence turns a renewal into a brand-new order);
@@ -353,9 +353,9 @@ export function CheckoutFlow({
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
                 {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
                   title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />}
-                {belowMin && selCoin && (
+                {belowMin && (
                   <div className="t-note" style={{ color: 'var(--warning)', marginTop: 10 }}>
-                    Minimum for {selCoin.label} ({selCoin.network}) is {money(selCoin.minUsd!)}. Pick another network or increase the quantity.
+                    Minimum crypto payment is {money(CRYPTO_MIN_USD)}. Pay from balance or increase the quantity.
                   </div>
                 )}
                 {err && <div className="t-note" style={{ color: 'var(--danger)', marginTop: 10 }}>{err}</div>}
@@ -369,7 +369,7 @@ export function CheckoutFlow({
                   disabled={busy || belowMin || (paymentMethod === 'balance' && !balanceOk) || (paymentMethod === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
                   onClick={() => placeOrder(paymentMethod)}>
                   {busy ? 'Processing…'
-                    : belowMin ? 'Amount below coin minimum'
+                    : belowMin ? `Crypto minimum is ${money(CRYPTO_MIN_USD)}`
                     : paymentMethod === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue'
                     : 'Buy now'}
                 </button>

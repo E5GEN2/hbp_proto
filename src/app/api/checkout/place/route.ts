@@ -9,7 +9,7 @@ import { renewalUnitPrice } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
-import { npEnabled, npCreatePayment, npCoin, belowMinMessage, type NpDirectPayment } from '@/lib/nowpayments';
+import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPayment } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
 import { sendAdminTelegram, adminNewOrderAlert } from '@/lib/telegram';
 import { appUrl } from '@/lib/app-url';
@@ -157,8 +157,8 @@ export async function POST(req: Request) {
   // OUR page (no redirect): the response carries address/amount/expiry.
   let npPay: NpDirectPayment | null = null;
   if (coin) {
-    const belowMin = await belowMinMessage(coin.code, total);
-    if (belowMin) return NextResponse.json({ error: belowMin }, { status: 400 });
+    // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
+    if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}. Pay from balance or increase the quantity.` }, { status: 400 });
     try {
       npPay = await npCreatePayment({
         amountUsd: total,
@@ -401,8 +401,8 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   // the IPN webhook extends the order once the transfer lands.
   let npPay: NpDirectPayment | null = null;
   if (coin) {
-    const belowMin = await belowMinMessage(coin.code, total);
-    if (belowMin) return NextResponse.json({ error: belowMin }, { status: 400 });
+    // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
+    if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}. Pay from balance or increase the quantity.` }, { status: 400 });
     try {
       npPay = await npCreatePayment({
         amountUsd: total,

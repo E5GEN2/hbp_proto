@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
 import { mockPaymentsAllowed, enabledProviders } from './runtime-flags';
-import { npEnabled, npCreatePayment, npCoin, belowMinMessage, type NpDirectPayment } from './nowpayments';
+import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPayment } from './nowpayments';
 import { sendEmail, passwordChangedEmail } from './email';
 import { passwordPolicyError } from './password-policy';
 import { creditBalance, roundCents } from './balance';
@@ -165,8 +165,8 @@ export const depositAction = guarded(async function depositAction({ amount: rawA
   if (method === 'crypto' && npEnabled()) {
     const coin = npCoin(payCoin);
     if (!coin) throw new Error('Pick the cryptocurrency you want to pay with.');
-    const belowMin = await belowMinMessage(coin.code, amount);
-    if (belowMin) throw new Error(belowMin);
+    // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
+    if (amount < CRYPTO_MIN_USD) throw new Error(`Minimum crypto top-up is $${CRYPTO_MIN_USD}.`);
     npPay = await npCreatePayment({
       amountUsd: amount,
       payCurrency: coin.code,

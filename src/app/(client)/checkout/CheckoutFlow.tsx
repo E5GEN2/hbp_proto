@@ -65,6 +65,11 @@ export function CheckoutFlow({
   const plan = useMemo(() => plans.find(p => p.region === location) ?? plans[0], [plans, location]);
   const total = plan.price * qty;
   const balanceOk = balance >= total;
+  // Chosen coin's live USD minimum (e.g. USDT-TRC20 ≈ $11.78): block a
+  // sub-minimum crypto order up front with a clear note instead of a
+  // server-side rejection after "Buy now".
+  const selCoin = payCoin ? coinList.coins?.find(c => c.code === payCoin) : undefined;
+  const belowMin = paymentMethod === 'crypto' && !!selCoin && selCoin.minUsd != null && total < selCoin.minUsd;
   const label = durationLabel(duration);
   // Deposit round-trip must preserve the CONFIGURED cart (trace finds #6/#14/#16):
   // renewOf is load-bearing (its absence turns a renewal into a brand-new order);
@@ -348,16 +353,25 @@ export function CheckoutFlow({
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
                 {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
                   title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />}
+                {belowMin && selCoin && (
+                  <div className="t-note" style={{ color: 'var(--warning)', marginTop: 10 }}>
+                    Minimum for {selCoin.label} ({selCoin.network}) is {money(selCoin.minUsd!)}. Pick another network or increase the quantity.
+                  </div>
+                )}
                 {err && <div className="t-note" style={{ color: 'var(--danger)', marginTop: 10 }}>{err}</div>}
               </div>
               <div className="panel-footer payment-actions">
                 <button className="btn" onClick={() => setStep('details')}>← Edit order</button>
                 <button className="btn primary"
                   /* coinList.error ≠ NP-off: a failed fetch must not arm the
-                     button coin-less (the server would 400) — Retry first. */
-                  disabled={busy || (paymentMethod === 'balance' && !balanceOk) || (paymentMethod === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
+                     button coin-less (the server would 400) — Retry first.
+                     belowMin: block a sub-minimum crypto order up front. */
+                  disabled={busy || belowMin || (paymentMethod === 'balance' && !balanceOk) || (paymentMethod === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
                   onClick={() => placeOrder(paymentMethod)}>
-                  {busy ? 'Processing…' : paymentMethod === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue' : 'Buy now'}
+                  {busy ? 'Processing…'
+                    : belowMin ? 'Amount below coin minimum'
+                    : paymentMethod === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue'
+                    : 'Buy now'}
                 </button>
               </div>
             </div>

@@ -27,6 +27,7 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
   const [step, setStep] = useState<'details' | 'payment' | 'processing' | 'success'>(presetAmount ? 'payment' : 'details');
   const [pending, start] = useTransition();
   const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   // In-portal crypto (NP direct payments): coin picked in the payment step;
   // payData present → the processing step renders the in-portal pay panel.
@@ -39,8 +40,16 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
   const amountNum = typeof amount === 'number' ? amount : parseFloat(amount);
   const ok = !isNaN(amountNum) && amountNum >= 1 && amountNum <= 10000;
 
+  // Chosen coin's live USD minimum (e.g. USDT-TRC20 ≈ $11.78 vs BTC ≈ $0.86).
+  // When it's known and the amount is under it, we block Pay with a clear
+  // inline note instead of letting the server reject after the fact — the old
+  // behaviour was a toast (easily missed) with the amount/step context lost.
+  const selCoin = payCoin ? coinList.coins?.find(c => c.code === payCoin) : undefined;
+  const belowMin = method === 'crypto' && !!selCoin && selCoin.minUsd != null && amountNum < selCoin.minUsd;
+
   function pay() {
     if (!ok) return toast('Invalid amount', 'Must be between $1 and $10,000', 'warning');
+    setErr(null);
     start(async () => {
       try {
         const r = await depositAction({ amount: amountNum, method, ...(method === 'crypto' && payCoin ? { payCoin } : {}) });
@@ -59,7 +68,11 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
         } else {
           setStep('processing');
         }
-      } catch (e: any) { toast('Deposit failed', e.message, 'danger'); }
+      } catch (e: any) {
+        // Persistent inline error on the same step (keeps the amount + coin) —
+        // not a transient toast that leaves the user unsure what happened.
+        setErr(e?.message ?? 'Deposit failed. Please try again.');
+      }
     });
   }
 
@@ -116,15 +129,25 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
               </>
             )}
             {noMethods && <div className="help-text">Top-ups are temporarily unavailable — payment providers are disabled. Please contact support.</div>}
+            {belowMin && selCoin && (
+              <div className="help-text" style={{ color: 'var(--warning)' }}>
+                Minimum for {selCoin.label} ({selCoin.network}) is {money(selCoin.minUsd!)}. Increase the amount or pick another network.
+              </div>
+            )}
+            {err && <div className="help-text" style={{ color: 'var(--danger)' }}>{err}</div>}
           </div>
           <div className="panel-footer payment-actions">
-            <button className="btn" onClick={() => setStep('details')}>← Back</button>
+            <button className="btn" onClick={() => { setErr(null); setStep('details'); }}>← Back</button>
             <button className="btn primary"
               /* coinList.error ≠ NP-off: a failed fetch must not arm the
-                 button coin-less (the server would 400) — Retry first. */
-              disabled={pending || noMethods || (method === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
+                 button coin-less (the server would 400) — Retry first.
+                 belowMin: block a sub-minimum crypto amount up front. */
+              disabled={pending || noMethods || belowMin || (method === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
               onClick={pay}>
-              {pending ? 'Processing…' : method === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue' : `Pay ${money(amountNum)}`}
+              {pending ? 'Processing…'
+                : belowMin ? 'Amount below coin minimum'
+                : method === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue'
+                : `Pay ${money(amountNum)}`}
             </button>
           </div>
         </div>

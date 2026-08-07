@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { requireAdmin } from '@/lib/require-admin';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
@@ -15,6 +16,7 @@ const CONFIRMABLE = ['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'];
 const REFUNDABLE = ['CONFIRMED', 'PAID', 'REFUND_REQUESTED']; // last = client's request awaiting execution
 
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
+  await requireAdmin();
   const p = await prisma.payment.findUnique({
     where: { id: params.id },
     include: { client: true, order: { include: { plan: true } }, invoice: true },

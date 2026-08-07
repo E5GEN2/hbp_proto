@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { ClientsToolbar } from '@/components/admin/toolbars/ClientsToolbar';
@@ -21,6 +22,7 @@ const PAY_EVENT: Record<string, string> = {
 // event = 764px fixed; middle cols share the slack by --w weights (col-total 9).
 
 export default async function AdminClientsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const view = searchParams.status ?? 'all';
   const tier = searchParams.tier ?? '';
   const risk = searchParams.risk ?? '';

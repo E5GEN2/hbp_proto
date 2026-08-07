@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/prisma';
+import { requireAdmin } from '@/lib/require-admin';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { PlanForm } from '@/components/admin/PlanForm';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminCreatePlanPage() {
+  await requireAdmin();
   const catalog = await loadCatalog();
   return (
     <>

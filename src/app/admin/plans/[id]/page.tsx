@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { PlanForm } from '@/components/admin/PlanForm';
@@ -9,6 +10,7 @@ import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminEditPlanPage({ params }: { params: { id: string } }) {
+  await requireAdmin();
   const plan = await prisma.plan.findUnique({ where: { id: params.id } });
   if (!plan || plan.deletedAt) notFound();
 

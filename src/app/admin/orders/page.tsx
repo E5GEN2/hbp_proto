@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
@@ -19,6 +20,7 @@ const EXC_TYPES: { key: string; label: string; enum: string | null }[] = [
 ];
 
 export default async function AdminOrdersPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const view = searchParams.view ?? 'all';
   const q = searchParams.q?.trim() ?? '';
   const carrier = searchParams.carrier ?? '';

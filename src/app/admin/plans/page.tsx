@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
@@ -8,6 +9,7 @@ import { PlansBulkTable } from '@/components/admin/PlansBulkTable';
 const PER_PAGE = 12;
 
 export default async function AdminPlansPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const q = searchParams.q?.trim() ?? '';
   const carrier = searchParams.carrier ?? '';
   const region = searchParams.region ?? '';

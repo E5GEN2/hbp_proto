@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { requireAdmin } from '@/lib/require-admin';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
@@ -41,6 +42,7 @@ const STATE_LABEL: Record<Step['state'], string> = { done: 'Done', current: 'Cur
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 export default async function AdminOrderDetail({ params }: { params: { id: string } }) {
+  await requireAdmin();
   const order = await prisma.order.findUnique({
     where: { id: params.id },
     include: {

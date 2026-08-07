@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
@@ -11,6 +12,7 @@ import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
 export default async function AdminProxyDetail({ params }: { params: { id: string } }) {
+  await requireAdmin();
   const proxy = await prisma.proxy.findUnique({
     where: { id: params.id },
     include: {

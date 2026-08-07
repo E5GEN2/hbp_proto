@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireAdmin } from '@/lib/require-admin';
 import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
@@ -23,6 +24,7 @@ function bucketWhere(view: string): any {
 }
 
 export default async function AdminRenewalsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  await requireAdmin();
   const view = searchParams.view ?? '24h';
   const q = searchParams.q?.trim() ?? '';
   const carrier = searchParams.carrier ?? '';

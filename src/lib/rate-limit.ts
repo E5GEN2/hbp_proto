@@ -30,6 +30,35 @@ export function hitRateLimit(key: string, limit: number, windowMs: number): numb
 }
 
 /**
+ * Check a bucket WITHOUT recording a hit — seconds until it frees up, or 0 if
+ * still under the cap. Pairs with recordHit()/clearRateLimit() for flows that
+ * only want to count failures (e.g. login: a correct password must never
+ * consume the budget, and once over the cap even a correct password is
+ * rejected for the window so a lucky guess can't slip through).
+ */
+export function peekRateLimit(key: string, limit: number, windowMs: number): number {
+  const now = Date.now();
+  sweep(now);
+  const hits = (buckets.get(key) ?? []).filter(t => t > now - windowMs);
+  if (hits.length) buckets.set(key, hits); else buckets.delete(key);
+  return hits.length >= limit ? Math.max(1, Math.ceil((hits[0] + windowMs - now) / 1000)) : 0;
+}
+
+/** Record one hit (e.g. a failed attempt). */
+export function recordHit(key: string, windowMs: number): void {
+  const now = Date.now();
+  sweep(now);
+  const hits = (buckets.get(key) ?? []).filter(t => t > now - windowMs);
+  hits.push(now);
+  buckets.set(key, hits);
+}
+
+/** Drop a bucket entirely (e.g. on a successful login). */
+export function clearRateLimit(key: string): void {
+  buckets.delete(key);
+}
+
+/**
  * Best-effort client IP. Railway's current staff guidance says the edge
  * strips client-supplied x-forwarded-for and writes the real connecting IP
  * as the FIRST entry — but staff statements have contradicted each other

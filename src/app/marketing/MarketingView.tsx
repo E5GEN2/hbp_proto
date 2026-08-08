@@ -22,6 +22,20 @@ export function MarketingView({ html }: { html: string }) {
       cleanups.push(() => link.removeEventListener('click', onClick));
     });
 
+    // Sold-out plan cards: the CTA carries data-soldout-duration (see
+    // lib/plan-tiers) — open the Telegram dialog instead of navigating into
+    // login → a checkout where nothing can be bought. The dialog shares the
+    // .legal-modal class, so the close/backdrop wiring below covers it.
+    root.querySelectorAll<HTMLElement>('[data-soldout-duration]').forEach((link) => {
+      const onClick = (e: Event) => {
+        e.preventDefault();
+        const d = document.getElementById('soldout-modal') as HTMLDialogElement | null;
+        if (d && typeof d.showModal === 'function') d.showModal();
+      };
+      link.addEventListener('click', onClick);
+      cleanups.push(() => link.removeEventListener('click', onClick));
+    });
+
     root.querySelectorAll<HTMLDialogElement>('.legal-modal').forEach((d) => {
       const body = d.querySelector<HTMLElement>('.legal-modal__body');
       const closeBtn = d.querySelector('.legal-modal__close');

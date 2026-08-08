@@ -776,6 +776,15 @@
 .mkt .legal-modal__body::-webkit-scrollbar { width: 8px; }
 .mkt .legal-modal__body::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 999px; }
 
+/* ── Sold-out dialog (addition — not in the source design) ──
+   Compact variant of the legal-modal chrome: same head/close/backdrop,
+   narrower body, no internal scroll, gold CTA row → Telegram support. */
+.mkt .soldout-modal { width: min(460px, calc(100vw - 40px)); max-height: none; }
+.mkt .soldout-modal .legal-modal__body { overflow: visible; }
+.mkt .soldout-modal__cta { margin-top: 18px; display: flex; }
+/* the body's link underline is for prose links — not the CTA button */
+.mkt .soldout-modal .legal-modal__body .soldout-modal__cta a { text-decoration: none; }
+
 /* ── Responsiveness fix (addition — not in the source design) ──
    The design's hero <h1> carries an inline `margin: 14px 334px 0px` for the
    desktop centered-narrow column; below ~1024px that 334px side margin collapses

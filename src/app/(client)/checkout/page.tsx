@@ -11,6 +11,8 @@ import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
 import { renewalUnitPrice } from '@/lib/renewal';
 import { safeReturn } from '@/lib/safe-return';
 import { npInvoiceUrl } from '@/lib/nowpayments';
+import { allocatedByPlan } from '@/lib/plan-availability';
+import { TELEGRAM_SUPPORT_URL, SOLD_OUT_COPY } from '@/lib/support';
 import { CheckoutFlow } from './CheckoutFlow';
 import { CheckoutSuccess } from './CheckoutSuccess';
 import { DepositFlow } from './DepositFlow';
@@ -254,7 +256,7 @@ export default async function CheckoutPage({ searchParams }: {
                 <div className="t-note" style={{ maxWidth: 420 }}>
                   {payUrl
                     ? 'Awaiting crypto payment. Finish on the NOWPayments page — it confirms automatically once the transaction is received.'
-                    : <>This {isNewOrder ? 'order' : 'renewal'} is awaiting a payment arranged outside the portal. If you&rsquo;re unsure how to pay, message <a href="https://t.me/US5Gwetrust" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.</>}
+                    : <>This {isNewOrder ? 'order' : 'renewal'} is awaiting a payment arranged outside the portal. If you&rsquo;re unsure how to pay, message <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.</>}
                 </div>
                 <CompletePaymentActions orderId={resumeOrder.id} payUrl={payUrl} />
               </div>
@@ -275,7 +277,7 @@ export default async function CheckoutPage({ searchParams }: {
               <h2 style={{ marginTop: 0, color: 'var(--text)' }}>Payment window expired</h2>
               <p style={{ color: 'var(--muted)' }}>
                 Crypto payments are temporarily unavailable, so a new payment address can&rsquo;t be issued right now.
-                Message <a href="https://t.me/US5Gwetrust" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a> to complete this {isNewOrder ? 'order' : 'renewal'}.
+                Message <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a> to complete this {isNewOrder ? 'order' : 'renewal'}.
               </p>
               <Link href={`/orders/${resumeOrder.id}`} className="btn primary">View order</Link>
             </div>
@@ -369,22 +371,20 @@ export default async function CheckoutPage({ searchParams }: {
           <main style={{ padding: 24 }}>
             <div className="panel" style={{ padding: 24 }}>
               <h2 style={{ marginTop: 0, color: 'var(--text)' }}>No plans available</h2>
-              <p style={{ color: 'var(--muted)' }}>This duration is currently sold out.</p>
-              <Link href="/catalog" className="btn">Back to catalog</Link>
+              <p style={{ color: 'var(--muted)' }}>This duration is currently sold out. {SOLD_OUT_COPY.body}</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <a className="btn primary" href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noopener noreferrer">{SOLD_OUT_COPY.cta}</a>
+                <Link href="/catalog" className="btn">Back to catalog</Link>
+              </div>
             </div>
           </main>
         </>
       );
     }
 
-    const allocationByPlan = new Map<string, number>();
-    for (const p of plans) {
-      const a = await prisma.order.aggregate({
-        _sum: { qty: true },
-        where: { planId: p.id, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
-      });
-      allocationByPlan.set(p.id, a._sum.qty ?? 0);
-    }
+    // Shared seat math (lib/plan-availability) — the same query the plan-card
+    // sold-out marking uses, so checkout and the cards can never disagree.
+    const allocationByPlan = await allocatedByPlan(plans.map(p => p.id));
     planSummaries = plans.map(p => ({
       id: p.id,
       name: p.name,
@@ -400,6 +400,12 @@ export default async function CheckoutPage({ searchParams }: {
     // sold-out one (e.g. 7 Days defaulted to Texas · sold out over free NY).
     planSummaries.sort((a, b) => (a.available === 0 ? 1 : 0) - (b.available === 0 ? 1 : 0));
   }
+
+  // Every location at capacity → CheckoutFlow opens the sold-out → Telegram
+  // dialog on arrival (deep links / stale card clicks land here with nothing
+  // sellable — Continue is disabled but the client needs a way forward).
+  // Renewals are exempt: their seats are already held.
+  const allSoldOut = !renewalOrder && planSummaries.every(p => p.available === 0);
 
   // Hint banner copy
   const headerHint = renewalOrder
@@ -441,6 +447,7 @@ export default async function CheckoutPage({ searchParams }: {
           allowCrypto={allowCrypto}
           renewOf={renewalOrder?.id}
           renewalDiscountPct={renewalOrder ? renewalOrder.plan.renewalDiscountPct : 0}
+          allSoldOut={allSoldOut}
         />
       </main>
     </>

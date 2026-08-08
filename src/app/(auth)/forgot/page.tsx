@@ -1,4 +1,5 @@
 'use client';
+import { TELEGRAM_SUPPORT_URL } from '@/lib/support';
 import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -61,7 +62,7 @@ function ForgotForm() {
         {err && (
           <div className="form-help error">
             {err}{' '}
-            <a href="https://t.me/US5Gwetrust" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
+            <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
               Contact support
             </a>
           </div>

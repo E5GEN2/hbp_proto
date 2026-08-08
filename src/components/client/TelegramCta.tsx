@@ -1,14 +1,14 @@
 // Floating "Need help? Chat on Telegram" CTA — canon `.telegram-cta`.
 // Rendered from (client)/layout.tsx so it appears on EVERY client-portal
 // page (owner request; was checkout-only in the prototype).
-// Same support handle as the Support page.
-const TELEGRAM_URL = 'https://t.me/US5Gwetrust';
+// Same support handle as the Support page (lib/support).
+import { TELEGRAM_SUPPORT_URL } from '@/lib/support';
 
 export function TelegramCta() {
   return (
     <a
       className="telegram-cta"
-      href={TELEGRAM_URL}
+      href={TELEGRAM_SUPPORT_URL}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat with support on Telegram"

@@ -1,7 +1,5 @@
-'use client';
-import { useState } from 'react';
 import { buildPlanCardsHtml, type LivePlanLite } from '@/lib/plan-tiers';
-import { SoldOutModal } from './SoldOutModal';
+import { PlanCardsInteractive } from './PlanCardsInteractive';
 import { TELEGRAM_SUPPORT_URL, SOLD_OUT_COPY } from '@/lib/support';
 import './plan-showcase.css';
 
@@ -9,9 +7,9 @@ import './plan-showcase.css';
 // so the plan-selection design is identical to the website. Only price + duration
 // vary; the rest is the locked template (see src/lib/plan-tiers.ts). Source Sans 3
 // is loaded here because the cards are set in it (same as the marketing page).
-// Client component since 2026-08-08: a card whose duration is fully sold out
-// (plan.soldOut — every location at capacity) opens the sold-out → Telegram
-// dialog on click instead of navigating into a dead-end checkout.
+// Server Component: builds the card HTML with `hrefFor` (a function — must stay
+// server-side) and hands the string to PlanCardsInteractive, which wires the
+// sold-out → Telegram dialog on click for cards whose duration is at capacity.
 export function PlanShowcase({
   plans,
   ctaLabel = 'Select plan',
@@ -21,7 +19,6 @@ export function PlanShowcase({
   ctaLabel?: string;
   hrefFor: (durationDays: number) => string;
 }) {
-  const [soldOutOpen, setSoldOutOpen] = useState(false);
   if (plans.length === 0) {
     return (
       <div className="empty">
@@ -48,21 +45,8 @@ export function PlanShowcase({
         rel="stylesheet"
       />
       <div className="plan-showcase">
-        <div
-          className="plans"
-          onClickCapture={e => {
-            // Sold-out CTA: swallow the navigation, open the Telegram dialog.
-            const a = (e.target as HTMLElement).closest?.('a[data-soldout-duration]');
-            if (a) {
-              e.preventDefault();
-              e.stopPropagation();
-              setSoldOutOpen(true);
-            }
-          }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <PlanCardsInteractive html={html} />
       </div>
-      {soldOutOpen && <SoldOutModal onClose={() => setSoldOutOpen(false)} />}
     </>
   );
 }

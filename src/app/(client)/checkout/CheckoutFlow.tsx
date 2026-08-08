@@ -9,6 +9,7 @@ import { FormSelect } from '@/components/ui/FormSelect';
 import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 import { CRYPTO_MIN_USD } from '@/lib/np-coins';
 import { CompletePaymentActions } from './CompletePaymentActions';
+import { SoldOutModal } from '@/components/client/SoldOutModal';
 import { signalStructural } from '@/lib/nav-history';
 
 type PlanSummary = { id: string; name: string; region: string; carrier: string; price: number; autoProvision: boolean; available: number };
@@ -23,7 +24,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscountPct = 0,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscountPct = 0, allSoldOut = false,
 }: {
   duration: number;
   qty: number;
@@ -36,6 +37,7 @@ export function CheckoutFlow({
   allowCrypto?: boolean; // admin Payment Providers toggle (crypto)
   renewOf?: string; // renewal mode: paying extends this order — location/qty locked
   renewalDiscountPct?: number; // >0 in renewal mode when the plan grants a discount (price already discounted)
+  allSoldOut?: boolean; // every location at capacity → sold-out → Telegram dialog on arrival
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -58,6 +60,9 @@ export function CheckoutFlow({
   // Duplicate-unpaid-order interstitial (409): resolve in place on the wizard
   // instead of a silent teleport to a back-less resume page (trace find #10).
   const [dupOrderId, setDupOrderId] = useState<string | null>(null);
+  // Every location at capacity: open the sold-out → Telegram dialog once on
+  // arrival. Closing it leaves the wizard visible (Continue stays disabled).
+  const [soldOutOpen, setSoldOutOpen] = useState(allSoldOut);
   // Recent-identical-PAID-order confirm (accidental double-charge backstop).
   const [dupPaidId, setDupPaidId] = useState<string | null>(null);
   const coinList = useCoinList(step === 'payment' || step === 'processing');
@@ -244,6 +249,7 @@ export function CheckoutFlow({
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      {soldOutOpen && <SoldOutModal onClose={() => setSoldOutOpen(false)} />}
       {(step === 'details' || step === 'payment' || step === 'processing') && (
         <Stepper active={step === 'details' ? 1 : 2} />
       )}

@@ -58,7 +58,12 @@ export const PLAN_TIER_TEMPLATES: PlanTierTemplate[] = [
   },
 ];
 
-export type LivePlanLite = { durationDays: number; price: number };
+// soldOut — every location variant of this duration is at capacity (see
+// lib/plan-availability.fullySoldOutDurations). The card renders IDENTICALLY
+// (locked template); only its CTA gains data-soldout-duration, which the
+// surface's JS intercepts to open the sold-out → Telegram dialog instead of
+// navigating to a checkout where nothing can be bought.
+export type LivePlanLite = { durationDays: number; price: number; soldOut?: boolean };
 
 // One client-facing card per DURATION. Same-duration plans (location variants
 // — e.g. New York vs Texas) collapse into a single card; the Location choice
@@ -85,8 +90,12 @@ export function renderPlanCardHtml(
   price: number,
   href: string,
   ctaInner: string,
+  soldOut?: boolean,
 ): string {
   const items = t.features.map((f) => `<li>${CHECK}${f}</li>`).join('');
+  // Sold-out CTA keeps the real href (no-JS fallback = today's behavior);
+  // with JS the data attribute wins and opens the Telegram dialog instead.
+  const soldOutAttr = soldOut ? ` data-soldout-duration="${durationDays}"` : '';
   return (
     `<article class="${t.cardClass}">` +
     t.ribbon +
@@ -95,7 +104,7 @@ export function renderPlanCardHtml(
     `<div class="plan__price"><span class="v">${money(price)}</span><span class="u">/ proxy</span></div>` +
     `<div class="plan__divider"></div>` +
     `<ul class="plan__list">${items}</ul>` +
-    `<div class="plan__cta"><a class="${t.btnClass}" href="${href}">${ctaInner}</a></div>` +
+    `<div class="plan__cta"><a class="${t.btnClass}" href="${href}"${soldOutAttr}>${ctaInner}</a></div>` +
     `</article>`
   );
 }
@@ -108,6 +117,6 @@ export function buildPlanCardsHtml(
   const sorted = [...plans].sort((a, b) => a.durationDays - b.durationDays || a.price - b.price);
   return sorted
     .slice(0, PLAN_TIER_TEMPLATES.length)
-    .map((p, i) => renderPlanCardHtml(PLAN_TIER_TEMPLATES[i], p.durationDays, p.price, opts.hrefFor(p.durationDays), opts.ctaInner))
+    .map((p, i) => renderPlanCardHtml(PLAN_TIER_TEMPLATES[i], p.durationDays, p.price, opts.hrefFor(p.durationDays), opts.ctaInner, p.soldOut))
     .join('\n');
 }

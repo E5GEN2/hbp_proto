@@ -1,6 +1,7 @@
 import './marketing.css';
 import { prisma } from '@/lib/prisma';
 import { buildPlanCardsHtml, collapseLiveByDuration } from '@/lib/plan-tiers';
+import { fullySoldOutDurations } from '@/lib/plan-availability';
 import { getAnnouncement, renderPromoHtml } from '@/lib/announcement';
 import { renderMarketingBody } from './_body';
 import { MarketingView } from './MarketingView';
@@ -22,13 +23,20 @@ export async function MarketingLanding() {
   // lives inside checkout), mapped to the locked template by position
   // (shared with the client portal — see src/lib/plan-tiers.ts). No hardcoded
   // prices/durations.
-  const plans = await prisma.plan.findMany({
-    where: { active: true, visibility: 'PUBLIC', deletedAt: null },
-    orderBy: { durationDays: 'asc' },
-  });
+  const [plans, soldOutDurations] = await Promise.all([
+    prisma.plan.findMany({
+      where: { active: true, visibility: 'PUBLIC', deletedAt: null },
+      orderBy: { durationDays: 'asc' },
+    }),
+    fullySoldOutDurations(),
+  ]);
+  // Cards whose duration has zero remaining quota in EVERY location keep the
+  // locked design but their CTA opens the sold-out → Telegram dialog (wired in
+  // MarketingView) instead of walking a guest through login into a dead end.
   const live = collapseLiveByDuration(plans
     .filter((p) => p.capacityState !== 'SOLD_OUT')
-    .map((p) => ({ durationDays: p.durationDays, price: Number(p.price) })));
+    .map((p) => ({ durationDays: p.durationDays, price: Number(p.price) })))
+    .map((p) => (soldOutDurations.has(p.durationDays) ? { ...p, soldOut: true } : p));
   const planCards =
     buildPlanCardsHtml(live, {
       hrefFor: buyHref,

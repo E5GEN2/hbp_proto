@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
+import { TELEGRAM_SUPPORT_URL } from '@/lib/support';
 
 export default async function SupportPage() {
   const session = await getServerSession(authOptions);
@@ -19,7 +20,7 @@ export default async function SupportPage() {
             reach our team directly via Telegram and we&rsquo;ll get back within 24 hours.
           </p>
           <div style={{ marginTop: 18 }}>
-            <a href="https://t.me/US5Gwetrust" target="_blank" rel="noopener noreferrer" className="btn primary">
+            <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noopener noreferrer" className="btn primary">
               Open Telegram support
             </a>
           </div>

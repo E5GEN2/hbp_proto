@@ -4,19 +4,26 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { PlanShowcase } from '@/components/client/PlanShowcase';
 import { collapseLiveByDuration } from '@/lib/plan-tiers';
+import { fullySoldOutDurations } from '@/lib/plan-availability';
 
 export default async function CatalogPage() {
   const session = await getServerSession(authOptions);
-  const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
-  const plans = await prisma.plan.findMany({
-    where: { active: true, visibility: 'PUBLIC', deletedAt: null },
-    orderBy: { durationDays: 'asc' },
-  });
+  const [me, plans, soldOutDurations] = await Promise.all([
+    prisma.user.findUnique({ where: { id: session!.user.id } }),
+    prisma.plan.findMany({
+      where: { active: true, visibility: 'PUBLIC', deletedAt: null },
+      orderBy: { durationDays: 'asc' },
+    }),
+    fullySoldOutDurations(),
+  ]);
   // One card per DURATION (same-duration location variants collapse; the
-  // Location choice lives inside checkout). Cap 3 durations.
+  // Location choice lives inside checkout). Cap 3 durations. A duration with
+  // zero remaining quota in EVERY location keeps its card but the CTA opens
+  // the sold-out → Telegram dialog (PlanShowcase) instead of checkout.
   const sellable = collapseLiveByDuration(plans
     .filter(p => p.capacityState !== 'SOLD_OUT')
-    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) })));
+    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) })))
+    .map(p => (soldOutDurations.has(p.durationDays) ? { ...p, soldOut: true } : p));
 
   return (
     <>

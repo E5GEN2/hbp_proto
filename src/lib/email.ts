@@ -1,3 +1,4 @@
+import { TELEGRAM_SUPPORT_URL } from './support';
 // Transactional email via the Resend REST API. Deliberately no SDK — this
 // environment has no local Node toolchain to refresh pnpm-lock, and the API
 // is a single POST.
@@ -74,7 +75,7 @@ function shell(title: string, bodyHtml: string) {
     ${bodyHtml}
   </td></tr>
   <tr><td style="padding:18px 8px 0;font:400 12px/1.6 Arial,Helvetica,sans-serif;color:#8a8477;">
-    Need help? Message support on <a href="https://t.me/US5Gwetrust" style="color:${GOLD};">Telegram</a>.<br>
+    Need help? Message support on <a href="${TELEGRAM_SUPPORT_URL}" style="color:${GOLD};">Telegram</a>.<br>
     You received this email because of activity on your ${BRAND_FULL} account.
   </td></tr>
 </table>

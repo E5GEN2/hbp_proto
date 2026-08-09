@@ -112,15 +112,37 @@ export async function npCreatePayment(input: {
 
 // IPN authenticity: HMAC-SHA512 over the JSON body re-serialized with keys
 // sorted (NOWPayments' documented recipe), compared against x-nowpayments-sig.
+//
+// NOWPayments signs on their side with PHP `json_encode(ksort($data),
+// JSON_UNESCAPED_SLASHES)`, which — critically — escapes every non-ASCII char
+// to `\uXXXX` (PHP does NOT set JSON_UNESCAPED_UNICODE). JS `JSON.stringify`
+// emits raw UTF-8. Our order descriptions carry `—` and `×` on EVERY order
+// (`Order … — N × Plan`), so the two serializations differed on that field and
+// the signature never matched — every IPN was rejected and nothing auto-settled
+// (root cause of the 2026-08-09 PAY-57160 incident). We now compare against BOTH
+// serializations (raw and PHP-style \u-escaped): both HMAC the same authenticated
+// payload with the secret, so accepting either doesn't weaken auth — it only
+// tolerates the unicode-encoding difference. Secret is trimmed (a pasted key
+// often carries a trailing newline).
 export function npVerifySignature(rawBody: string, sig: string | null): boolean {
-  const secret = process.env.NOWPAYMENTS_IPN_SECRET;
+  const secret = process.env.NOWPAYMENTS_IPN_SECRET?.trim();
   if (!secret || !sig) return false;
   let parsed: Record<string, unknown>;
   try { parsed = JSON.parse(rawBody); } catch { return false; }
   if (!parsed || typeof parsed !== 'object') return false;
-  const sorted = JSON.stringify(parsed, Object.keys(parsed).sort());
-  const digest = crypto.createHmac('sha512', secret).update(sorted).digest('hex');
-  const a = Buffer.from(digest);
-  const b = Buffer.from(sig);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const received = Buffer.from(sig.trim());
+  const base = JSON.stringify(parsed, Object.keys(parsed).sort());
+  const phpEscaped = base.replace(/[\u0080-\uffff]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+  for (const candidate of base === phpEscaped ? [base] : [base, phpEscaped]) {
+    const digest = Buffer.from(crypto.createHmac('sha512', secret).update(candidate).digest('hex'));
+    if (digest.length === received.length && crypto.timingSafeEqual(digest, received)) return true;
+  }
+  // Diagnostic (no secret leak — the sig is a public MAC, digests are derived):
+  // reveals whether a mismatch is a length/format problem vs a secret mismatch,
+  // and which keys were signed. Lets us confirm from logs whether this fix took.
+  console.warn(`[nowpayments] IPN sig mismatch — received ${sig.trim().slice(0, 12)}… (len ${received.length}); keys=[${Object.keys(parsed).sort().join(',')}]`);
+  return false;
 }
+// npGetPayment (reconciliation read) lives in np-api.ts — it needs only fetch,
+// so keeping it out of this crypto-importing module lets the sweep/reconcile
+// chain (traced by the edge instrumentation bundle) avoid node:crypto.

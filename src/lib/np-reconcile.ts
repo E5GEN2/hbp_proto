@@ -61,7 +61,15 @@ export async function reconcileCryptoPayments(now = Date.now()): Promise<Reconci
         where: {
           provider: 'NOWPayments', externalRef: { not: null }, status: 'FAILED',
           createdAt: { gte: new Date(now - FAILED_LOOKBACK_MS) },
-          NOT: { npStatus: { in: ['failed', 'expired', 'refunded'] } },
+          // Skip only charges NP has already confirmed terminally dead. A row we
+          // have NOT polled yet has npStatus = null and MUST be included — SQL
+          // `NOT (npStatus IN (...))` is null-unsafe (drops nulls), which would
+          // exclude every never-polled FAILED row (i.e. all of them). Spell out
+          // the null branch explicitly.
+          OR: [
+            { npStatus: null },
+            { npStatus: { notIn: ['failed', 'expired', 'refunded'] } },
+          ],
         },
         select, orderBy: { createdAt: 'desc' }, take: remaining,
       })

@@ -6,6 +6,7 @@ import { sendTelegram } from './telegram';
 import { autoBackfillEnabled } from './runtime-flags';
 import { backfillOrderProxies, refreshProvisionException } from './transitions';
 import { failAwaitingPayment } from './settle-payment';
+import { reconcileCryptoPayments } from './np-reconcile';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -59,6 +60,7 @@ export type SweepResult = {
   autoRenewed: number;
   autoRenewFailed: number;
   backfilled: number;
+  reconciled: number;
   skipped?: boolean;
 };
 
@@ -98,14 +100,29 @@ let running = false;
 
 export async function runSweep(): Promise<SweepResult> {
   const ranAt = new Date().toISOString();
-  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, skipped: true };
+  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, reconciled: 0, skipped: true };
   running = true;
   const telegramOutbox: { chatId: string | null; text: string }[] = [];
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   try {
     const now = Date.now();
     let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
-    let autoRenewed = 0, autoRenewFailed = 0, backfilled = 0;
+    let autoRenewed = 0, autoRenewFailed = 0, backfilled = 0, reconciled = 0;
+
+    // ── 0. Reconcile crypto payments against NOWPayments (IPN-independent) ───
+    //   Authoritative settlement safety net: polls the NP API for open crypto
+    //   payments and settles `finished` charges even when IPNs never arrive or
+    //   fail signature verification (the PAY-57160 incident). Guarded so a NP
+    //   outage can never abort the rest of the sweep.
+    try {
+      const rc = await reconcileCryptoPayments(now);
+      reconciled = rc.settled;
+      if (rc.settled || rc.manualReview || rc.underpaid || rc.errors) {
+        console.log('[sweep] np-reconcile', JSON.stringify(rc));
+      }
+    } catch (err) {
+      console.error('[sweep] np-reconcile failed', err);
+    }
 
     // ── 1. Past-due ACTIVE orders: auto-renew attempt first, then expire ────
     const dueOrders = await prisma.order.findMany({
@@ -416,7 +433,7 @@ export async function runSweep(): Promise<SweepResult> {
     //   purge cannot touch admin signals.
     await prisma.notification.deleteMany({ where: { createdAt: { lt: new Date(now - 7 * 86_400_000) } } });
 
-    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled };
+    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled, reconciled };
   } finally {
     running = false;
     // External HTTP after the DB work — never inside a transaction.
@@ -436,7 +453,7 @@ export function startSweepLoop() {
   const tick = () => {
     runSweep()
       .then(r => {
-        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed || r.backfilled) {
+        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed || r.backfilled || r.reconciled) {
           console.log('[sweep]', JSON.stringify(r));
         }
       })

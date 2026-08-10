@@ -218,6 +218,21 @@ function statusLine(npStatus: string | null): { text: string; warn?: boolean } {
   }
 }
 
+// Which pre-payment guidance note to show. Hidden only once a transaction is
+// actually DETECTED (confirming/…): NP's 'waiting' means "no transfer seen
+// yet", and since the reconciler (sweep step 0) mirrors npStatus onto every
+// open payment within minutes — and the fixed IPNs deliver 'waiting' early
+// too — gating on bare !npStatus made the note vanish mid-countdown with
+// nothing paid (owner repro 2026-08-10). After the rate window lapses unpaid,
+// the reassurance STAYS in a no-countdown variant — the address remains
+// payable for days (Layer 1); losing "address stays valid" exactly at expiry
+// was the old dead-address trap this copy exists to prevent.
+export function rateNoteVariant(npStatus: string | null, msLeft: number | null): 'countdown' | 'expired' | null {
+  if (npStatus && npStatus !== 'waiting') return null; // transfer detected (or terminal) — note is moot
+  if (msLeft == null) return null;                     // no known window (floating rate) — nothing to count
+  return msLeft > 0 ? 'countdown' : 'expired';
+}
+
 export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment', settleNote = 'the order confirms either way', onSettled, onRegenerate, regenerating, children }: {
   pay: PayPanelData;
   amountUsd: number;
@@ -349,9 +364,15 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
           {line.text}
         </div>
 
-        {msLeft != null && msLeft > 0 && !npStatus && (
+        {/* Pre-payment guidance — see rateNoteVariant for the why. */}
+        {rateNoteVariant(npStatus, msLeft) === 'countdown' && (
           <div className="t-note">
-            Best rate held for <span className="mono">{fmtLeft(msLeft)}</span>. You can still pay after that — the address stays valid; send the amount shown and we’ll confirm your payment (support sorts out any difference).
+            Best rate held for <span className="mono">{fmtLeft(msLeft!)}</span>. You can still pay after that — the address stays valid; send the amount shown and we’ll confirm your payment (support sorts out any difference).
+          </div>
+        )}
+        {rateNoteVariant(npStatus, msLeft) === 'expired' && (
+          <div className="t-note">
+            The rate window has passed, but the address stays valid — send the amount shown and we’ll confirm your payment (support sorts out any difference).
           </div>
         )}
         <div className="t-note">This page updates automatically once the transaction is detected — keep the tab open or come back later; {settleNote}.</div>

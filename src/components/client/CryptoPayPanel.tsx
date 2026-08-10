@@ -13,7 +13,7 @@ import qrcode from 'qrcode-generator';
 import { useToast } from '@/components/ui/Toast';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { money } from '@/lib/money';
-import { npCoin, npCoinDisplay, COIN_FAMILIES, familyCoins } from '@/lib/np-coins';
+import { npCoin, npCoinDisplay, isStableCoin, COIN_FAMILIES, familyCoins } from '@/lib/np-coins';
 import { TOKEN_ICON, NETWORK_ICON } from '@/lib/coin-icons';
 
 export type PayPanelData = {
@@ -210,7 +210,7 @@ function fmtLeft(ms: number) {
 
 function statusLine(npStatus: string | null): { text: string; warn?: boolean } {
   switch (npStatus) {
-    case 'confirming': return { text: 'Transaction detected — waiting for network confirmations…' };
+    case 'confirming': return { text: 'We are checking your payment…' };
     case 'confirmed':
     case 'sending': return { text: 'Confirmed — finalizing your payment…' };
     case 'partially_paid': return { text: 'Partial amount received — send the remaining balance from the same wallet, or contact support.', warn: true };
@@ -218,26 +218,29 @@ function statusLine(npStatus: string | null): { text: string; warn?: boolean } {
   }
 }
 
-// Which pre-payment guidance note to show. Hidden only once a transaction is
-// actually DETECTED (confirming/…): NP's 'waiting' means "no transfer seen
-// yet", and since the reconciler (sweep step 0) mirrors npStatus onto every
-// open payment within minutes — and the fixed IPNs deliver 'waiting' early
-// too — gating on bare !npStatus made the note vanish mid-countdown with
-// nothing paid (owner repro 2026-08-10). After the rate window lapses unpaid,
-// the reassurance STAYS in a no-countdown variant — the address remains
-// payable for days (Layer 1); losing "address stays valid" exactly at expiry
-// was the old dead-address trap this copy exists to prevent.
-export function rateNoteVariant(npStatus: string | null, msLeft: number | null): 'countdown' | 'expired' | null {
-  if (npStatus && npStatus !== 'waiting') return null; // transfer detected (or terminal) — note is moot
-  if (msLeft == null) return null;                     // no known window (floating rate) — nothing to count
-  return msLeft > 0 ? 'countdown' : 'expired';
+// Whether to show the rate-window countdown (owner decision 2026-08-10:
+// ONE short line, volatile coins only).
+// - Stablecoins (USDT/USDC — most payments) don't drift against a USD price:
+//   no note at all, the interface stays clean.
+// - 'waiting' must NOT hide it: NP's 'waiting' means "no transfer seen yet",
+//   and the reconciler (sweep step 0) mirrors npStatus onto every open payment
+//   within minutes — gating on bare !npStatus made the note vanish
+//   mid-countdown with nothing paid (owner repro 2026-08-10). Only an
+//   actually-detected transfer (confirming/…) or a terminal status hides it.
+// - After the window lapses nothing extra is shown — the permanent "page
+//   updates automatically… come back later" line already covers late payers,
+//   and a lapsed-window drift lands in payment covering / partially_paid →
+//   admin alert (Layers 0+2).
+export function showRateCountdown(npStatus: string | null, msLeft: number | null, stable: boolean): boolean {
+  if (stable) return false;
+  if (npStatus && npStatus !== 'waiting') return false; // transfer detected (or terminal) — moot
+  return msLeft != null && msLeft > 0;
 }
 
-export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment', settleNote = 'the order confirms either way', onSettled, onRegenerate, regenerating, children }: {
+export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment', onSettled, onRegenerate, regenerating, children }: {
   pay: PayPanelData;
   amountUsd: number;
   title?: string;
-  settleNote?: string; // what settles: order copy by default, deposits override
   onSettled: () => void;
   // Present → the expired/failed state offers a one-click fresh address for
   // the SAME charge (checkout wizard + resume page). Absent → the consumer
@@ -364,18 +367,15 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
           {line.text}
         </div>
 
-        {/* Pre-payment guidance — see rateNoteVariant for the why. */}
-        {rateNoteVariant(npStatus, msLeft) === 'countdown' && (
+        {/* Rate-window countdown — volatile coins only; see showRateCountdown.
+            No other guidance text (owner 2026-08-10): the status line above is
+            the single narrator — "Waiting for your transfer…" until detection,
+            then the checking/finalizing stages. */}
+        {showRateCountdown(npStatus, msLeft, isStableCoin(pay.payCurrency)) && (
           <div className="t-note">
-            Best rate held for <span className="mono">{fmtLeft(msLeft!)}</span>. You can still pay after that — the address stays valid; send the amount shown and we’ll confirm your payment (support sorts out any difference).
+            Rate locked for <span className="mono">{fmtLeft(msLeft!)}</span> — small differences after that are covered automatically.
           </div>
         )}
-        {rateNoteVariant(npStatus, msLeft) === 'expired' && (
-          <div className="t-note">
-            The rate window has passed, but the address stays valid — send the amount shown and we’ll confirm your payment (support sorts out any difference).
-          </div>
-        )}
-        <div className="t-note">This page updates automatically once the transaction is detected — keep the tab open or come back later; {settleNote}.</div>
         {children}
       </div>
     </div>

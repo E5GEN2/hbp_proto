@@ -83,3 +83,12 @@ export function npCoinDisplay(code: string): string {
   if (!c) return code;
   return c.label === c.network ? c.label : `${c.label} · ${c.network}`;
 }
+
+// USD-pegged coins don't drift against a USD price, so the pay panel skips the
+// rate-window countdown for them (owner decision 2026-08-10: timer only where
+// it's financially meaningful — BTC/ETH/LTC/TRX/SOL). Unknown tickers count as
+// volatile: showing a timer needlessly is harmless, hiding a real one isn't.
+export function isStableCoin(code: string | null | undefined): boolean {
+  const family = npCoin(code)?.family;
+  return family === 'USDT' || family === 'USDC';
+}

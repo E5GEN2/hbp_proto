@@ -88,7 +88,6 @@ export function DepositResumePanel({ amountUsd, initial, returnTo }: { amountUsd
     <CryptoPayPanel
       pay={initial}
       amountUsd={amountUsd}
-      settleNote="your balance is credited either way"
       onSettled={() => window.location.assign(back)}
       // No regenerate for deposits — an expired top-up is simply abandoned and
       // the client starts a fresh one from the deposit wizard.

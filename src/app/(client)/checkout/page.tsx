@@ -228,6 +228,7 @@ export default async function CheckoutPage({ searchParams }: {
                 : renewalUnitPrice(Number(resumeOrder.plan.price), resumeOrder.plan.renewalDiscountPct) * resumeOrder.qty}
               initial={direct ? toPanelData(direct) : null}
               expiredMode={!direct}
+              renewal={!isNewOrder}
             >
               {orderSummary}
               {cardActions}

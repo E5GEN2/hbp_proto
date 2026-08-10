@@ -18,6 +18,7 @@ import { CheckoutSuccess } from './CheckoutSuccess';
 import { DepositFlow } from './DepositFlow';
 import { CompletePaymentActions } from './CompletePaymentActions';
 import { ResumePayPanel, DepositResumePanel } from './ResumePayPanel';
+import { DepositSuccess } from './DepositSuccess';
 import type { PayPanelData } from '@/components/client/CryptoPayPanel';
 
 // Payment row → the client pay panel's props (direct in-portal payments only).
@@ -122,16 +123,30 @@ export default async function CheckoutPage({ searchParams }: {
           </>
         );
       }
-      // Settled / failed — nothing to resume in-portal.
+      // Settled — the deposit twin of /checkout?success=… (owner 2026-08-10:
+      // a settled top-up shows a confirmation window, never a silent redirect
+      // to Billing). DepositResumePanel reloads THIS url on settle, so the
+      // screen is addressable + idempotent; me.balance is read fresh this
+      // request and already includes the credit. returnTo (safeReturn'd
+      // above) keeps the continue-checkout conversion path alive.
+      if (pay.status === 'CONFIRMED') {
+        return (
+          <>
+            <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
+            <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+              <DepositSuccess paymentId={pay.id} amount={Number(pay.gross)} balance={Number(me.balance)} returnTo={resumeReturn} />
+            </main>
+          </>
+        );
+      }
+      // Failed / cancelled — nothing to resume in-portal.
       return (
         <>
           <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
           <main style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
             <div className="panel" style={{ padding: 24 }}>
               <h2 style={{ marginTop: 0, color: 'var(--text)' }}>This deposit is no longer pending</h2>
-              <p style={{ color: 'var(--muted)' }}>
-                {pay.status === 'CONFIRMED' ? 'It has been credited to your balance.' : 'It was not completed — you can start a fresh deposit any time.'}
-              </p>
+              <p style={{ color: 'var(--muted)' }}>It was not completed — you can start a fresh deposit any time.</p>
               <Link href="/billing" className="btn primary">Back to billing</Link>
             </div>
           </main>

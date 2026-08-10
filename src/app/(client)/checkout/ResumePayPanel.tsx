@@ -11,13 +11,14 @@ import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 
-export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, children }: {
+export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renewal = false, children }: {
   orderId: string;
   amountUsd: number;
   initial: PayPanelData | null;
   // No AWAITING charge left (the fixed-rate window expired and IPN failed it):
   // offer a coin re-pick + a fresh charge for the same order.
   expiredMode: boolean;
+  renewal?: boolean; // renewal charge → the success screen shows renewal copy/price
   children?: React.ReactNode; // cancel-order actions rendered inside the card
 }) {
   const toast = useToast();
@@ -47,7 +48,12 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, child
         key={payData.paymentId}
         pay={payData}
         amountUsd={amountUsd}
-        onSettled={() => window.location.assign(`/orders/${orderId}`)}
+        /* Settle lands on the same confirmation screen the in-flow wizard uses
+           (/checkout?success=… — "payment confirmed" + View order button), NOT
+           straight on the order page (owner 2026-08-10: no silent redirect
+           after payment). Hard-nav kept (PR #111); the server branch validates
+           ownership + ACTIVE/PROVISIONING and falls back to the order page. */
+        onSettled={() => window.location.assign(`/checkout?success=${orderId}${renewal ? '&renewed=1' : ''}`)}
         onRegenerate={() => repay(payData.payCurrency)}
         regenerating={busy}
       >

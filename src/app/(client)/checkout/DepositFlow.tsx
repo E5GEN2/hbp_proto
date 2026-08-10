@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition, Fragment, type ReactNode } from 'react';
+import { useState, useEffect, useTransition, Fragment, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { money } from '@/lib/money';
@@ -18,10 +18,24 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 
 export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCrypto = true }: { presetAmount?: number; returnTo?: string; allowCard?: boolean; allowCrypto?: boolean }) {
   const toast = useToast();
+  // depositAction is a Server Action; Next refreshes the route after it runs,
+  // which REMOUNTS this wizard (PR #145). On a successful crypto create we
+  // hard-nav past it; on a FAILED create (e.g. NP's transient 5xx) there was no
+  // dodge, so the wizard reset to its initial step and the client lost their
+  // amount + coin — the "thrown back to the amount step" report (2026-08-10).
+  // Fix: mirror amount/method/coin into the URL (replaceState, below) and seed
+  // initial state FROM the url, so a remount restores the exact spot; and toast
+  // the error (survives the remount, unlike inline state). Mirrors CheckoutFlow.
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   // Number.isFinite kills the NaN hole: /checkout?kind=deposit&amount=abc used
   // to survive `?? 50` (NaN is not nullish) and render “$NaN” (P1-5).
   const [amount, setAmount] = useState<number | ''>(Number.isFinite(presetAmount) ? (presetAmount as number) : 50);
-  const [method, setMethod] = useState<'card' | 'crypto'>(allowCard ? 'card' : 'crypto');
+  const [method, setMethod] = useState<'card' | 'crypto'>(() => {
+    const m = urlParams?.get('m');
+    if (m === 'crypto' && allowCrypto) return 'crypto';
+    if (m === 'card' && allowCard) return 'card';
+    return allowCard ? 'card' : 'crypto';
+  });
   const noMethods = !allowCard && !allowCrypto; // both providers off — top-ups paused
   const [step, setStep] = useState<'details' | 'payment' | 'processing' | 'success'>(presetAmount ? 'payment' : 'details');
   const [pending, start] = useTransition();
@@ -32,8 +46,28 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
   // creation we hard-nav to the addressable resume URL (see pay()), so the pay
   // panel is server-rendered and survives the wizard's post-action remount.
   // Empty coin list = NP not configured → the legacy mock flow stays intact.
-  const [payCoin, setPayCoin] = useState<string | null>(null);
+  const [payCoin, setPayCoin] = useState<string | null>(() => urlParams?.get('coin') ?? null);
   const coinList = useCoinList(step === 'payment');
+
+  // Keep the URL in step with the wizard so a Server-Action remount lands right
+  // back here (the server reads ?amount → starts on the payment step; m/coin
+  // reseed above). Only mirror ONCE the buyer commits to an amount (payment
+  // step) — mirroring on 'details' would push ?amount into the url before they
+  // continue, so a reload there would skip the amount step. replaceState adds
+  // no history entry.
+  useEffect(() => {
+    if (step !== 'payment') return;
+    const p = new URLSearchParams();
+    p.set('kind', 'deposit');
+    if (typeof amount === 'number' && amount >= 1) p.set('amount', String(amount));
+    p.set('m', method);
+    if (method === 'crypto' && payCoin) p.set('coin', payCoin);
+    // The server double-decodes returnTo (decodeURIComponent on top of Next's
+    // own query decode — intentional, see checkout/page.tsx). URLSearchParams
+    // only single-encodes, so pre-encode once to survive that second decode.
+    if (returnTo) p.set('returnTo', encodeURIComponent(returnTo));
+    window.history.replaceState(window.history.state, '', `/checkout?${p.toString()}`);
+  }, [step, amount, method, payCoin, returnTo]);
   const directCrypto = (coinList.coins?.length ?? 0) > 0;
 
   const amountNum = typeof amount === 'number' ? amount : parseFloat(amount);
@@ -67,9 +101,12 @@ export function DepositFlow({ presetAmount, returnTo, allowCard = true, allowCry
           setStep('processing');
         }
       } catch (e: any) {
-        // Persistent inline error on the same step (keeps the amount + coin) —
-        // not a transient toast that leaves the user unsure what happened.
-        setErr(e?.message ?? 'Deposit failed. Please try again.');
+        const msg = e?.message ?? 'Deposit failed. Please try again.';
+        // Toast (survives the Server-Action remount, unlike inline state) AND
+        // inline (if no remount occurs). The URL mirror keeps the amount + coin
+        // and the payment step across the remount, so the client can just retry.
+        setErr(msg);
+        toast('Deposit failed', msg, 'danger');
       }
     });
   }

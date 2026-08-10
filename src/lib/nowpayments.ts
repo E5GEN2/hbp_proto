@@ -124,6 +124,26 @@ export async function npCreatePayment(input: {
 // payload with the secret, so accepting either doesn't weaken auth — it only
 // tolerates the unicode-encoding difference. Secret is trimmed (a pasted key
 // often carries a trailing newline).
+// Recursive key sort — NOWPayments' documented verification recipe (their
+// Node sample sorts nested objects too). CRITICAL: do NOT use a
+// JSON.stringify replacer array here — a replacer is a key ALLOWLIST applied
+// at EVERY depth, so nested objects lose any key not present at the top
+// level. Real payment IPNs carry a nested `fee` object ({currency,
+// depositFee, serviceFee, withdrawalFee}); the replacer serialized it as {}
+// and the HMAC never matched — proven by the live sig-mismatch diagnostics
+// 2026-08-10 (keys=[…,fee,…] on every rejected IPN).
+function sortDeep(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortDeep);
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+      out[k] = sortDeep((v as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return v;
+}
+
 export function npVerifySignature(rawBody: string, sig: string | null): boolean {
   const secret = process.env.NOWPAYMENTS_IPN_SECRET?.trim();
   if (!secret || !sig) return false;
@@ -131,7 +151,7 @@ export function npVerifySignature(rawBody: string, sig: string | null): boolean 
   try { parsed = JSON.parse(rawBody); } catch { return false; }
   if (!parsed || typeof parsed !== 'object') return false;
   const received = Buffer.from(sig.trim());
-  const base = JSON.stringify(parsed, Object.keys(parsed).sort());
+  const base = JSON.stringify(sortDeep(parsed));
   const phpEscaped = base.replace(/[\u0080-\uffff]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
   for (const candidate of base === phpEscaped ? [base] : [base, phpEscaped]) {
     const digest = Buffer.from(crypto.createHmac('sha512', secret).update(candidate).digest('hex'));

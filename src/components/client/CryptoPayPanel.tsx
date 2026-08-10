@@ -210,7 +210,7 @@ function fmtLeft(ms: number) {
 
 function statusLine(npStatus: string | null): { text: string; warn?: boolean } {
   switch (npStatus) {
-    case 'confirming': return { text: 'We are checking your payment…' };
+    case 'confirming': return { text: 'Payment detected — confirming on the network…' };
     case 'confirmed':
     case 'sending': return { text: 'Confirmed — finalizing your payment…' };
     case 'partially_paid': return { text: 'Partial amount received — send the remaining balance from the same wallet, or contact support.', warn: true };

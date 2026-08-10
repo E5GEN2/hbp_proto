@@ -90,11 +90,16 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
 
 export function DepositResumePanel({ amountUsd, initial, returnTo }: { amountUsd: number; initial: PayPanelData; returnTo?: string }) {
   const back = returnTo ?? '/billing';
+  // Settle reloads THIS addressable url — the server sees the CONFIRMED row and
+  // renders the DepositSuccess confirmation (owner 2026-08-10: no silent
+  // redirect to Billing after a top-up). returnTo rides along so the
+  // confirmation can offer "Continue checkout". Hard-nav kept (PR #111).
+  const settledUrl = `/checkout?kind=deposit&resume=${initial.paymentId}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
   return (
     <CryptoPayPanel
       pay={initial}
       amountUsd={amountUsd}
-      onSettled={() => window.location.assign(back)}
+      onSettled={() => window.location.assign(settledUrl)}
       // No regenerate for deposits — an expired top-up is simply abandoned and
       // the client starts a fresh one from the deposit wizard.
     >

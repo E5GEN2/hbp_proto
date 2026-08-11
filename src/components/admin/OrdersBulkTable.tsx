@@ -11,6 +11,7 @@ import { fmtAdminStamp } from '@/lib/date';
 type Row = {
   id: string;
   clientId: string;
+  clientEmail: string;
   planName: string;
   planCarrier: string;
   region: string;
@@ -78,30 +79,34 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
       </div>
 
       <div className="table-wrap">
-        <table className="dt" style={{ minWidth: 1190 }}>
-          {/* ATS colgroup, pan-variant (owner: keep every column). B*=1190 =
-              min-width — pans ≤196px at exactly 1280 viewport, zero pan at
-              ≥1476. Anchors: chk 52, Order/Client ID 103, Carrier·Region 162
-              (nowrap), Amount 98 ("$9,999.99" + pads), Payment 145 ("Refund requested"), Status
+        <table className="dt" style={{ minWidth: 1380 }}>
+          {/* ATS colgroup, pan-variant (owner: keep every column). B*=1380 =
+              min-width (was 1190; +190 for the Email column) — every other
+              anchor keeps its px. Anchors: chk 52, Order/Client ID 103,
+              Email 190 (fits ~24 chars on one line; longer wraps per the
+              no-ellipsis rule), Carrier·Region 162 (nowrap), Amount 98
+              ("$9,999.99" + pads), Payment 145 ("Refund requested"), Status
               168 ("Renewal not extended"), Created 133, Expires 138; Plan
-              auto (88 at B*). Plain % of 1190. */}
+              auto (88 at B*). Plain % of 1380. */}
           <colgroup>
-            <col style={{ width: '4.3697%' }} />
-            <col style={{ width: '8.6555%' }} />
-            <col style={{ width: '8.6555%' }} />
+            <col style={{ width: '3.7681%' }} />
+            <col style={{ width: '7.4638%' }} />
+            <col style={{ width: '7.4638%' }} />
+            <col style={{ width: '13.7681%' }} />
             <col />
-            <col style={{ width: '13.6134%' }} />
-            <col style={{ width: '8.2353%' }} />
-            <col style={{ width: '12.1849%' }} />
-            <col style={{ width: '14.1176%' }} />
-            <col style={{ width: '11.1765%' }} />
-            <col style={{ width: '11.5966%' }} />
+            <col style={{ width: '11.7391%' }} />
+            <col style={{ width: '7.1014%' }} />
+            <col style={{ width: '10.5072%' }} />
+            <col style={{ width: '12.1739%' }} />
+            <col style={{ width: '9.6377%' }} />
+            <col style={{ width: '10.0000%' }} />
           </colgroup>
           <thead>
             <tr>
               <th className="col-chk"></th>
               <th className="col-id">Order ID</th>
               <th className="col-id">Client ID</th>
+              <th className="col-text">Email</th>
               <th className="col-text">Plan</th>
               <th className="col-text">Carrier · Region</th>
               <th className="col-money">Amount</th>
@@ -113,7 +118,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
           </thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={10}><div className="empty"><div className="empty-desc">No orders match these filters. Adjust or reset.</div></div></td></tr>
+              <tr><td colSpan={11}><div className="empty"><div className="empty-desc">No orders match these filters. Adjust or reset.</div></div></td></tr>
             ) : orders.map(o => (
               <tr key={o.id} style={selected.has(o.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk">
@@ -121,6 +126,7 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
                 </td>
                 <td className="col-id"><span className="cell-tip" data-tip={o.id}><Link href={`/admin/orders/${o.id}`} className="td-link">{o.id}</Link></span></td>
                 <td className="col-id"><span className="cell-tip" data-tip={o.clientId}><Link href={`/admin/clients/${o.clientId}`} className="td-link">{o.clientId}</Link></span></td>
+                <td className="col-text"><span className="cell-tip" data-tip={o.clientEmail}>{o.clientEmail}</span></td>
                 <td className="col-text">{o.planName}</td>
                 <td className="col-text"><span className="cell-tip" data-tip={`${o.planCarrier} · ${o.region}`}>{o.planCarrier} · {o.region}</span></td>
                 <td className="col-money">{money(o.amount)}</td>

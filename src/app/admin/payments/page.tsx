@@ -37,6 +37,9 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
       { orderId: { contains: q, mode: 'insensitive' } },
       { clientId: { contains: q, mode: 'insensitive' } },
       { client: { name: { contains: q, mode: 'insensitive' } } },
+      // The email is a visible column now, so it has to be findable — Orders
+      // already searched it.
+      { client: { email: { contains: q, mode: 'insensitive' } } },
     ];
   }
 
@@ -46,7 +49,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
   const [payments, total, counts] = await Promise.all([
     prisma.payment.findMany({
       where, orderBy: { createdAt: 'desc' },
-      include: { client: { select: { id: true } }, order: { select: { id: true } } },
+      include: { client: { select: { id: true, email: true } }, order: { select: { id: true } } },
       skip: (page - 1) * PER_PAGE, take: PER_PAGE,
     }),
     prisma.payment.count({ where }),
@@ -111,6 +114,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
             kind: p.kind,
             orderId: p.order?.id ?? null,
             clientId: p.client?.id ?? null,
+            clientEmail: p.client?.email ?? null,
             provider: p.provider,
             method: p.method,
             gross: Number(p.gross),

@@ -69,9 +69,13 @@ export async function nextInvoiceId(db: Db = prisma) {
   return `INV-${String(n).padStart(5, '0')}`;
 }
 
+// 4 digits, not 5 (owner 2026-08-11): USR-0001. Migration
+// 20260811120000_client_id_four_digits renamed every existing USR-000NN row to
+// match, so the whole table reads one way — keep the two in step if this width
+// ever changes again.
 export async function nextUserId(db: Db = prisma) {
   const n = await nextFromSequence(db, 'user_id_seq');
-  return `USR-${String(n).padStart(5, '0')}`;
+  return `USR-${String(n).padStart(4, '0')}`;
 }
 
 // A batch of `count` proxy ids: FIRST random, the REST sequential from it

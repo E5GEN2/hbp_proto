@@ -38,7 +38,7 @@ enum RiskLevel {
 }
 
 model User {
-  id                       String       @id // USR-00001 / ADM-001
+  id                       String       @id // USR-0001 / ADM-001
   name                     String
   email                    String       @unique
   passwordHash             String

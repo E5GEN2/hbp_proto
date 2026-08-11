@@ -168,7 +168,8 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
           )}
 
           <OrdersBulkTable orders={orders.map(o => ({
-            id: o.id, clientId: o.client.id, planName: o.plan.name, planCarrier: o.plan.carrier,
+            id: o.id, clientId: o.client.id, clientEmail: o.client.email,
+            planName: o.plan.name, planCarrier: o.plan.carrier,
             region: o.region, amount: Number(o.amount),
             paymentStatus: o.paymentStatus, status: o.status, exception: o.exception,
             createdAt: o.createdAt, expiresAt: o.expiresAt,

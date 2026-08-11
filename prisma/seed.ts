@@ -118,7 +118,7 @@ async function main() {
   // Demo client
   const demoUser = await prisma.user.create({
     data: {
-      id: 'USR-00001',
+      id: 'USR-0001',
       name: 'Demo User',
       email: 'demo@example.com',
       passwordHash: hash('demo1234'),
@@ -133,12 +133,12 @@ async function main() {
 
   // Extra clients for admin to see
   const extraClients = [
-    { id: 'USR-00002', name: 'Jordan Lee',     email: 'jordan@example.com',  tier: 'PRO' as const,      status: 'ACTIVE' as const,  risk: 'NONE' as const,   country: 'US', telegram: '@jordanlee', joined: past(45), totalOrders: 4 },
-    { id: 'USR-00003', name: 'Priya Singh',    email: 'priya@example.com',   tier: 'PRO' as const,      status: 'ACTIVE' as const,  risk: 'NONE' as const,   country: 'IN', telegram: '@priya_s',  joined: past(120), totalOrders: 7 },
-    { id: 'USR-00004', name: 'Marco Rossi',    email: 'marco@example.com',   tier: 'STANDARD' as const, status: 'ACTIVE' as const,  risk: 'REVIEW' as const, country: 'IT', telegram: null,        joined: past(20), totalOrders: 1 },
-    { id: 'USR-00005', name: 'Yuki Tanaka',    email: 'yuki@example.com',    tier: 'VIP' as const,      status: 'ACTIVE' as const,  risk: 'NONE' as const,   country: 'JP', telegram: '@yukit',    joined: past(200), totalOrders: 12 },
-    { id: 'USR-00006', name: 'Sara Khan',      email: 'sara@example.com',    tier: 'STANDARD' as const, status: 'CHURNED' as const, risk: 'NONE' as const,   country: 'UAE',telegram: null,        joined: past(300), totalOrders: 2 },
-    { id: 'USR-00007', name: 'Felix Müller',   email: 'felix@example.com',   tier: 'STANDARD' as const, status: 'BLOCKED' as const, risk: 'FLAG' as const,   country: 'DE', telegram: null,        joined: past(90),  totalOrders: 1 },
+    { id: 'USR-0002', name: 'Jordan Lee',     email: 'jordan@example.com',  tier: 'PRO' as const,      status: 'ACTIVE' as const,  risk: 'NONE' as const,   country: 'US', telegram: '@jordanlee', joined: past(45), totalOrders: 4 },
+    { id: 'USR-0003', name: 'Priya Singh',    email: 'priya@example.com',   tier: 'PRO' as const,      status: 'ACTIVE' as const,  risk: 'NONE' as const,   country: 'IN', telegram: '@priya_s',  joined: past(120), totalOrders: 7 },
+    { id: 'USR-0004', name: 'Marco Rossi',    email: 'marco@example.com',   tier: 'STANDARD' as const, status: 'ACTIVE' as const,  risk: 'REVIEW' as const, country: 'IT', telegram: null,        joined: past(20), totalOrders: 1 },
+    { id: 'USR-0005', name: 'Yuki Tanaka',    email: 'yuki@example.com',    tier: 'VIP' as const,      status: 'ACTIVE' as const,  risk: 'NONE' as const,   country: 'JP', telegram: '@yukit',    joined: past(200), totalOrders: 12 },
+    { id: 'USR-0006', name: 'Sara Khan',      email: 'sara@example.com',    tier: 'STANDARD' as const, status: 'CHURNED' as const, risk: 'NONE' as const,   country: 'UAE',telegram: null,        joined: past(300), totalOrders: 2 },
+    { id: 'USR-0007', name: 'Felix Müller',   email: 'felix@example.com',   tier: 'STANDARD' as const, status: 'BLOCKED' as const, risk: 'FLAG' as const,   country: 'DE', telegram: null,        joined: past(90),  totalOrders: 1 },
   ];
   for (const c of extraClients) {
     await prisma.user.create({
@@ -485,7 +485,7 @@ async function main() {
   // Order with exception: paid but not provisioned
   await createOrder({
     id: 'ORD-10860',
-    clientId: 'USR-00002',
+    clientId: 'USR-0002',
     planId: 'PLAN-VRZN-30D',
     qty: 2,
     unitPrice: 129,
@@ -501,7 +501,7 @@ async function main() {
   });
   await createOrder({
     id: 'ORD-10861',
-    clientId: 'USR-00003',
+    clientId: 'USR-0003',
     planId: 'PLAN-TMOB-30D',
     qty: 4,
     unitPrice: 129,
@@ -517,7 +517,7 @@ async function main() {
   });
   await createOrder({
     id: 'ORD-10862',
-    clientId: 'USR-00005',
+    clientId: 'USR-0005',
     planId: 'PLAN-VRZN-90D',
     qty: 3,
     unitPrice: 329,
@@ -535,7 +535,7 @@ async function main() {
   // Expired order
   await createOrder({
     id: 'ORD-10800',
-    clientId: 'USR-00006',
+    clientId: 'USR-0006',
     planId: 'PLAN-VRZN-30D',
     qty: 1,
     unitPrice: 129,
@@ -552,7 +552,7 @@ async function main() {
   // Cancelled order
   await createOrder({
     id: 'ORD-10801',
-    clientId: 'USR-00004',
+    clientId: 'USR-0004',
     planId: 'PLAN-ATAT-7D',
     qty: 1,
     unitPrice: 39,
@@ -623,13 +623,13 @@ async function main() {
   // ── LOG ENTRIES (a few seeded events for admin Logs page) ────────────
   await prisma.log.createMany({
     data: [
-      { actorId: 'ADM-SYS', action: 'ORDER.CREATE',   objectType: 'ORDER',  objectId: 'ORD-10848', detail: 'Order created via client portal · Demo User (USR-00001)', at: pastHours(2) },
+      { actorId: 'ADM-SYS', action: 'ORDER.CREATE',   objectType: 'ORDER',  objectId: 'ORD-10848', detail: 'Order created via client portal · Demo User (USR-0001)', at: pastHours(2) },
       { actorId: 'ADM-SYS', action: 'ORDER.ACTIVATE', objectType: 'ORDER',  objectId: 'ORD-10847', detail: 'Order activated; 6 proxies provisioned from pool Verizon-East-A', at: past(12) },
       { actorId: 'ADM-001', action: 'PAYMENT.CONFIRM',objectType: 'PAYMENT',objectId: 'PAY-10847', detail: 'Stripe payment confirmed · Visa •• 4242 · $774.00', at: past(12) },
       { actorId: 'ADM-002', action: 'PROXY.MARK_FAULTY', objectType: 'PROXY', objectId: 'PXY-30425', detail: 'Marked faulty: connection-loss; auto-replace ON', at: pastHours(8) },
       { actorId: 'ADM-001', action: 'PLAN.UPDATE',    objectType: 'PLAN',   objectId: 'PLAN-ATAT-7D', detail: 'availableQuota: 50 → 60', at: past(2) },
       { actorId: 'ADM-SYS', action: 'CRON.HEALTH_CHECK', objectType: 'SYSTEM', objectId: null, detail: 'Health sweep: 18 healthy · 1 degraded · 1 offline', at: pastHours(1) },
-      { actorId: 'ADM-003', action: 'CLIENT.NOTE_ADD',objectType: 'CLIENT', objectId: 'USR-00004', detail: 'Note added: "Followed up on chargeback; user agrees to monitor"', at: past(3) },
+      { actorId: 'ADM-003', action: 'CLIENT.NOTE_ADD',objectType: 'CLIENT', objectId: 'USR-0004', detail: 'Note added: "Followed up on chargeback; user agrees to monitor"', at: past(3) },
       { actorId: 'ADM-001', action: 'AUTH.LOGIN',     objectType: 'AUTH',   objectId: 'ADM-001', detail: 'Admin login from 203.0.113.10', at: pastHours(6) },
     ],
   });

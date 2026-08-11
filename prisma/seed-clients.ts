@@ -52,7 +52,7 @@ async function main() {
       console.log(`  ↪ ${c.email} already exists — skipping`);
       continue;
     }
-    const id = `USR-${String(counter++).padStart(5, '0')}`;
+    const id = `USR-${String(counter++).padStart(4, '0')}`;
     await prisma.user.create({
       data: {
         id, name: c.name, email: c.email,

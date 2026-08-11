@@ -3,6 +3,7 @@ import { settleAwaitingPayment } from './settle-payment';
 import { npGetPayment } from './np-api';
 import { sendAdminTelegram, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
+import { RESURRECTABLE_STATUSES } from './crypto-window';
 
 // Reconcile crypto payments against NOWPayments' authoritative status — the
 // safety net that makes settlement independent of IPN delivery/signatures.
@@ -39,43 +40,89 @@ export async function reconcileCryptoPayments(now = Date.now()): Promise<Reconci
 
   const select = { id: true, externalRef: true, status: true, npStatus: true, orderId: true, clientId: true, client: { select: { id: true, name: true } } } as const;
 
-  // AWAITING is the primary case (a stuck, unsettled payment) — poll ALL of it
-  // first with its own budget. It's naturally bounded: the sweep's 72h timeout
-  // (step 3) moves every AWAITING to a terminal state, so this set can't grow
-  // unbounded or older than ~72h.
-  const awaiting = await prisma.payment.findMany({
-    where: { provider: 'NOWPayments', externalRef: { not: null }, status: 'AWAITING', createdAt: { lte: new Date(now - AWAITING_GRACE_MS) } },
+  // AWAITING is the primary case (a stuck, unsettled payment) — poll it first
+  // with its own budget. Now that abandoned charges stay AWAITING for up to 72h
+  // (expired IPNs no longer fail them), the set can hold many dead carts whose
+  // npStatus is already 'expired'/'failed'; polling those oldest-first every
+  // tick could starve genuinely-live charges of the 50-call budget (audit C3).
+  // Prioritise LIVE-looking rows (npStatus null/waiting/confirming/…) — a
+  // freshly-detected transfer must never wait behind a week of dead carts —
+  // then spend any leftover budget on the already-expired ones (to catch late
+  // funds landing on them). A dead cart polled once per few ticks is fine; a
+  // live payment polled late is a stuck order.
+  const liveish = await prisma.payment.findMany({
+    where: {
+      provider: 'NOWPayments', externalRef: { not: null }, status: 'AWAITING',
+      createdAt: { lte: new Date(now - AWAITING_GRACE_MS) },
+      // ⚠️ NULL-SAFETY (the PR #150 lesson, re-learned here): a bare
+      // `NOT { npStatus: { in: [...] } }` compiles to SQL `NOT (npStatus IN
+      // (...))`, which is NULL for a NULL npStatus → the row is dropped. A
+      // never-polled charge has npStatus NULL and is the MOST live case there
+      // is (no IPN has ever arrived — precisely the PAY-57160 stuck-payment
+      // class this reconciler exists for). It would fall out of BOTH this
+      // query and the dead-cart one below and never be reconciled. Spell the
+      // null branch out explicitly.
+      OR: [
+        { npStatus: null },
+        { npStatus: { notIn: ['expired', 'failed'] } },
+      ],
+    },
     select, orderBy: { createdAt: 'asc' }, take: MAX_PER_RUN,
   });
+  const awaitingBudget = MAX_PER_RUN - liveish.length;
+  const deadCarts = awaitingBudget > 0
+    ? await prisma.payment.findMany({
+        where: {
+          provider: 'NOWPayments', externalRef: { not: null }, status: 'AWAITING',
+          createdAt: { lte: new Date(now - AWAITING_GRACE_MS) },
+          npStatus: { in: ['expired', 'failed'] },
+        },
+        select, orderBy: { createdAt: 'asc' }, take: awaitingBudget,
+      })
+    : [];
+  const awaiting = [...liveish, ...deadCarts];
 
-  // Then, with whatever budget remains, re-check recently-FAILED charges for a
-  // LATE payment (NP addresses live ~7d) — but ONLY those NP hasn't already
-  // told us are terminally dead. Once we've mirrored a terminal npStatus
-  // (failed/expired/refunded → no funds, will never become finished), the row
-  // is excluded so it can't waste API calls every tick for 8 days or crowd out
-  // AWAITING (review finding). Newest-first — a recent failure is likeliest to
-  // still settle late.
+  // Then, with whatever budget remains, re-check recently-FAILED charges. Two
+  // things can still happen to a locally-FAILED charge while the NP address
+  // lives (~7d): a late `finished` (resurrect-settle), and — the routine shape
+  // under the account's ~10-min fixed-rate kill — funds LANDING on a charge
+  // whose npStatus is already terminal ('expired' with actually_paid>0). The
+  // old version excluded terminal-npStatus rows to save API budget, which
+  // permanently foreclosed the second case: the webhook mirrors 'expired'
+  // BEFORE any local flip, so every dead charge was excluded and late money
+  // became invisible outside the NP dashboard (audit 2026-08-11, P0). Poll
+  // them all while inside the lookback; the budget cap + newest-first ordering
+  // keep the cost bounded, and AWAITING always goes first.
+  //   CANCELLED is polled alongside FAILED: the sweep no longer produces
+  //   cancelled charges, but a client/admin cancel still does, and NP has no
+  //   cancel API — that address stays payable for ~7 days, so a cancelled
+  //   charge can genuinely reach `finished`. Settle resurrects it into the
+  //   cancelled-order park (re-review C1/C2), which needs someone to notice
+  //   it in the first place; this is that someone when IPNs are down.
+  //   MANUAL_REVIEW too: a parked charge whose transfer later completes at NP
+  //   should auto-resolve (settle resurrects it and activates the order, or
+  //   re-parks silently if the order is cancelled). Without it, parking a row
+  //   removed it from every poller and only a human could ever finish it —
+  //   exactly the stuck state this reconciler exists to prevent.
   const remaining = MAX_PER_RUN - awaiting.length;
   const failed = remaining > 0
     ? await prisma.payment.findMany({
         where: {
-          provider: 'NOWPayments', externalRef: { not: null }, status: 'FAILED',
+          provider: 'NOWPayments', externalRef: { not: null },
+          // Exactly the set settle can revive — one source of truth, so a
+          // status added there can never be forgotten here (re-review C7).
+          status: { in: [...RESURRECTABLE_STATUSES] },
           createdAt: { gte: new Date(now - FAILED_LOOKBACK_MS) },
-          // Skip only charges NP has already confirmed terminally dead. A row we
-          // have NOT polled yet has npStatus = null and MUST be included — SQL
-          // `NOT (npStatus IN (...))` is null-unsafe (drops nulls), which would
-          // exclude every never-polled FAILED row (i.e. all of them). Spell out
-          // the null branch explicitly.
-          OR: [
-            { npStatus: null },
-            { npStatus: { notIn: ['failed', 'expired', 'refunded'] } },
-          ],
         },
         select, orderBy: { createdAt: 'desc' }, take: remaining,
       })
     : [];
 
-  const candidates = [...awaiting, ...failed];
+  // De-dup by id: the two AWAITING reads are separate statements, so a row
+  // whose npStatus flips between them can land in both lists — polling it
+  // twice in one tick would double-count and re-alert (re-review C12).
+  const seen = new Set<string>();
+  const candidates = [...awaiting, ...failed].filter(p => !seen.has(p.id) && seen.add(p.id));
 
   for (const p of candidates) {
     try {
@@ -96,16 +143,22 @@ export async function reconcileCryptoPayments(now = Date.now()): Promise<Reconci
 
       if (npStatus === 'finished') {
         const r = await settleAwaitingPayment(p.id, 'NOWPayments reconcile', { resurrectFailed: true });
-        if (!('already' in r)) res.settled++;
+        // A settle onto a cancelled order parks instead of crediting — count
+        // it where ops actually look for it (re-review C11).
+        if ('kind' in r && r.kind === 'review') res.manualReview++;
+        else if (!('already' in r)) res.settled++;
         continue;
       }
 
       // Funds landed on a charge that then died — real money, needs a human.
       // Mirror the webhook: park in MANUAL_REVIEW (durable admin surface) +
-      // alert. Only from AWAITING (a FAILED row here had no funds by definition
-      // of our local expiry, and MANUAL_REVIEW must not overwrite a settled row).
-      if ((npStatus === 'failed' || npStatus === 'expired') && fundsArrived && p.status === 'AWAITING') {
-        const upd = await prisma.payment.updateMany({ where: { id: p.id, status: 'AWAITING' }, data: { status: 'MANUAL_REVIEW' } });
+      // alert. From AWAITING *and* FAILED — a FAILED row here can absolutely
+      // carry funds now (the 10-min kill fails charges minutes before an
+      // in-flight transfer confirms; repay retirement does the same). The
+      // guarded updateMany dedups: once parked, later ticks no-op.
+      if ((npStatus === 'failed' || npStatus === 'expired') && fundsArrived
+          && (p.status === 'AWAITING' || p.status === 'FAILED' || p.status === 'CANCELLED')) {
+        const upd = await prisma.payment.updateMany({ where: { id: p.id, status: { in: ['AWAITING', 'FAILED', 'CANCELLED'] } }, data: { status: 'MANUAL_REVIEW' } });
         if (upd.count > 0) {
           res.manualReview++;
           await prisma.log.create({
@@ -116,8 +169,21 @@ export async function reconcileCryptoPayments(now = Date.now()): Promise<Reconci
         continue;
       }
 
-      // Underpaid — money arrived, not enough. Log + alert once (first time we
-      // see it; dedup on the mirrored npStatus).
+      // Underpaid — money arrived, not enough. On a live AWAITING charge: log
+      // + alert once (dedup on the mirrored npStatus), no state change — the
+      // client may still send the remainder. On a locally-FAILED charge that
+      // is funds-on-a-dead-charge → park for review (mirrors the webhook).
+      if (npStatus === 'partially_paid' && (p.status === 'FAILED' || p.status === 'CANCELLED')) {
+        const upd = await prisma.payment.updateMany({ where: { id: p.id, status: { in: ['FAILED', 'CANCELLED'] } }, data: { status: 'MANUAL_REVIEW' } });
+        if (upd.count > 0) {
+          res.manualReview++;
+          await prisma.log.create({
+            data: { actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'PAYMENT', objectId: p.id, detail: `Reconcile: partial funds on a dead charge — received ${np.actually_paid ?? '?'} ${np.pay_currency ?? ''} of ${np.pay_amount ?? '?'} → manual review` },
+          });
+          await alertAttention(p, 'partial funds on a dead charge (reconcile)', np);
+        }
+        continue;
+      }
       if (npStatus === 'partially_paid' && p.npStatus !== 'partially_paid' && p.status === 'AWAITING') {
         res.underpaid++;
         await prisma.log.create({

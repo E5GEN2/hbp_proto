@@ -4,6 +4,7 @@ import { npVerifySignature } from '@/lib/nowpayments';
 import { settleAwaitingPayment, failAwaitingPayment } from '@/lib/settle-payment';
 import { sendAdminTelegram, adminCryptoAttentionAlert } from '@/lib/telegram';
 import { appUrl } from '@/lib/app-url';
+import { classifyIpn, type PaymentPhase } from '@/lib/crypto-window';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,59 +78,78 @@ export async function POST(req: Request) {
     if (status) {
       await prisma.payment.updateMany({ where: { id: paymentId }, data: { npStatus: status } });
     }
-    // finished = funds fully received and settled on NOWPayments' side.
-    // resurrectFailed: a charge we already failed locally (rate window
-    // expired / client regenerated the address but paid the old one) still
-    // settles — the funds are on-chain; idempotency must not swallow real
-    // money. If the order meanwhile settled via a NEWER charge, the renewal
-    // branch simply extends the term — paid twice, value twice.
-    if (status === 'finished') {
-      const result = await settleAwaitingPayment(paymentId, 'NOWPayments IPN', { resurrectFailed: true });
-      return NextResponse.json(result);
-    }
+    // Single policy decision (unit-tested — see scripts/test-crypto-window.ts).
+    const action = classifyIpn(status, fundsArrived, (before?.status ?? null) as PaymentPhase);
 
-    if (status === 'failed' || status === 'expired' || status === 'refunded') {
-      // Funds landed on a charge that then died (the classic "paid the expired
-      // address" case) — the money is REAL. Do NOT fail it (that tells the
-      // client it didn't complete and buries the signal); park it in
-      // MANUAL_REVIEW so it has a durable admin surface (awaiting-payments bell
-      // + MarkPaid confirm) independent of Telegram, and alert. Only act on the
-      // first transition (before.status AWAITING) so IPN retries don't re-fire.
-      if (status !== 'refunded' && fundsArrived && before?.status === 'AWAITING') {
-        await prisma.payment.updateMany({ where: { id: paymentId, status: 'AWAITING' }, data: { status: 'MANUAL_REVIEW' } });
-        await prisma.log.create({
-          data: {
-            actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'PAYMENT', objectId: paymentId,
-            detail: `NOWPayments IPN: charge ${status} but funds arrived — received ${evt?.actually_paid ?? '?'} ${evt?.pay_currency ?? ''} of expected ${evt?.pay_amount ?? '?'} → manual review`,
-          },
-        });
-        await alertAdminAttention(paymentId, `charge ${status} but funds arrived`, evt);
-        return NextResponse.json({ ok: true, noted: 'manual_review' });
+    switch (action) {
+      case 'settle': {
+        // finished = funds fully received and settled at NP. resurrectFailed: a
+        // charge we already failed locally (window expired then paid, or the
+        // client paid a regenerated-away address) still settles — the money is
+        // on-chain; idempotency must not swallow it. If the order meanwhile
+        // settled via a newer charge, the renewal branch just extends the term.
+        const result = await settleAwaitingPayment(paymentId, 'NOWPayments IPN', { resurrectFailed: true });
+        return NextResponse.json(result);
       }
-      const result = await failAwaitingPayment(paymentId, `${status} (NOWPayments IPN)`);
-      return NextResponse.json(result);
-    }
-
-    if (status === 'partially_paid') {
-      // Money arrived but not enough — needs a human. Log it (admin activity
-      // feed) AND push the exact payment to the ops Telegram chat so support
-      // never has to hunt for it in the NOWPayments dashboard. Dedup: only on
-      // the first partially_paid IPN (NP re-sends the same event).
-      const firstTime = before?.npStatus !== 'partially_paid';
-      if (firstTime) {
-        await prisma.log.create({
-          data: {
-            actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'PAYMENT', objectId: paymentId,
-            detail: `NOWPayments IPN: partially paid — received ${evt?.actually_paid ?? '?'} ${evt?.pay_currency ?? ''} of expected ${evt?.pay_amount ?? '?'}`,
-          },
+      case 'manual_review': {
+        // Funds landed on a charge that died (expired/failed with funds, or a
+        // partial on an already-dead charge) — the money is REAL. Park it in
+        // MANUAL_REVIEW for a durable admin surface (awaiting-payments bell +
+        // MarkPaid) independent of Telegram, and alert. Accepted from AWAITING
+        // *and* the locally-dead states: under the ~10-min window "charge
+        // expired, then the transfer confirmed" is the routine late shape, and
+        // the charge may already be FAILED (repay/failed-IPN) or CANCELLED (72h
+        // sweep). The guarded updateMany is both the race guard and the dedup —
+        // only the real flip logs and alerts; IPN retries no-op.
+        const flipped = await prisma.payment.updateMany({
+          where: { id: paymentId, status: { in: ['AWAITING', 'FAILED', 'CANCELLED'] } },
+          data: { status: 'MANUAL_REVIEW' },
         });
-        await alertAdminAttention(paymentId, 'underpaid (rate drift / late payment)', evt);
+        if (flipped.count > 0) {
+          await prisma.log.create({
+            data: {
+              actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'PAYMENT', objectId: paymentId,
+              detail: `NOWPayments IPN: charge ${status} but funds arrived — received ${evt?.actually_paid ?? '?'} ${evt?.pay_currency ?? ''} of expected ${evt?.pay_amount ?? '?'} → manual review`,
+            },
+          });
+          await alertAdminAttention(paymentId, `charge ${status} but funds arrived`, evt);
+          return NextResponse.json({ ok: true, noted: 'manual_review' });
+        }
+        return NextResponse.json({ ok: true, already: true });
       }
-      return NextResponse.json({ ok: true, noted: 'partially_paid', firstTime });
+      case 'fail': {
+        // A real NP failure ('failed') or a refund — fail the AWAITING charge.
+        // NOTE: 'expired' with no funds does NOT reach here (classifyIpn → noop):
+        // the account force-expires every fixed-rate charge at ~10 min, so
+        // failing an expired-no-funds charge punished normal wallet latency with
+        // a FAILED row + alarming bell (the 2026-08-10 PAY-48127/74487 incident).
+        // Such a charge stays AWAITING — the panel offers a fresh address and the
+        // 72h sweep is the one reaper — unifying policy with the reconciler.
+        const result = await failAwaitingPayment(paymentId, `${status} (NOWPayments IPN)`);
+        return NextResponse.json(result);
+      }
+      case 'underpaid_alert': {
+        // Underpaid on a still-live AWAITING charge: the client may send the
+        // remainder — no state change, but a human should know. Log + ops
+        // Telegram, deduped on the first partially_paid IPN (NP re-sends it).
+        const firstTime = before?.npStatus !== 'partially_paid';
+        if (firstTime) {
+          await prisma.log.create({
+            data: {
+              actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'PAYMENT', objectId: paymentId,
+              detail: `NOWPayments IPN: partially paid — received ${evt?.actually_paid ?? '?'} ${evt?.pay_currency ?? ''} of expected ${evt?.pay_amount ?? '?'}`,
+            },
+          });
+          await alertAdminAttention(paymentId, 'underpaid (rate drift / late payment)', evt);
+        }
+        return NextResponse.json({ ok: true, noted: 'partially_paid', firstTime });
+      }
+      case 'noop':
+      default:
+        // expired-no-funds (open cart) / waiting / confirming / confirmed /
+        // sending — nothing to do; npStatus already mirrored above.
+        return NextResponse.json({ ok: true, status });
     }
-
-    // waiting / confirming / confirmed / sending — intermediate, nothing to do.
-    return NextResponse.json({ ok: true, status });
   } catch (e: any) {
     console.error(`[nowpayments] IPN processing failed for ${paymentId} (${status})`, e);
     return NextResponse.json({ error: 'Processing failed' }, { status: 500 });

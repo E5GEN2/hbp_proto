@@ -96,8 +96,12 @@ export async function POST(req: Request) {
   // One unpaid self-serve order per plan: a stale tab or back-button retry
   // must not stack duplicates. The client resolves it on the completion page
   // (/checkout?resume=…) — pay the existing invoice or cancel the order.
+  // Keyed on a LIVE AWAITING charge, not order.paymentStatus alone: an order
+  // whose charge went to MANUAL_REVIEW (funds under verification) keeps
+  // paymentStatus AWAITING but has nothing the client can pay — 409ing here
+  // dead-locked them out of buying the plan at all (audit C7).
   const unpaid = await prisma.order.findFirst({
-    where: { clientId: userId, planId, status: 'NEW', paymentStatus: 'AWAITING' },
+    where: { clientId: userId, planId, status: 'NEW', paymentStatus: 'AWAITING', payments: { some: { status: 'AWAITING' } } },
     orderBy: { createdAt: 'desc' },
   });
   if (unpaid) {
@@ -376,6 +380,13 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   }
   if (!order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan' }, { status: 400 });
+  }
+  // Funds already attached to a charge on this order and under verification —
+  // a second charge would bill the client twice for one renewal. Same rule the
+  // repay endpoint and the resume screen enforce (re-review C2).
+  const parked = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'MANUAL_REVIEW' }, select: { id: true } });
+  if (parked) {
+    return NextResponse.json({ error: 'A payment for this order is being verified — no need to pay again.', orderId: order.id }, { status: 409 });
   }
   // One pending renewal payment at a time — a second POST while crypto is
   // awaiting confirmation must not stack another charge.

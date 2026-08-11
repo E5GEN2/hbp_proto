@@ -27,6 +27,15 @@ function shortMethod(m: string) {
   return (m || '').replace(/^(Deposit|Wallet top-up) via\s*/i, '');
 }
 
+// Status → {chip class, label}. MANUAL_REVIEW has no bare `.chip.manual_review`
+// rule (globals.css) and its raw label reads "Manual_review" — map it to the
+// violet `review` chip with a human label so the client whose money is under
+// verification sees something intelligible, not an unstyled token (audit).
+function statusChip(status: string): { cls: string; label: string } {
+  if (status === 'MANUAL_REVIEW') return { cls: 'review', label: 'Verifying' };
+  return { cls: status.toLowerCase(), label: status.charAt(0) + status.slice(1).toLowerCase() };
+}
+
 type TxTab = 'all' | 'confirmed' | 'awaiting' | 'refunded';
 
 // Status → tab bucket. Mirrors the original page's where-clause grouping.
@@ -65,7 +74,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
         },
       },
       orderBy: { createdAt: 'desc' },
-      include: { invoice: true, order: { select: { id: true } } },
+      include: { invoice: true, order: { select: { id: true, status: true } } },
     }),
     prisma.paymentMethod.findMany({ where: { userId } }),
   ]);
@@ -196,14 +205,17 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
                                   ? <Link href={`/orders/${p.order.id}`} className="td-link">{p.order.id}</Link>
                                   : <span style={{ color: 'var(--muted)' }}>—</span>}
                               </td>
-                              <td className="col-status"><span className={`chip ${p.status.toLowerCase()}`}>{p.status.charAt(0) + p.status.slice(1).toLowerCase()}</span></td>
+                              <td className="col-status">{(() => { const c = statusChip(p.status); return <span className={`chip ${c.cls}`}>{c.label}</span>; })()}</td>
                               <td className="col-action">
                                 {/* No client-facing invoices at launch (decision 2026-07-06) —
                                     PDFs live in the admin panel only. */}
                                 {p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.payAddress
-                                  /* Direct in-portal payment → our own pay panel
-                                     (order resume / deposit resume). */
+                                  /* Direct in-portal payment → our own pay panel (resume the live charge). */
                                   ? <Link className="td-link" href={p.orderId ? `/checkout?resume=${p.orderId}` : `/checkout?kind=deposit&resume=${p.id}`}>Pay now</Link>
+                                  : p.status === 'FAILED' && p.provider === 'NOWPayments' && p.payAddress && (p.orderId ? p.order?.status === 'NEW' : true)
+                                  /* Dead charge, order still open (or a deposit) → fresh-address
+                                     recovery. Skip once the order has moved on (settled/cancelled). */
+                                  ? <Link className="td-link" href={p.orderId ? `/checkout?resume=${p.orderId}` : `/checkout?kind=deposit&resume=${p.id}`}>Retry</Link>
                                   : p.status === 'AWAITING' && p.provider === 'NOWPayments' && p.externalRef
                                   /* Legacy hosted invoice (pre-in-portal payments). */
                                   ? <a className="td-link" href={npInvoiceUrl(p.externalRef)}>Pay now</a>

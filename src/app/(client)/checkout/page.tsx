@@ -139,7 +139,45 @@ export default async function CheckoutPage({ searchParams }: {
           </>
         );
       }
-      // Failed / cancelled — nothing to resume in-portal.
+      // Funds under verification — money was detected on a dead charge and a
+      // human is queued (MANUAL_REVIEW). Honest holding screen, no pay/regen
+      // affordances: the client's money is attached to THIS charge.
+      if (pay.status === 'MANUAL_REVIEW') {
+        return (
+          <>
+            <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
+            <main style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
+              <div className="panel" style={{ padding: 24 }}>
+                <h2 style={{ marginTop: 0, color: 'var(--text)' }}>Payment received — being verified</h2>
+                <p style={{ color: 'var(--muted)' }}>
+                  We&rsquo;ve detected your payment on deposit <span className="mono">{pay.id}</span> and it&rsquo;s being verified.
+                  Your balance updates automatically once it&rsquo;s confirmed — nothing else is needed from you.
+                  Questions? Message <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.
+                </p>
+                <Link href="/billing" className="btn primary">Back to billing</Link>
+              </div>
+            </main>
+          </>
+        );
+      }
+      // FAILED direct charge — same one-click recovery orders get: the panel
+      // opens straight in its window-closed view with "Get a fresh address"
+      // (repay's TOPUP branch). Crypto disabled → honest notice instead.
+      // Bounded to the 7-day window billing uses to hide dead deposits (audit
+      // C17) so the recovery surface and the ledger row appear/disappear
+      // together — an ancient bookmarked charge is treated as done.
+      const failedRecent = pay.createdAt.getTime() > Date.now() - 7 * 86_400_000;
+      if (pay.status === 'FAILED' && pay.payAddress && allowCrypto && failedRecent) {
+        return (
+          <>
+            <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Complete deposit' }]} balance={Number(me.balance)} />
+            <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
+              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} returnTo={resumeReturn} />
+            </main>
+          </>
+        );
+      }
+      // Cancelled (or crypto off) — nothing to resume in-portal.
       return (
         <>
           <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Deposit' }]} balance={Number(me.balance)} />
@@ -147,7 +185,10 @@ export default async function CheckoutPage({ searchParams }: {
             <div className="panel" style={{ padding: 24 }}>
               <h2 style={{ marginTop: 0, color: 'var(--text)' }}>This deposit is no longer pending</h2>
               <p style={{ color: 'var(--muted)' }}>It was not completed — you can start a fresh deposit any time.</p>
-              <Link href="/billing" className="btn primary">Back to billing</Link>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Link href="/checkout?kind=deposit" className="btn primary">Start a new deposit</Link>
+                <Link href="/billing" className="btn">Back to billing</Link>
+              </div>
             </div>
           </main>
         </>
@@ -193,6 +234,34 @@ export default async function CheckoutPage({ searchParams }: {
     }
 
     const isNewOrder = resumeOrder.status === 'NEW';
+
+    // Funds under verification take precedence over ANY pay surface: money is
+    // already attached to a charge on this order (MANUAL_REVIEW) — offering an
+    // address here would invite paying twice. Honest holding screen instead.
+    const reviewPay = await prisma.payment.findFirst({
+      where: { orderId: resumeOrder.id, status: 'MANUAL_REVIEW' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (reviewPay) {
+      return (
+        <>
+          <ClientTopbar breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: 'Payment' }]} balance={Number(me.balance)} />
+          <main style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
+            <div className="panel" style={{ padding: 24 }}>
+              <h2 style={{ marginTop: 0, color: 'var(--text)' }}>Payment received — being verified</h2>
+              <p style={{ color: 'var(--muted)' }}>
+                We&rsquo;ve detected your payment on <span className="mono">{reviewPay.id}</span> for this order and it&rsquo;s being verified.
+                The order updates automatically once it&rsquo;s confirmed — nothing else is needed from you.
+                Questions? Message <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>.
+              </p>
+              <Link href={`/orders/${resumeOrder.id}`} className="btn primary">View order</Link>
+            </div>
+          </main>
+        </>
+      );
+    }
+
     const awaiting = resumeOrder.status === 'CANCELLED' || resumeOrder.status === 'PENDING_RENEWAL'
       ? null
       : await prisma.payment.findFirst({

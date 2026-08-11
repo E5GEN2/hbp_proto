@@ -13,7 +13,11 @@ import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
 
 const CONFIRMABLE = ['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'];
-const REFUNDABLE = ['CONFIRMED', 'PAID', 'REFUND_REQUESTED']; // last = client's request awaiting execution
+// REFUND_REQUESTED = client's request awaiting execution. MANUAL_REVIEW =
+// funds landed on a dead charge; refunding to balance is the resolution when
+// the order can't be honoured (e.g. it was cancelled) — without it that queue
+// had no exit at all.
+const REFUNDABLE = ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'];
 
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
   await requireAdmin();

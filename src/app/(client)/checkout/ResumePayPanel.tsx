@@ -67,11 +67,11 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
   return (
     <div className="checkout-processing">
       <div className="panel checkout-processing-card">
-        <div className="processing-title">Payment window expired</div>
+        <div className="processing-title">Payment window closed</div>
         <div className="t-note" style={{ maxWidth: 420 }}>
-          The exchange-rate window for this order&rsquo;s charge has closed and no payment was received.
+          The payment window for this order&rsquo;s charge has closed and no transfer was detected.
           Pick a coin to generate a fresh address — the price stays the same.
-          If you already sent the funds, contact support — nothing is lost.
+          Already sent the funds? Don&rsquo;t send again — they&rsquo;re detected automatically and support is notified.
         </div>
         <div style={{ width: '100%', textAlign: 'left' }}>
           <CoinSelect totalUsd={amountUsd} value={payCoin} onChange={setPayCoin}
@@ -89,19 +89,42 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
 }
 
 export function DepositResumePanel({ amountUsd, initial, returnTo }: { amountUsd: number; initial: PayPanelData; returnTo?: string }) {
+  const toast = useToast();
   const back = returnTo ?? '/billing';
-  // Settle reloads THIS addressable url — the server sees the CONFIRMED row and
-  // renders the DepositSuccess confirmation (owner 2026-08-10: no silent
-  // redirect to Billing after a top-up). returnTo rides along so the
-  // confirmation can offer "Continue checkout". Hard-nav kept (PR #111).
-  const settledUrl = `/checkout?kind=deposit&resume=${initial.paymentId}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
+  const [payData, setPayData] = useState<PayPanelData>(initial);
+  const [busy, setBusy] = useState(false);
+  // Settle reloads the CURRENT charge's addressable url — the server sees the
+  // CONFIRMED row and renders the DepositSuccess confirmation (owner
+  // 2026-08-10: no silent redirect to Billing after a top-up). returnTo rides
+  // along so the confirmation can offer "Continue checkout". Hard-nav kept
+  // (PR #111). Derived from payData — a regenerated charge has a NEW id.
+  const settledUrl = `/checkout?kind=deposit&resume=${payData.paymentId}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
+
+  // Deposit regenerate — the repay endpoint's TOPUP branch (same recovery
+  // orders always had; deposits used to dead-end on a lapsed window).
+  async function regenerate() {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/checkout/repay', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ paymentId: payData.paymentId, payCoin: payData.payCurrency }),
+      });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(j.error ?? 'Could not create a new payment — please try again.');
+      setPayData(j.payment);
+    } catch (e: any) {
+      toast('Failed', e.message, 'danger');
+    } finally { setBusy(false); }
+  }
+
   return (
     <CryptoPayPanel
-      pay={initial}
+      key={payData.paymentId}
+      pay={payData}
       amountUsd={amountUsd}
       onSettled={() => window.location.assign(settledUrl)}
-      // No regenerate for deposits — an expired top-up is simply abandoned and
-      // the client starts a fresh one from the deposit wizard.
+      onRegenerate={regenerate}
+      regenerating={busy}
     >
       <Link href="/checkout?kind=deposit" className="btn ghost">Start a new deposit</Link>
       <Link href={back} className="btn ghost">← Back to {returnTo ? 'checkout' : 'billing'}</Link>

@@ -32,8 +32,12 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   if (!order.plan.renewalAllowed) return { renewed: false, reason: 'renewals are disabled for this plan' };
 
   // A renewal payment the client already started (e.g. crypto awaiting
-  // confirmation) must not be stacked with an automatic charge.
-  const pending = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' } });
+  // confirmation) must not be stacked with an automatic charge — nor may one
+  // whose funds arrived and are under verification (MANUAL_REVIEW), which
+  // would charge the client twice for the same term (re-review C2).
+  const pending = await prisma.payment.findFirst({
+    where: { orderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } },
+  });
   if (pending) return { renewed: false, reason: `renewal payment ${pending.id} already awaiting confirmation` };
 
   const price = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;

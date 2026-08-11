@@ -270,7 +270,10 @@ function OrderCard({
         </Link>
       </>
     );
-  } else if (o.status === 'NEW' && (o.paymentStatus === 'PENDING' || o.paymentStatus === 'AWAITING')) {
+  } else if (o.status === 'NEW' && (o.paymentStatus === 'PENDING' || o.paymentStatus === 'AWAITING' || o.paymentStatus === 'FAILED')) {
+    // FAILED included: the charge died (a real 'failed' IPN, or the pre-policy
+    // 10-min expiry kills) but the ORDER is still open — /checkout?resume=…
+    // serves the fresh-address recovery, which bells/timeline already promise.
     actions = (
       <>
         <button className="btn primary" onClick={e => { stop(e); onContinue(); }}>

@@ -366,19 +366,43 @@ export async function runSweep(): Promise<SweepResult> {
     }
 
     // ── 3. Time out stale AWAITING payments after 72h ──────────────────────
-    //   TOPUP deposits flip to FAILED (via failAwaitingPayment — idempotent,
-    //   AWAITING-only, WARNING bell "Deposit didn't complete", PAYMENT.FAIL
-    //   log), NOT CANCELLED: the NOWPayments address lives ~7 days, so a real
-    //   deposit paid on day 4–7 still credits when the finished IPN resurrects
-    //   the FAILED charge (settle resurrects only FAILED — a CANCELLED charge
-    //   is swallowed by idempotency and the money is lost). ORDER payments keep
-    //   the CANCELLED path and cancel their still-NEW orders. Owner
-    //   crypto-deposit-expiry policy 2026-08-07 (scope: deposits).
+    //   Scope: NOWPayments charges only. Admin-arranged out-of-band payments
+    //   (Bank transfer, Comp, off-portal crypto) are a different provider and
+    //   routinely take longer than 72h — the sweep must not cancel an order
+    //   whose wire is simply in transit (audit C7); an admin settles or cancels
+    //   those. Dev-only mock charges ('CoinPayments', created only when NP is
+    //   unconfigured) are likewise left alone — they never occur in prod.
+    //   Since the webhook no longer fails expired-no-funds charges (10-min
+    //   window = open cart), this sweep is the ONE place an abandoned crypto
+    //   charge dies.
+    //   BOTH kinds now flip to FAILED (via failAwaitingPayment for deposits;
+    //   inline for orders, which ALSO cancel their still-NEW order): FAILED is
+    //   resurrectable, so a genuinely-late payment (NP addresses live ~7d)
+    //   still credits when a finished IPN / reconcile lands — CANCELLED was a
+    //   money black hole (settle refuses it, the reconciler never re-polls it;
+    //   audit C1/C8/C13). A late finished on a FAILED charge whose order is
+    //   CANCELLED is parked for manual review by settle, not silently renewed.
+    //   A charge carrying a funds signal (npStatus partially_paid) is parked
+    //   in MANUAL_REVIEW instead of dying — failing it would tell the client
+    //   "nothing was received" about money that partially arrived (audit C9/C12).
     const stale = await prisma.payment.findMany({
-      where: { status: 'AWAITING', createdAt: { lte: new Date(now - AWAITING_TIMEOUT_MS) } },
+      where: {
+        status: 'AWAITING', provider: 'NOWPayments',
+        createdAt: { lte: new Date(now - AWAITING_TIMEOUT_MS) },
+      },
       include: { order: { select: { id: true, status: true, clientId: true } } },
     });
     for (const p of stale) {
+      if (p.npStatus === 'partially_paid') {
+        const upd = await prisma.payment.updateMany({ where: { id: p.id, status: 'AWAITING' }, data: { status: 'MANUAL_REVIEW' } });
+        if (upd.count > 0) {
+          timedOutPayments++;
+          await prisma.log.create({
+            data: { actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'PAYMENT', objectId: p.id, detail: 'Sweep: 72h window closed on a partially-paid charge — parked for manual review' },
+          });
+        }
+        continue;
+      }
       if (p.kind === 'TOPUP') {
         // Deposit: fail (resurrectable), don't cancel. No external HTTP inside
         // — failAwaitingPayment only writes the bell + log in its own tx.
@@ -386,27 +410,35 @@ export async function runSweep(): Promise<SweepResult> {
         if (r.changed) timedOutPayments++;
         continue;
       }
-      // ── ORDER payment: cancel on the same 72h window, both writes guarded ──
-      //   Optimistic concurrency, mirroring failAwaitingPayment: a late
-      //   `finished` IPN can settle THIS payment (AWAITING→CONFIRMED) and
-      //   activate its NEW order (NEW→PROVISIONING/ACTIVE, proxies assigned)
-      //   between the snapshot above and here. An unguarded cancel would clobber
-      //   a just-paid order + its payment. The payment flip is a status-guarded
-      //   updateMany (no-op when settle won the race), and the order is re-read
-      //   IN-tx so a since-activated order is never cancelled. Both writes are
-      //   in one tx so a cancelled payment never orphans a still-NEW order.
-      //   (Late ORDER payments are not yet resurrectable — that's the deposits-
-      //   only expiry policy; extending it to orders stays deferred.)
-      const cancel = await prisma.$transaction(async tx => {
-        const res = await tx.payment.updateMany({ where: { id: p.id, status: 'AWAITING' }, data: { status: 'CANCELLED' } });
-        if (res.count === 0) return null; // settled / moved out of AWAITING concurrently — leave it
-        await tx.log.create({ data: { actorId: null, action: 'PAYMENT.CANCEL', objectType: 'PAYMENT', objectId: p.id, detail: 'Cancelled by sweep — no confirmation within 72h' } });
+      // ── ORDER payment: FAIL the charge (resurrectable) AND cancel the still-
+      //   NEW order, both writes guarded. Optimistic concurrency: a late
+      //   `finished` IPN can settle THIS payment and activate its NEW order
+      //   between the snapshot and here. The payment flip is a status-guarded
+      //   updateMany that ALSO excludes a since-arrived partial signal (audit
+      //   C12 — re-checked in-tx, not from the stale snapshot); the order is
+      //   re-read IN-tx so a since-activated order is never cancelled. Both in
+      //   one tx so a failed payment never orphans a still-NEW order.
+      const done = await prisma.$transaction(async tx => {
+        const res = await tx.payment.updateMany({
+          // ⚠️ NULL-SAFETY: a bare `NOT { npStatus: 'partially_paid' }` (and
+          // equally `not:`) is SQL `npStatus <> '…'`, which is NULL — i.e. not
+          // true — for a NULL npStatus. Since a never-polled charge has NULL
+          // there, the whole reaper would silently no-op on exactly the rows
+          // it exists for. Spell the null arm out (re-review C4/C9).
+          where: {
+            id: p.id, status: 'AWAITING',
+            OR: [{ npStatus: null }, { npStatus: { not: 'partially_paid' } }],
+          },
+          data: { status: 'FAILED' },
+        });
+        if (res.count === 0) return null; // settled / partial arrived / moved out of AWAITING — leave it
+        await tx.log.create({ data: { actorId: null, action: 'PAYMENT.FAIL', objectType: 'PAYMENT', objectId: p.id, detail: 'Sweep: no confirmation within 72h — failed (resurrectable if paid late)' } });
         if (!p.orderId) return { orderCancelled: false };
         const ord = await tx.order.findUnique({ where: { id: p.orderId }, select: { status: true, clientId: true } });
         if (ord?.status !== 'NEW') return { orderCancelled: false }; // activated since the snapshot — keep it
         await tx.order.update({
           where: { id: p.orderId },
-          data: { status: 'CANCELLED', cancelledAt: new Date(now), cancelledReason: 'Payment window expired (72h)', autoRenew: false, renewalBucket: null },
+          data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(now), cancelledReason: 'Payment window expired (72h)', autoRenew: false, renewalBucket: null },
         });
         await tx.notification.create({
           data: { id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId: ord.clientId, title: `Order ${p.orderId} was cancelled — payment wasn't received within 72 hours`, kind: 'INFO', link: `/orders/${p.orderId}` },
@@ -414,10 +446,49 @@ export async function runSweep(): Promise<SweepResult> {
         await tx.log.create({ data: { actorId: null, action: 'ORDER.CANCEL', objectType: 'ORDER', objectId: p.orderId, detail: 'Cancelled by sweep — payment window expired' } });
         return { orderCancelled: true };
       });
-      if (cancel) {
+      if (done) {
         timedOutPayments++;
-        if (cancel.orderCancelled) cancelledOrders++;
+        if (done.orderCancelled) cancelledOrders++;
       }
+    }
+
+    // ── 3b. Reap abandoned NEW orders whose charge already died ────────────
+    //   A NEW order whose payment went FAILED (a real 'failed' IPN) has no
+    //   AWAITING charge for step 3 to find, so it lingers NEW (audit: ORD-36349).
+    //   Reap only after the LATEST charge has been dead for 72h — NOT the order
+    //   age (a 4-day-old order whose fresh retry just failed still has its
+    //   Retry surfaces up; cancelling it minutes later contradicts the bell's
+    //   "you can retry" promise, audit C4). The updateMany is guarded on
+    //   status NEW AND paymentStatus FAILED so a concurrent repay (which
+    //   re-arms paymentStatus to AWAITING) makes the reap no-op (audit C16).
+    const deadNew = await prisma.order.findMany({
+      where: { status: 'NEW', paymentStatus: 'FAILED' },
+      select: { id: true, clientId: true },
+    });
+    for (const o of deadNew) {
+      const done = await prisma.$transaction(async tx => {
+        const live = await tx.payment.findFirst({
+          where: { orderId: o.id, status: { in: ['AWAITING', 'MANUAL_REVIEW', 'CONFIRMED'] } }, select: { id: true },
+        });
+        if (live) return false; // being paid / under review / settled — leave it
+        // Age off the newest charge, not the order: a just-failed retry keeps
+        // the order alive until ITS 72h elapses.
+        const latest = await tx.payment.findFirst({
+          where: { orderId: o.id }, orderBy: { createdAt: 'desc' }, select: { status: true, createdAt: true },
+        });
+        if (!latest || latest.status !== 'FAILED' || latest.createdAt.getTime() > now - AWAITING_TIMEOUT_MS) return false;
+        const res = await tx.order.updateMany({
+          where: { id: o.id, status: 'NEW', paymentStatus: 'FAILED' },
+          data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(now), cancelledReason: 'Payment window expired (72h)', autoRenew: false, renewalBucket: null },
+        });
+        if (res.count === 0) return false;
+        await tx.notification.create({
+          data: { id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId: o.clientId, title: `Order ${o.id} was cancelled — payment wasn't received within 72 hours`, kind: 'INFO', link: `/orders/${o.id}` },
+        });
+        await tx.log.create({ data: { actorId: null, action: 'ORDER.CANCEL', objectType: 'ORDER', objectId: o.id, detail: 'Cancelled by sweep — payment window expired (dead charge)' } });
+        return true;
+      });
+      if (done) cancelledOrders++;
     }
 
     // ── 4. Purge expired email-verification rows ───────────────────────────

@@ -47,10 +47,15 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
   function confirmSelected() {
     start(async () => {
       let ok = 0, failed = 0;
+      // Keep the first real reason: MarkPaid can now hard-refuse (e.g. the
+      // order was cancelled), and "1 failed" with no explanation left the
+      // admin guessing (re-review C9).
+      let firstErr = '';
       for (const p of sel) {
-        try { await markPaidAction(p.id, 'bulk-confirm'); ok++; } catch { failed++; }
+        try { await markPaidAction(p.id, 'bulk-confirm'); ok++; }
+        catch (e: any) { failed++; if (!firstErr) firstErr = `${p.id}: ${e?.message ?? 'failed'}`; }
       }
-      toast(`Confirmed · ${ok}/${sel.length} done${failed ? ` · ${failed} failed` : ''}`, '', failed ? 'warning' : 'success');
+      toast(`Confirmed · ${ok}/${sel.length} done${failed ? ` · ${failed} failed` : ''}`, firstErr, failed ? 'warning' : 'success');
       clear();
       router.refresh();
     });

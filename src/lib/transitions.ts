@@ -72,14 +72,28 @@ export async function markPaymentPaid({
 
     const now = new Date();
 
-    await tx.payment.update({
-      where: { id: paymentId },
+    // Status-guarded flip: MANUAL_REVIEW (and FAILED) are also auto-settle
+    // targets now (settleAwaitingPayment resurrect), so a finished IPN /
+    // reconcile can settle this row between the read above and here. Keying the
+    // flip on the settleable statuses makes a lost race match 0 rows → abort
+    // before crediting/assigning, so money moves exactly once (audit C5).
+    const flip = await tx.payment.updateMany({
+      where: { id: paymentId, status: { in: ['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'] } },
       data: { status: 'CONFIRMED', confirmedAt: now, source, externalRef },
     });
+    if (flip.count === 0) throw new Error('This payment was just settled — reload to see its current state.');
 
     if (pay.order) {
       const ord = pay.order;
       const plan = ord.plan;
+      // A cancelled order must not be silently revived by confirming a payment:
+      // its proxies were released and its cancellation was communicated to the
+      // client. Auto-settle parks this case for a human (settle-payment.ts);
+      // here the human IS present, so say what the choice is rather than
+      // half-reactivating behind their back (re-review C13).
+      if (ord.status === 'CANCELLED') {
+        throw new Error(`Order ${ord.id} is cancelled — refund this payment, or reinstate the order first.`);
+      }
       // Snapshot semantics (report №3): the order carries autoProvision as
       // captured at purchase time — flipping the PLAN's flag between order
       // and payment must not change how this order settles.
@@ -212,17 +226,29 @@ export async function refundPayment({
     if (!pay) throw new Error('Payment not found');
     // CONFIRMED/PAID = admin-initiated refund; REFUND_REQUESTED = executing a
     // client's refund request (the flag clientRequestRefund raised).
-    if (!['CONFIRMED', 'PAID', 'REFUND_REQUESTED'].includes(pay.status)) {
+    // MANUAL_REVIEW = funds arrived on a charge that had already died (the
+    // classic case: money landed on a cancelled order). Refunding is the whole
+    // point of that queue — and since a refund here credits the client's
+    // internal balance rather than sending crypto back, it is exactly the
+    // right resolution. Without it the park had NO exit at all: MarkPaid
+    // refuses a cancelled order and Refund was uncallable, so the row sat in
+    // MANUAL_REVIEW forever, holding the ops bell at +1 and showing the client
+    // "Verifying" indefinitely (re-review C1/C3/C4).
+    if (!['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'].includes(pay.status)) {
       throw new Error(`Cannot refund from status ${pay.status}`);
     }
 
     const refundAmount = roundCents(amount ?? Number(pay.gross));
     const now = new Date();
 
-    await tx.payment.update({
-      where: { id: paymentId },
+    // Status-guarded flip (optimistic concurrency): two admins double-clicking
+    // Refund, or a refund racing a settle, would otherwise both credit the
+    // balance. Count 0 → somebody already moved this row; abort the tx.
+    const flipped = await tx.payment.updateMany({
+      where: { id: paymentId, status: { in: ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'] } },
       data: { status: 'REFUNDED', refundedAmount: refundAmount, refundedAt: now },
     });
+    if (flipped.count === 0) throw new Error('This payment was just updated — reload to see its current state.');
 
     // Credit balance ledger — atomic increment (P1-1)
     const newBalance = await creditBalance(tx, pay.clientId, refundAmount);
@@ -1920,6 +1946,13 @@ export async function clientCancelNewOrder({ orderId, clientId }: { orderId: str
     if (!o) throw new Error('Order not found');
     if (o.clientId !== clientId) throw new Error('Forbidden');
     if (o.status !== 'NEW') throw new Error('Only pending orders can be cancelled by the client. Active orders run until expiry.');
+    // Money already detected on one of this order's charges — cancelling now
+    // would tell the client "nothing was charged" over funds that are on-chain
+    // and mid-verification. The Cancel button lives inside the pay panel, so
+    // this is a real click (re-review C5). Support resolves it: settle if the
+    // transfer completes, otherwise refund to balance.
+    const parked = await tx.payment.findFirst({ where: { orderId, status: 'MANUAL_REVIEW' }, select: { id: true } });
+    if (parked) throw new Error('We’ve detected your payment for this order and it’s being verified — contact support instead of cancelling.');
     await tx.order.update({
       where: { id: orderId },
       // paymentStatus flips too — the order snapshot and dashboard feed read
@@ -2008,6 +2041,11 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   if (o.clientId !== clientId) throw new Error('Forbidden');
   if (o.status === 'CANCELLED' || o.status === 'PENDING_RENEWAL') throw new Error('Cannot renew this order');
   if (!o.plan.renewalAllowed) throw new Error('Renewals are not available for this plan');
+  // A charge on this order already carries funds under verification — taking
+  // balance now would charge twice for one term. The checkout and repay paths
+  // enforce the same rule (re-review C2).
+  const parkedPay = await prisma.payment.findFirst({ where: { orderId, status: 'MANUAL_REVIEW' }, select: { id: true } });
+  if (parkedPay) throw new Error('A payment for this order is being verified — no need to pay again.');
 
   // Renewals honour the plan's renewal discount (audit B-6) — same helper as
   // the checkout renewal path, so the displayed price equals the charged one.

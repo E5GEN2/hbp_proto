@@ -25,7 +25,9 @@ export function ClientOrderDetailActions({
   const [pending, start] = useTransition();
   const [confirmCancel, setConfirmCancel] = useState(false);
 
-  const isPending = status === 'NEW' && (paymentStatus === 'PENDING' || paymentStatus === 'AWAITING');
+  // FAILED included: a dead charge on a still-open order resumes into the
+  // fresh-address recovery — the retry every bell/timeline copy promises.
+  const isPending = status === 'NEW' && (paymentStatus === 'PENDING' || paymentStatus === 'AWAITING' || paymentStatus === 'FAILED');
 
   function doRenew() {
     start(async () => {

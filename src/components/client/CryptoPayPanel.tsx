@@ -4,17 +4,23 @@
 // NOWPayments). Three consumers: checkout wizard (new order + renewal),
 // deposit wizard, and the /checkout?resume=… interstitial. The panel renders
 // everything the hosted invoice page used to: QR + address (+ memo where the
-// chain demands one), the EXACT crypto amount, the fixed-rate countdown and a
-// live status line driven by polling OUR payment row (the IPN webhook is the
-// only writer — the client never confirms anything itself).
+// chain demands one), the EXACT crypto amount, the payment-window countdown
+// and a live status line driven by polling OUR payment row (the webhook /
+// reconciler are the writers — the client never confirms anything itself).
+// The NP account force-expires every fixed-rate charge at ~10 min
+// (payExpiresAt): at the window the panel flips to a one-click fresh-address
+// recovery; funds landing on a dead charge flip it to a "being verified" view
+// (MANUAL_REVIEW) — both keep polling and hand off to success on their own.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import qrcode from 'qrcode-generator';
 import { useToast } from '@/components/ui/Toast';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { money } from '@/lib/money';
-import { npCoin, npCoinDisplay, isStableCoin, COIN_FAMILIES, familyCoins } from '@/lib/np-coins';
+import { npCoin, npCoinDisplay, COIN_FAMILIES, familyCoins } from '@/lib/np-coins';
 import { TOKEN_ICON, NETWORK_ICON } from '@/lib/coin-icons';
+import { TELEGRAM_SUPPORT_URL } from '@/lib/support';
+import { statusLine, serverWindowClosed, localWindowPassed, showWindowCountdown, fmtLeft } from '@/lib/crypto-window';
 
 export type PayPanelData = {
   paymentId: string;
@@ -202,41 +208,6 @@ export function useCoinList(active: boolean) {
 
 const POLL_MS = 5000;
 
-function fmtLeft(ms: number) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function statusLine(npStatus: string | null): { text: string; warn?: boolean } {
-  switch (npStatus) {
-    case 'confirming': return { text: 'Payment detected — confirming on the network…' };
-    case 'confirmed':
-    case 'sending': return { text: 'Confirmed — finalizing your payment…' };
-    case 'partially_paid': return { text: 'Partial amount received — send the remaining balance from the same wallet, or contact support.', warn: true };
-    default: return { text: 'Waiting for your transfer…' };
-  }
-}
-
-// Whether to show the rate-window countdown (owner decision 2026-08-10:
-// ONE short line, volatile coins only).
-// - Stablecoins (USDT/USDC — most payments) don't drift against a USD price:
-//   no note at all, the interface stays clean.
-// - 'waiting' must NOT hide it: NP's 'waiting' means "no transfer seen yet",
-//   and the reconciler (sweep step 0) mirrors npStatus onto every open payment
-//   within minutes — gating on bare !npStatus made the note vanish
-//   mid-countdown with nothing paid (owner repro 2026-08-10). Only an
-//   actually-detected transfer (confirming/…) or a terminal status hides it.
-// - After the window lapses nothing extra is shown — the permanent "page
-//   updates automatically… come back later" line already covers late payers,
-//   and a lapsed-window drift lands in payment covering / partially_paid →
-//   admin alert (Layers 0+2).
-export function showRateCountdown(npStatus: string | null, msLeft: number | null, stable: boolean): boolean {
-  if (stable) return false;
-  if (npStatus && npStatus !== 'waiting') return false; // transfer detected (or terminal) — moot
-  return msLeft != null && msLeft > 0;
-}
-
 export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment', onSettled, onRegenerate, regenerating, children }: {
   pay: PayPanelData;
   amountUsd: number;
@@ -253,39 +224,44 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
   const coin = npCoin(pay.payCurrency);
   const display = npCoinDisplay(pay.payCurrency);
   const [npStatus, setNpStatus] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  // Local payment.status phases beyond the live panel:
+  //   review — MANUAL_REVIEW: funds detected on a dead charge, human queued;
+  //   dead   — FAILED/CANCELLED/REFUNDED: charge is locally terminal.
+  const [review, setReview] = useState(false);
+  const [dead, setDead] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const settledRef = useRef(false);
 
-  // Countdown ticker (1s) — purely cosmetic; expiry is enforced by NP + IPN.
+  // Countdown ticker (1s) — cosmetic; expiry is enforced by NP + IPN.
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Status poll — OUR db only. Stops on terminal states.
+  // Status poll — OUR db only. Keeps polling through review/dead states: a
+  // MANUAL_REVIEW charge auto-settles when NP reports it finished (or an admin
+  // confirms it), and a FAILED charge is resurrectable — in both cases the
+  // next poll sees CONFIRMED and the success handoff still happens.
   useEffect(() => {
-    let dead = false;
+    let stop = false;
     const t = setInterval(async () => {
       try {
         const r = await fetch(`/api/checkout/payment-status?id=${encodeURIComponent(pay.paymentId)}`);
         if (!r.ok) return; // transient — keep polling
         const j = await r.json();
-        if (dead) return;
+        if (stop) return;
         setNpStatus(j.npStatus ?? null);
         if (j.status === 'CONFIRMED' && !settledRef.current) {
           settledRef.current = true;
           clearInterval(t);
           onSettled();
-        } else if (j.status && j.status !== 'AWAITING') {
-          // FAILED, CANCELLED, REFUNDED, … — any terminal non-success ends the
-          // wait; "keep waiting" on a dead charge misleads the client.
-          clearInterval(t);
-          setFailed(true);
+          return;
         }
+        setReview(j.status === 'MANUAL_REVIEW');
+        setDead(j.status ? j.status !== 'AWAITING' && j.status !== 'CONFIRMED' && j.status !== 'MANUAL_REVIEW' : false);
       } catch { /* network blip — keep polling */ }
     }, POLL_MS);
-    return () => { dead = true; clearInterval(t); };
+    return () => { stop = true; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pay.paymentId]);
 
@@ -296,23 +272,49 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
 
   const msLeft = pay.payExpiresAt != null ? pay.payExpiresAt - now : null;
   const line = statusLine(npStatus);
+  const supportLink = (
+    <a href={TELEGRAM_SUPPORT_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>support on Telegram</a>
+  );
 
-  // Recovery view — shown ONLY when the IPN reports the charge terminally dead
-  // (`failed`/expired after the 7-day deposit window). We deliberately do NOT
-  // collapse the panel when the on-screen rate countdown hits zero (owner
-  // 2026-08-07, "Layer 1"): the deposit address stays valid for days, so a
-  // late payer must keep seeing it — telling them it's "no longer valid" was
-  // exactly what pushed funds to a supposedly-dead address. A late payment is
-  // reconciled by the IPN (small drift auto-covered; larger → admin confirms).
-  if (failed) {
+  // Funds detected on a dead charge — a human is on it. No regenerate here:
+  // the client's money is attached to THIS charge; a fresh address would
+  // invite paying twice.
+  if (review) {
+    return (
+      <div className="checkout-processing">
+        <div className="panel checkout-processing-card">
+          <div className="processing-title">Payment received — being verified</div>
+          <div className="t-note" style={{ maxWidth: 420 }}>
+            We&rsquo;ve detected your payment and it&rsquo;s being verified. Support is already
+            notified — everything updates automatically once it&rsquo;s confirmed, and this
+            page will move on by itself. Nothing else is needed from you. Questions? Message {supportLink}.
+          </div>
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  // Window-closed / dead-charge recovery — the full REPLACEMENT view. Reached
+  // only on a SERVER-corroborated signal:
+  //   • the charge is locally terminal (FAILED/CANCELLED/REFUNDED via poll), or
+  //   • the server mirrored npStatus 'expired'/'failed' (serverWindowClosed).
+  // Deliberately NOT the local clock alone — a client clock set fast would
+  // otherwise open the panel already-closed and hide the address (audit C15).
+  // A merely-lapsed local countdown keeps the address up with an inline
+  // affordance (below). Late funds are safe: the webhook/reconciler park them
+  // for review, and this panel keeps polling — it flips to the review view (or
+  // straight to success) on its own.
+  if (dead || serverWindowClosed(npStatus)) {
     return (
       <div className="checkout-processing">
         <div className="panel checkout-processing-card">
           <div className="processing-title">Payment window closed</div>
           <div className="t-note" style={{ maxWidth: 420 }}>
-            This charge is no longer active — it was cancelled or timed out before a payment cleared.
+            The payment window for this address has closed and no transfer was detected.
             {onRegenerate ? ' Get a fresh address to pay at the current rate — the price in USD stays the same.' : ''}
-            {' '}If you already sent the funds, don’t resend — contact support and nothing is lost.
+            {' '}Already sent the funds? Don&rsquo;t send again — they&rsquo;re detected automatically
+            and this page will update. If anything feels off, message {supportLink}.
           </div>
           {onRegenerate && (
             <div className="processing-actions">
@@ -326,6 +328,10 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
       </div>
     );
   }
+
+  // Local countdown reached zero but the server hasn't confirmed death — keep
+  // the address visible (the charge may still be live) and offer a fresh one.
+  const localPassed = localWindowPassed(npStatus, msLeft);
 
   return (
     <div className="checkout-processing">
@@ -367,13 +373,23 @@ export function CryptoPayPanel({ pay, amountUsd, title = 'Complete your payment'
           {line.text}
         </div>
 
-        {/* Rate-window countdown — volatile coins only; see showRateCountdown.
-            No other guidance text (owner 2026-08-10): the status line above is
-            the single narrator — "Waiting for your transfer…" until detection,
-            then the checking/finalizing stages. */}
-        {showRateCountdown(npStatus, msLeft, isStableCoin(pay.payCurrency)) && (
+        {/* Payment-window countdown — every coin (the processor kills the
+            whole charge at the window, not just the rate). One honest line;
+            the status line above stays the narrator for detection stages. */}
+        {showWindowCountdown(npStatus, msLeft) && (
           <div className="t-note">
-            Rate locked for <span className="mono">{fmtLeft(msLeft!)}</span> — small differences after that are covered automatically.
+            Payment window: <span className="mono">{fmtLeft(msLeft!)}</span> — if it closes before you pay, a fresh address is one click away.
+          </div>
+        )}
+        {/* Local countdown passed but the charge isn't server-confirmed dead —
+            keep the address up, offer a fresh one inline (never hide it). */}
+        {localPassed && (
+          <div className="t-note">
+            The payment window may have closed. If your wallet hasn&rsquo;t sent yet,{' '}
+            {onRegenerate
+              ? <button className="td-link" style={{ cursor: 'pointer', background: 'none', border: 0, padding: 0, font: 'inherit' }} disabled={regenerating} onClick={onRegenerate}>{regenerating ? 'generating…' : 'get a fresh address'}</button>
+              : 'start a new payment'}
+            . Already sent? It&rsquo;s detected automatically — don&rsquo;t resend.
           </div>
         )}
         {children}

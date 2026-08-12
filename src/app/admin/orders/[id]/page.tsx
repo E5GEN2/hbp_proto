@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton, CompleteRefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -32,7 +32,7 @@ const EXC_BANNER: Record<string, { title: string; tone: string; desc: string }> 
 
 // Payment statuses that warrant a header chip. Clean PAID/CONFIRMED/FREE
 // are dropped from the header (the lifecycle chip is the canonical state).
-const ATTENTION_PAY = new Set(['AWAITING', 'PENDING', 'FAILED', 'REFUNDED', 'MANUAL_REVIEW', 'REFUND_REQUESTED', 'REPLACEMENT']);
+const ATTENTION_PAY = new Set(['AWAITING', 'PENDING', 'FAILED', 'REFUNDED', 'MANUAL_REVIEW', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS', 'REPLACEMENT']);
 const PROVIDER_AUTO = new Set(['stripe', 'coinbase', 'paypal']);
 
 type Step = { name: string; state: 'done' | 'current' | 'pending' | 'failed' | 'cancelled'; meta: string; mode: 'auto' | 'manual' };
@@ -207,12 +207,17 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
 
   // A cancelled paid order carries the refund-pending signal — resolve it HERE,
   // where the Exceptions/bell links land, instead of a dead-end (finding B-4).
+  // Manual-refund flow: an initiated (in-progress) refund surfaces its
+  // Complete button; otherwise a refundable payment gets Initiate.
+  const inProgressPay = order.payments.find(p => p.status === 'REFUND_IN_PROGRESS');
   const refundablePay = order.exception === 'REFUND_PENDING'
-    ? order.payments.find(p => ['CONFIRMED', 'PAID', 'REFUND_REQUESTED'].includes(p.status))
+    ? order.payments.find(p => ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'].includes(p.status))
     : null;
-  // gross, not net — matches the Payments page and refundPayment's own
+  // gross, not net — matches the Payments page and initiateRefund's own
   // default: the client gets the full charge back, fees are ours to eat.
-  const refundBtn = refundablePay
+  const refundBtn = inProgressPay
+    ? <CompleteRefundButton key="refund" paymentId={inProgressPay.id} amount={Number(inProgressPay.refundedAmount ?? inProgressPay.gross)} />
+    : refundablePay
     ? <RefundButton key="refund" paymentId={refundablePay.id} amount={Number(refundablePay.gross)} />
     : null;
 

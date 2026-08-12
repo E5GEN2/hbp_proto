@@ -225,6 +225,7 @@ enum PaymentStatus {
   FAILED
   REFUNDED
   REFUND_REQUESTED
+  REFUND_IN_PROGRESS
   CANCELLED
   REPLACEMENT
   MANUAL_REVIEW
@@ -342,6 +343,12 @@ model Payment {
   net             Decimal       @db.Decimal(10, 2)
   status          PaymentStatus
   refundedAmount  Decimal?      @db.Decimal(10, 2)
+  // Manual-refund flow (owner decision 2026-08-12): refunds are returned by an
+  // admin OUTSIDE the portal (no balance credit). initiate stores the reason,
+  // complete stores the proof (tx hash / reference) — a refund isn't REFUNDED
+  // until proof is recorded.
+  refundReason    String?
+  refundProof     String?
   externalRef     String?
   source          String?
   createdAt       DateTime      @default(now())

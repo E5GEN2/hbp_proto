@@ -16,7 +16,9 @@ const VIEW_STATUS: Record<string, string[]> = {
   awaiting: ['AWAITING', 'PENDING'],
   failed: ['FAILED'],
   refunded: ['REFUNDED'],
-  refund_requested: ['REFUND_REQUESTED'],
+  // The active-refund queue: client requests awaiting action AND refunds the
+  // admin has initiated but not yet completed with proof (manual-refund flow).
+  refund_requested: ['REFUND_REQUESTED', 'REFUND_IN_PROGRESS'],
   manual_review: ['MANUAL_REVIEW'],
 };
 
@@ -64,7 +66,7 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
     { v: 'awaiting',        l: 'Awaiting',         n: ct('AWAITING', 'PENDING') },
     { v: 'failed',          l: 'Failed',           n: ct('FAILED') },
     { v: 'refunded',        l: 'Refunded',         n: ct('REFUNDED') },
-    { v: 'refund_requested', l: 'Refund requested', n: ct('REFUND_REQUESTED') },
+    { v: 'refund_requested', l: 'Refund requested', n: ct('REFUND_REQUESTED', 'REFUND_IN_PROGRESS') },
     { v: 'manual_review',   l: 'Manual review',    n: ct('MANUAL_REVIEW') },
   ];
 

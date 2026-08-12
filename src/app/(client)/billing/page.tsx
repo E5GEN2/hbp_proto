@@ -33,6 +33,10 @@ function shortMethod(m: string) {
 // verification sees something intelligible, not an unstyled token (audit).
 function statusChip(status: string): { cls: string; label: string } {
   if (status === 'MANUAL_REVIEW') return { cls: 'review', label: 'Verifying' };
+  // Manual-refund flow: admin has initiated and is returning the money
+  // externally; REFUNDED lands only once proof is recorded.
+  if (status === 'REFUND_IN_PROGRESS') return { cls: 'awaiting', label: 'Refunding' };
+  if (status === 'REFUND_REQUESTED') return { cls: 'review', label: 'Refund requested' };
   return { cls: status.toLowerCase(), label: status.charAt(0) + status.slice(1).toLowerCase() };
 }
 
@@ -42,7 +46,9 @@ type TxTab = 'all' | 'confirmed' | 'awaiting' | 'refunded';
 function txBucket(status: string): TxTab | null {
   if (status === 'CONFIRMED') return 'confirmed';
   if (status === 'AWAITING' || status === 'PENDING') return 'awaiting';
-  if (status === 'REFUNDED') return 'refunded';
+  // The whole refund lifecycle lives in one tab: requested → in progress
+  // (admin returning the money manually) → refunded.
+  if (status === 'REFUNDED' || status === 'REFUND_IN_PROGRESS' || status === 'REFUND_REQUESTED') return 'refunded';
   return null;
 }
 

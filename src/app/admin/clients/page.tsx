@@ -15,7 +15,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 const PAY_EVENT: Record<string, string> = {
   CONFIRMED: 'Payment confirmed', PAID: 'Payment confirmed', AWAITING: 'Payment awaiting',
   PENDING: 'Payment awaiting', FAILED: 'Payment failed', REFUNDED: 'Refund issued',
-  REFUND_REQUESTED: 'Refund requested', MANUAL_REVIEW: 'Manual review',
+  REFUND_REQUESTED: 'Refund requested', REFUND_IN_PROGRESS: 'Refund in progress', MANUAL_REVIEW: 'Manual review',
 };
 
 // Canon Clients .dt anchor scheme: 360px Client + 164px Client ID + 240px Last

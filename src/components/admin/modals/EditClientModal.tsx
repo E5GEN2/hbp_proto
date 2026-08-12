@@ -18,6 +18,7 @@ export type EditClientInitial = {
   emailMarketing: boolean;
   telegramAll: boolean;
   preRenewalReminderHours: number;
+  graceHoursOverride: number | null;
 };
 
 export function EditClientModal({
@@ -51,6 +52,7 @@ export function EditClientModal({
           emailMarketing: form.emailMarketing,
           telegramAll: form.telegramAll,
           preRenewalReminderHours: Number(form.preRenewalReminderHours),
+          graceHoursOverride: form.graceHoursOverride,
         });
         toast('Client saved', clientId, 'success');
         onClose();
@@ -92,7 +94,9 @@ export function EditClientModal({
         <Field label="Pre-renewal reminder (hours)" tip="Hours before expiry to send the renewal reminder. Default inherited from the global Settings → Notifications value.">
           <input className="form-input" type="number" min={0} max={720} value={form.preRenewalReminderHours} onChange={e => setForm({ ...form, preRenewalReminderHours: parseInt(e.target.value || '0', 10) })} />
         </Field>
-        <div />
+        <Field label="Grace override (hours)" tip="Grace after expiry for THIS client, in hours — proxies keep working and the order stays renewable during it. Blank = tier default (VIP / Pro / Standard, set in Settings → Grace).">
+          <input className="form-input" type="number" min={0} max={720} placeholder="tier default" value={form.graceHoursOverride ?? ''} onChange={e => setForm({ ...form, graceHoursOverride: e.target.value === '' ? null : parseInt(e.target.value, 10) })} />
+        </Field>
       </Grid>
 
       <SectionTitle>Notification channels</SectionTitle>

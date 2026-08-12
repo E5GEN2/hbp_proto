@@ -1329,7 +1329,6 @@ export type PlanInput = {
   autoRenewDefault: boolean;
   renewalAllowed: boolean;
   preRenewalReminderHours: number;
-  gracePeriodHours: number;
   renewalDiscountPct: number;
   lowCapacityThresholdPct?: number | null;
 };
@@ -1382,7 +1381,6 @@ export async function createPlan({ input, actor }: { input: PlanInput; actor: Ac
         autoRenewDefault: input.autoRenewDefault,
         renewalAllowed: input.renewalAllowed,
         preRenewalReminderHours: input.preRenewalReminderHours,
-        gracePeriodHours: input.gracePeriodHours,
         renewalDiscountPct: input.renewalDiscountPct,
         lowCapacityThresholdPct: input.lowCapacityThresholdPct ?? null,
       },
@@ -1596,6 +1594,7 @@ export type UpdateClientInput = {
   emailMarketing?: boolean;
   telegramAll?: boolean;
   preRenewalReminderHours?: number;
+  graceHoursOverride?: number | null; // null = tier default (lib/grace.ts)
 };
 
 export async function updateClient({

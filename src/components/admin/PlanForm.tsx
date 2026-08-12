@@ -36,7 +36,7 @@ const DEFAULTS: PlanInput = {
   pool: 'Verizon-East-A', durationDays: 30, price: 129, currency: 'USD', availableQuota: 50,
   protocols: 'HTTP, SOCKS5', rotation: 'Sticky', traffic: 'Unlimited', active: true,
   autoProvision: true, autoRenewDefault: true, renewalAllowed: true, preRenewalReminderHours: 72,
-  gracePeriodHours: 48, renewalDiscountPct: 0, lowCapacityThresholdPct: null,
+  renewalDiscountPct: 0, lowCapacityThresholdPct: null,
 };
 
 // Create-mode initial: text/number/select fields empty (Choose… / placeholder),
@@ -45,7 +45,7 @@ const CREATE_BLANK: Record<string, unknown> = {
   name: '', description: '', visibility: '', carrier: '', region: '', pool: DEFAULT_POOL,
   durationDays: '', price: '', currency: 'USD', availableQuota: '', protocols: '', rotation: '', traffic: '',
   active: true, autoProvision: true, autoRenewDefault: true, renewalAllowed: true,
-  preRenewalReminderHours: '', gracePeriodHours: '', renewalDiscountPct: '', lowCapacityThresholdPct: null,
+  preRenewalReminderHours: '', renewalDiscountPct: '', lowCapacityThresholdPct: null,
 };
 
 const CAP_LABEL: Record<string, string> = { 'sold-out': 'Sold out', low: 'Low availability', available: 'Available' };
@@ -86,7 +86,6 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
       price: num(form.price),
       availableQuota: num(form.availableQuota),
       preRenewalReminderHours: num(form.preRenewalReminderHours, 72),
-      gracePeriodHours: num(form.gracePeriodHours, 48),
       renewalDiscountPct: num(form.renewalDiscountPct, 0),
       lowCapacityThresholdPct:
         form.lowCapacityThresholdPct === '' || form.lowCapacityThresholdPct == null ? null : Number(form.lowCapacityThresholdPct),
@@ -254,20 +253,16 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           <div className="lifecycle-col">
             {toggles}
           </div>
-          {/* Reminder/grace timing dropped from create (product ask
-              2026-07-07): those rules are managed in Settings → Grace Rules;
-              a fresh plan takes the defaults (72h / 48h). Edit keeps the
-              per-plan override fields. */}
+          {/* Reminder timing is edit-only (product ask 2026-07-07); a fresh
+              plan takes the default. Grace moved OFF the plan 2026-08-12 — it's
+              a client attribute now (tier default + per-client override on the
+              client card; global tiers under Settings → Grace). */}
           {!isCreate && (
             <div className="lifecycle-col">
               <div className="lifecycle-fields">
                 <div className="form-field">
                   <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="When to send the first renewal reminder, in hours before expiry. Additional reminders are scheduled in Settings → Grace Rules.">i</span></div>
                   <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => setNum('preRenewalReminderHours', e.target.value)} />
-                </div>
-                <div className="form-field">
-                  <div className="form-label">Grace period (hours)<span className="help-tip" data-tip="Time after expiry before the proxy is released back to pool. Set 0 to release the moment the order expires.">i</span></div>
-                  <input className="form-input" type="number" min={0} max={720} step={1} value={form.gracePeriodHours} onChange={e => setNum('gracePeriodHours', e.target.value)} />
                 </div>
               </div>
             </div>

@@ -64,7 +64,7 @@ async function main() {
     { key: 'require2FAForRefund', value: false },
     { key: 'requireNoteOnSuspend', value: true },
     { key: 'freezeNewOrders', value: false },
-    { key: 'grace', value: { defaultGraceHours: 48, preRenewalReminderHours: 72, secondReminderHours: 24, thirdReminderHours: 0, VIPGraceHours: 96, ProGraceHours: 72, StandardGraceHours: 48, autoRenew24hBeforeExpiry: true, keepProxyDuringGrace: true, autoSuspendAfter3Fails: true } },
+    { key: 'grace', value: { defaultGraceHours: 24, preRenewalReminderHours: 72, secondReminderHours: 24, thirdReminderHours: 0, VIPGraceHours: 72, ProGraceHours: 48, StandardGraceHours: 24, autoRenew24hBeforeExpiry: true, keepProxyDuringGrace: true, autoSuspendAfter3Fails: true } },
     { key: 'flags', value: { maxConcurrentOrdersPerClient: 10, maxProxyReplacementsPerOrder: 3, supportRefundCapUSD: 100, discountCapWithoutSuperApprovalPercent: 15 } },
     { key: 'providers', value: { stripe: { enabled: true, accountId: 'acct_demo_1234', publishableKey: 'pk_test_demo', webhookSecret: 'whsec_demo' }, crypto: { enabled: true, confirmations: 1, currencies: ['USDT', 'USDC', 'BTC'] }, bank: { enabled: true }, paypal: { enabled: false } } },
     { key: 'notifications', value: { 'order-created': true, 'payment-confirmed': true, 'proxy-assigned': true, 'pre-renewal-72h': true, 'grace-started': true, 'order-expired-final': true, 'replacement-completed': true, 'refund-issued': true, 'admin-new-order': true, 'admin-payment-failed': true, 'admin-proxy-faulty': true, 'admin-quota-85': true, 'admin-chargeback': true, 'admin-refund-request': true } },

@@ -94,6 +94,60 @@ export async function markPaymentPaid({
       if (ord.status === 'CANCELLED') {
         throw new Error(`Order ${ord.id} is cancelled — refund this payment, or reinstate the order first.`);
       }
+      // Discriminate initial purchase vs renewal charge by order.status, exactly
+      // like settleAwaitingPayment (audit 2B). A NON-NEW order is already
+      // settled and this payment RENEWS it: MarkPaid used to run the new-order
+      // path below unconditionally — re-assigning a SECOND set of proxies and
+      // stamping expiresAt = now + duration, which SWALLOWED the client's
+      // remaining paid term. Extend instead (re-provision only an EXPIRED order,
+      // whose proxies were released at expiry).
+      if (ord.status !== 'NEW') {
+        const invoiceId = await nextInvoiceId();
+        const existing = await tx.invoice.findUnique({ where: { paymentId } });
+        if (!existing) {
+          await tx.invoice.create({ data: { id: invoiceId, paymentId, orderId: ord.id, clientId: ord.clientId, amount: pay.gross } });
+        }
+        // Fresh in-tx re-read: extend from the CURRENT expiry (a concurrent
+        // renewal may have moved it since the read at the top of the tx), and
+        // re-check CANCELLED — the line-level mirror of settle-payment's
+        // renewal branch (review: a cancel committing between the two reads
+        // would otherwise stamp "renewed" onto a dead order). The throw rolls
+        // back the CONFIRMED flip and invoice.
+        const freshOrd = await tx.order.findUnique({ where: { id: ord.id }, select: { status: true, expiresAt: true, exception: true, activatedAt: true } });
+        if (!freshOrd) throw new Error(`Order ${ord.id} vanished during mark-paid`);
+        if (freshOrd.status === 'CANCELLED') {
+          throw new Error(`Order ${ord.id} is cancelled — refund this payment, or reinstate the order first.`);
+        }
+        const reproOrd = { id: ord.id, qty: ord.qty, region: ord.region, activatedAt: freshOrd.activatedAt, autoProvision: ord.autoProvision, plan: { carrier: plan.carrier, pool: plan.pool, durationDays: plan.durationDays } };
+        const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, actor.id, now) : null;
+        if (repro) {
+          await tx.order.update({ where: { id: ord.id }, data: repro.data });
+          await log(tx, actor.id, 'ORDER.EXTEND', 'ORDER', ord.id,
+            `Renewal confirmed via MarkPaid · re-provisioned ${repro.assignedCount}/${ord.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
+          await notify(tx, ord.clientId,
+            repro.fullyAssigned
+              ? `Order ${ord.id} renewed — ${ord.qty} fresh ${ord.qty === 1 ? 'proxy' : 'proxies'} assigned`
+              : `Order ${ord.id} renewed — proxies are being provisioned`,
+            'SUCCESS', `/orders/${ord.id}`);
+        } else {
+          const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+          const newExpiry = new Date(base.getTime() + plan.durationDays * 86_400_000);
+          await tx.order.update({
+            where: { id: ord.id },
+            data: {
+              expiresAt: newExpiry,
+              status: freshOrd.status === 'EXPIRED' ? 'ACTIVE' : freshOrd.status,
+              renewalBucket: 'RENEWED',
+              lastReminderAt: null,
+              exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
+            },
+          });
+          await notify(tx, ord.clientId, `Order ${ord.id} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${ord.id}`);
+        }
+        // No adminNewOrderAlert for a renewal (mirrors settle-payment — the
+        // "new paid order" alert is for first purchases only).
+      } else {
+      // ── NEW order: initial-purchase activation ─────────────────────────────
       // Snapshot semantics (report №3): the order carries autoProvision as
       // captured at purchase time — flipping the PLAN's flag between order
       // and payment must not change how this order settles.
@@ -179,6 +233,7 @@ export async function markPaymentPaid({
           adminUrl: appUrl(`/admin/orders/${ord.id}`),
           via: `confirmed by ${actor.name ?? actor.id}`,
         });
+      }
       }
     } else {
       // Balance top-up (no order) — mirror settleAwaitingPayment's deposit
@@ -530,6 +585,13 @@ export async function reprovisionRenewedOrder(
   actorId: string,
   now: Date,
 ): Promise<null | { fullyAssigned: boolean; assignedCount: number; data: Prisma.OrderUpdateInput }> {
+  // Serialize concurrent re-provisions of the SAME order (review 2026-08-12):
+  // the live-count below is a plain read — under READ COMMITTED two renewal
+  // transactions (double-click one-click renewal; MarkPaid racing a crypto
+  // settle) could both see live=0 and each assign qty proxies → 2×qty live
+  // assignments and a double-charged term. Same row-lock recipe as
+  // assignProxyManually; one lock here covers all five renewal entry points.
+  await tx.$queryRaw`SELECT id FROM orders WHERE id = ${ord.id} FOR UPDATE`;
   const live = await tx.assignment.count({ where: { orderId: ord.id, releasedAt: null } });
   if (live > 0) return null; // proxies still bound — plain term extension applies
 
@@ -2093,6 +2155,28 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     const freshOrd = await tx.order.findUnique({ where: { id: orderId }, select: { status: true, expiresAt: true, activatedAt: true, exception: true } });
     if (!freshOrd) throw new Error('Order not found');
     if (freshOrd.status === 'CANCELLED') throw new Error('Order was cancelled — renewal aborted');
+
+    // EXPIRED order → its proxies were released to the pool at expiry, so a
+    // plain term shift left the client charged, ACTIVE and holding ZERO
+    // proxies, outside every fulfilment queue (audit 2C). Re-run the
+    // activation contract via reprovisionRenewedOrder — this was the only
+    // renewal entry point missing it (peers: settleAwaitingPayment,
+    // checkout/place handleRenewal, admin extendOrder).
+    const reproOrd = { id: orderId, qty: o.qty, region: o.region, activatedAt: freshOrd.activatedAt, autoProvision: o.autoProvision, plan: { carrier: o.plan.carrier, pool: o.plan.pool, durationDays: o.plan.durationDays } };
+    const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, clientId, now) : null;
+    if (repro) {
+      await tx.order.update({ where: { id: orderId }, data: repro.data });
+      const newExpiry = repro.fullyAssigned ? new Date(now.getTime() + o.plan.durationDays * 86_400_000) : null;
+      await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
+        `Client renewal · ${money(price)} from balance · re-provisioned ${repro.assignedCount}/${o.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
+      await notify(tx, clientId,
+        repro.fullyAssigned
+          ? `Order ${orderId} renewed — ${o.qty} fresh ${o.qty === 1 ? 'proxy' : 'proxies'} assigned`
+          : `Order ${orderId} renewed — proxies are being provisioned`,
+        'SUCCESS', `/orders/${orderId}`);
+      return { ok: true, redirect: null, newExpiry: newExpiry ? newExpiry.toISOString() : null };
+    }
+
     const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
     const newExpiry = new Date(base.getTime() + o.plan.durationDays * 86_400_000);
     await tx.order.update({

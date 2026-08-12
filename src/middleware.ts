@@ -40,31 +40,50 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── /checkout intent preservation (PF-2, owner item 4) ──────────────────
-  // An anonymous hit on /checkout used to bounce through the (client) layout's
-  // bare redirect('/login'), losing every plan param. Preserve the FULL URL so
-  // login/register/verify deliver the user to the checkout they chose. Only
-  // the session COOKIE presence is checked here (no decode) — the (client)
-  // layout guard stays authoritative for the signed-in-but-unverified case.
+  // ── Client portal gate (same RSC parallel-render hazard as /admin) ───────
+  // Every (client) page derefs the session at the top of its own segment
+  // (`const userId = session!.user.id`), and page segments render IN PARALLEL
+  // with the (client) layout — so the layout's redirect('/login') does NOT stop
+  // an anonymous request's page code from running, which throws a server-side
+  // TypeError (and, exactly like the admin leak above, a page could in
+  // principle stream before the layout redirect wins). Block at the edge,
+  // before any segment renders. getToken decodes+validates the JWT only (no DB,
+  // edge-safe); the (client) layout stays authoritative for the
+  // signed-in-but-unverified, admin-role, and deleted-user (DB) cases.
   const intent = path + url.search;
-  const hasSessionCookie =
-    req.cookies.has('__Secure-next-auth.session-token') ||
-    req.cookies.has('next-auth.session-token');
-
-  const res = hasSessionCookie
-    ? NextResponse.next()
-    : NextResponse.redirect(new URL(`/login?return=${encodeURIComponent(intent)}`, url));
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const isCheckout = lp === '/checkout';
 
   // Short-lived checkout-intent hint (10 min) — /verify falls back to it when
-  // no ?return survived the hop. Overwritten on each /checkout visit.
-  res.cookies.set('co_return', intent, {
-    maxAge: 600,
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/',
-    secure: url.protocol === 'https:',
-  });
-  return res;
+  // no ?return survived the hop. Only the checkout flow consumes it, so it is
+  // set only there (a bare /orders visit shouldn't hijack the post-verify dest).
+  const setCoReturn = (res: NextResponse) => {
+    if (isCheckout) {
+      res.cookies.set('co_return', intent, { maxAge: 600, httpOnly: true, sameSite: 'lax', path: '/', secure: url.protocol === 'https:' });
+    }
+    return res;
+  };
+
+  if (!token) {
+    // Preserve the FULL intended URL so login/register/verify deliver the user
+    // back where they were headed (checkout keeps every plan param — PF-2).
+    return setCoReturn(NextResponse.redirect(new URL(`/login?return=${encodeURIComponent(intent)}`, url)));
+  }
+  return setCoReturn(NextResponse.next());
 }
 
-export const config = { matcher: ['/checkout', '/admin', '/admin/:path*', '/api/admin/:path*'] };
+export const config = {
+  matcher: [
+    // Client portal pages — all deref the session in-segment; guard at the edge.
+    '/checkout',
+    '/dashboard',
+    '/catalog',
+    '/billing',
+    '/settings',
+    '/support',
+    '/orders', '/orders/:path*',
+    '/proxies', '/proxies/:path*',
+    // Admin (auth-leak gate, 2026-08-06).
+    '/admin', '/admin/:path*', '/api/admin/:path*',
+  ],
+};

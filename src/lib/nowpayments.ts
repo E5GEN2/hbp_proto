@@ -64,14 +64,20 @@ export async function npCreatePayment(input: {
     order_id: input.paymentId,
     order_description: input.description,
     ipn_callback_url: appUrl('/api/webhooks/nowpayments'),
-    // Floating rate (owner decision 2026-08-07, "Layer 1"): no 10–20 min
-    // rate lock, so a late payer isn't punished with an underpayment when
-    // the window lapses. NOTE: whether this takes effect can depend on the
-    // NOWPayments account's rate mode — if the account enforces fixed rate,
-    // flip it to classic/floating in the dashboard for this to apply. The
-    // client pay panel no longer presents the address as "dead" either way.
+    // Floating rate (owner decision 2026-08-07, "Layer 1"): the charge lives
+    // ~7 days (valid_until) instead of a 10-minute fixed-rate lock, so a
+    // normal wallet delay never kills the address.
+    // ⚠️ DO NOT add is_fee_paid_by_user: true here. NP supports that flag only
+    // on FIXED-rate payments, and sending it SILENTLY overrides
+    // is_fixed_rate:false — every charge came back is_fixed_rate:True with
+    // valid_until = created + 10 MINUTES. That one flag was the root cause of
+    // the 2026-08-10 "payments die in 10 minutes" incident (probe matrix
+    // 2026-08-12: identical payload ±the flag → 7 days vs 10 minutes).
+    // Cost of dropping it: NP's service fee (~0.5%) is absorbed by us instead
+    // of being added to the client's pay_amount — the price of long windows.
+    // Floating drift is covered by payment covering (~1-3%, NP dashboard) and
+    // the partially_paid alerting (PR #141/#156).
     is_fixed_rate: false,
-    is_fee_paid_by_user: true,
   });
   // NP's create endpoint returns spurious 5xx (e.g. "Can not get estimate from
   // TRX to USDCBSC", statusCode 500 INTERNAL_ERROR — an estimate-service

@@ -7,10 +7,12 @@
 // chain demands one), the EXACT crypto amount, the payment-window countdown
 // and a live status line driven by polling OUR payment row (the webhook /
 // reconciler are the writers — the client never confirms anything itself).
-// The NP account force-expires every fixed-rate charge at ~10 min
-// (payExpiresAt): at the window the panel flips to a one-click fresh-address
-// recovery; funds landing on a dead charge flip it to a "being verified" view
-// (MANUAL_REVIEW) — both keep polling and hand off to success on their own.
+// Charges are floating-rate and live ~7 days (payExpiresAt); short windows
+// (a countdown appears under 2h) only recur if the fixed-rate trap regresses
+// (see nowpayments.ts). If a window DOES lapse the panel flips to a one-click
+// fresh-address recovery; funds landing on a dead charge flip it to a "being
+// verified" view (MANUAL_REVIEW) — both keep polling and hand off to success
+// on their own.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import qrcode from 'qrcode-generator';

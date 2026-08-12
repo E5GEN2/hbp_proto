@@ -12,9 +12,11 @@ import { money } from '@/lib/money';
 const Schema = z.object({ orderId: z.string().optional(), paymentId: z.string().optional(), payCoin: z.string() })
   .refine(v => Boolean(v.orderId) !== Boolean(v.paymentId), { message: 'Pass exactly one of orderId / paymentId' });
 
-// The account's fixed-rate window is ~10 min — an expired charge is a NORMAL
-// outcome, not an edge case. This endpoint issues a fresh direct payment so
-// the client doesn't have to start over:
+// Floating-rate charges live ~7 days, so a lapsed charge is rare now — but it
+// stays a NORMAL, recoverable outcome (and the common one again if the
+// fixed-rate trap in nowpayments.ts ever regresses to 10-minute windows).
+// This endpoint issues a fresh direct payment so the client doesn't have to
+// start over:
 //   · {orderId}: NEW order (re-arms paymentStatus, replaces the dead charge)
 //     or a settled order with a dead RENEWAL charge (re-issues it; the IPN
 //     renewal branch extends the order when it lands);

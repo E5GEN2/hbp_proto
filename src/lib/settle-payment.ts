@@ -13,6 +13,7 @@ import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } f
 import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
 import { isResurrectable, RESURRECTABLE_STATUSES } from './crypto-window';
+import { renewalBase } from './renewal';
 
 export type SettleResult =
   | { ok: true; already: true }
@@ -206,7 +207,13 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
         return;
       }
 
-      const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+      // Anchor the new term on the ORIGINAL expiry, not now: a renewal always
+      // extends from when the order was due to end, regardless of when the
+      // money landed (renewal-policy PR). renewalBase floors to `now` only if a
+      // full term from that anchor would be entirely in the past (grace >
+      // duration, or a very late settle on a still-bound order under
+      // autoReleaseAfterGrace=off), so this never writes a past-dated expiry.
+      const base = renewalBase(freshOrd.expiresAt, order.plan.durationDays, now);
       newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
       await tx.order.update({
         where: { id: order.id },

@@ -12,6 +12,7 @@ import * as CA from '@/lib/ui-actions/client-actions';
 export type OrderRow = {
   id: string;
   planLabel: string;
+  planDurationDays: number;
   region: string;
   qty: number;
   amount: number;
@@ -22,6 +23,10 @@ export type OrderRow = {
   activatedAt: number | null;
   expiresAt: number | null;
   cancelledAt: number | null;
+  // Renewal closed = past grace AND its proxies were released → no contiguous
+  // renewal, the card offers "Buy again" (a fresh order) instead of "Renew".
+  // Computed server-side via renewalClosed() (renewal-policy PR).
+  pastGrace: boolean;
 };
 
 type Tab = 'active' | 'expiring' | 'past';
@@ -96,6 +101,10 @@ export function OrdersList({ orders, initialTab }: { orders: OrderRow[]; initial
       router.refresh();
     } catch (e: any) {
       toast('Renewal failed', e.message, 'danger');
+      // If the order crossed its grace boundary while this card sat open, the
+      // server refuses and the correct affordance is now "Buy again" — refresh
+      // so the stale "Renew" button re-renders (renewal-policy PR).
+      router.refresh();
     } finally {
       setBusyId(null);
     }
@@ -253,7 +262,20 @@ function OrderCard({
 
   let actions: ReactNode;
   const expiringActive = o.status === 'ACTIVE' && o.expiresAt && b.d != null && b.d > 0 && b.d <= 7;
-  if (o.status === 'EXPIRED') {
+  if (o.status === 'EXPIRED' && o.pastGrace) {
+    // Grace window is over — its proxies were released, so a contiguous renewal
+    // is no longer possible. "Buy again" opens a fresh checkout of the same
+    // plan terms (no renewOf) for a new order with new proxies.
+    actions = (
+      <Link
+        className="btn primary"
+        href={`/checkout?duration=${o.planDurationDays}&qty=${o.qty}&location=${encodeURIComponent(o.region)}`}
+        onClick={stop}
+      >
+        Buy again
+      </Link>
+    );
+  } else if (o.status === 'EXPIRED') {
     actions = (
       <button className="btn primary" onClick={e => { stop(e); onRenew(); }} disabled={busy}>
         {busy ? '…' : 'Renew'}

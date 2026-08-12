@@ -46,3 +46,41 @@ export function effectiveGraceHours(
   if (client.graceHoursOverride != null && client.graceHoursOverride >= 0) return client.graceHoursOverride;
   return tierGrace[client.tier] ?? DEFAULT_TIER_GRACE_HOURS[client.tier] ?? DEFAULT_TIER_GRACE_HOURS.STANDARD;
 }
+
+// True once an order is past BOTH its expiry AND its client's grace window —
+// the point where its proxies have been (or will be) released and it can no
+// longer be renewed contiguously; the client buys a fresh order instead
+// (renewal-policy PR). Decided by the CLOCK, never by order.status: status
+// flips to EXPIRED at the expiry instant (still inside grace), and the sweep's
+// renewalBucket (GRACE vs EXPIRED) lags a tick — only the time comparison is
+// authoritative. A never-activated order (expiresAt null) is not past grace.
+// Mirrors the same boundary the sweep uses in targetBucket / auto-release.
+export function isPastGrace(
+  expiresAt: Date | null,
+  client: { tier: UserTier; graceHoursOverride: number | null },
+  tierGrace: TierGraceHours,
+  nowMs: number,
+): boolean {
+  if (!expiresAt) return false;
+  return nowMs > expiresAt.getTime() + effectiveGraceHours(client, tierGrace) * 3_600_000;
+}
+
+// An order can no longer be renewed contiguously — the client must buy a NEW
+// order — once it is BOTH past its grace window (by the clock, isPastGrace) AND
+// holding no live proxies (they were released back to the pool). Requiring both
+// is deliberate: in the default config proxies release exactly at grace-end so
+// the two conditions coincide, but with the `autoReleaseAfterGrace` kill-switch
+// off ("custom contracts", sweep.ts) proxies stay bound past grace — and an
+// order the client still holds proxies on can still be renewed contiguously, so
+// we must NOT force "buy again" while those proxies are live. This is the single
+// predicate every renewal-origination path and the client UI use to decide
+// Renew vs Buy-again (renewal-policy PR).
+export function renewalClosed(
+  expiresAt: Date | null,
+  liveAssignments: number,
+  client: { tier: UserTier; graceHoursOverride: number | null },
+  tierGrace: TierGraceHours,
+  nowMs: number,
+): boolean {
+  return liveAssignments === 0 && isPastGrace(expiresAt, client, tierGrace, nowMs);
+}

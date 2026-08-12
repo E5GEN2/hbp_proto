@@ -1,6 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { fmtAdminStamp } from '@/lib/date';
@@ -9,16 +10,19 @@ import * as CA from '@/lib/ui-actions/client-actions';
 // Canon order-detail header actions — vary by status:
 //   active, expiring ≤7d → Renew now + Turn off/on auto-renew
 //   active               → Turn on/off auto-renew
-//   expired              → Renew
+//   expired, in grace    → Renew
+//   expired, past grace  → Buy again (fresh order — proxies were released)
 //   new + pending        → Complete payment + Cancel order
 export function ClientOrderDetailActions({
-  orderId, status, paymentStatus, autoRenew, expiringActive,
+  orderId, status, paymentStatus, autoRenew, expiringActive, pastGrace, buyAgainHref,
 }: {
   orderId: string;
   status: string;
   paymentStatus: string;
   autoRenew: boolean;
   expiringActive: boolean;
+  pastGrace: boolean;
+  buyAgainHref: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -41,7 +45,12 @@ export function ClientOrderDetailActions({
         const exp = r && 'newExpiry' in r ? r.newExpiry : null;
         toast('Order renewed', exp ? `New expiry: ${fmtAdminStamp(new Date(exp))}` : '', 'success');
         router.refresh();
-      } catch (e: any) { toast('Renewal failed', e.message, 'danger'); }
+      } catch (e: any) {
+        toast('Renewal failed', e.message, 'danger');
+        // Grace boundary may have passed while the page sat open → server
+        // refuses; refresh so the header swaps "Renew" for "Buy again".
+        router.refresh();
+      }
     });
   }
 
@@ -75,7 +84,13 @@ export function ClientOrderDetailActions({
           <button className="btn" onClick={doToggleAutoRenew} disabled={pending}>{autoRenew ? 'Turn off auto-renew' : 'Turn on auto-renew'}</button>
         </>
       )}
-      {status === 'EXPIRED' && <button className="btn primary" onClick={doRenew} disabled={pending}>{pending ? '…' : 'Renew'}</button>}
+      {status === 'EXPIRED' && (
+        pastGrace
+          // Grace over → proxies released; a contiguous renewal isn't possible.
+          // "Buy again" is a fresh checkout of the same terms (no renewOf).
+          ? <Link className="btn primary" href={buyAgainHref}>Buy again</Link>
+          : <button className="btn primary" onClick={doRenew} disabled={pending}>{pending ? '…' : 'Renew'}</button>
+      )}
       {isPending && (
         <>
           <button className="btn primary" onClick={() => router.push(`/checkout?resume=${orderId}`)}>Complete payment</button>

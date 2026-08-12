@@ -10,7 +10,7 @@
 
 import { prisma } from './prisma';
 import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyIdBatch, nextAssignmentId } from './id';
-import { renewalUnitPrice } from './renewal';
+import { renewalUnitPrice, renewalBase } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram, sendAdminTelegram, adminNewOrderAlert } from './telegram';
@@ -18,6 +18,7 @@ import { sendEmail, incidentEmail, escapeHtml } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
+import { loadTierGraceHours, renewalClosed } from './grace';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -130,7 +131,15 @@ export async function markPaymentPaid({
               : `Order ${ord.id} renewed — proxies are being provisioned`,
             'SUCCESS', `/orders/${ord.id}`);
         } else {
-          const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+          // Anchor on the ORIGINAL expiry, not now (renewal-policy PR): a
+          // renewal extends from when the order was due to end. In grace the
+          // proxies are still bound → reprovision returned null → this
+          // plain-extend runs, and expiresAt is in the (recent) past; anchoring
+          // there keeps the term contiguous instead of gifting the grace days.
+          // renewalBase floors to `now` if a full term would land wholly in the
+          // past, so an admin MarkPaid on a long-dead order can't stamp a
+          // past-dated expiry (no block on admin paths — this is the safety net).
+          const base = renewalBase(freshOrd.expiresAt, plan.durationDays, now);
           const newExpiry = new Date(base.getTime() + plan.durationDays * 86_400_000);
           await tx.order.update({
             where: { id: ord.id },
@@ -563,7 +572,12 @@ export async function extendOrder({
       }
     }
 
-    const base = ord.expiresAt && ord.expiresAt > now ? ord.expiresAt : now;
+    // Anchor on the ORIGINAL expiry so an admin Extend during grace stays
+    // contiguous (renewal-policy PR). No past-grace block here — admin Extend
+    // is a deliberate manual override (comp/grant), unlike the client paths.
+    // renewalBase floors to `now` when the granted days would otherwise land
+    // wholly in the past, so the grant can't evaporate on the next sweep.
+    const base = renewalBase(ord.expiresAt, days, now);
     const newExpiry = new Date(base.getTime() + days * 86_400_000);
 
     await tx.order.update({
@@ -2130,6 +2144,17 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   if (o.clientId !== clientId) throw new Error('Forbidden');
   if (o.status === 'CANCELLED' || o.status === 'PENDING_RENEWAL') throw new Error('Cannot renew this order');
   if (!o.plan.renewalAllowed) throw new Error('Renewals are not available for this plan');
+  // Once an order is past grace AND its proxies have been released, a renewal
+  // can no longer be contiguous — the client buys a fresh order (renewal-policy
+  // PR). renewalClosed decides by the CLOCK + live-assignment count, never by
+  // o.status (EXPIRED spans grace too); the &&-with-liveCount lets custom
+  // contracts that keep proxies past grace (autoReleaseAfterGrace off) still
+  // renew. The UI shows "Buy again" for these; this is the server backstop.
+  const tierGrace = await loadTierGraceHours();
+  const liveCount = await prisma.assignment.count({ where: { orderId, releasedAt: null } });
+  if (renewalClosed(o.expiresAt, liveCount, o.client, tierGrace, Date.now())) {
+    throw new Error('This order has fully expired — start a new order to get fresh proxies.');
+  }
   // A charge on this order already carries funds under verification — taking
   // balance now would charge twice for one term. The checkout and repay paths
   // enforce the same rule (re-review C2).
@@ -2204,7 +2229,13 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
       return { ok: true, redirect: null, newExpiry: newExpiry ? newExpiry.toISOString() : null };
     }
 
-    const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+    // Anchor on the ORIGINAL expiry (renewal-policy PR): renewing in grace
+    // extends contiguously from the due date, never `now`. The renewal-closed
+    // case is refused before this tx (see the renewalClosed guard above);
+    // renewalBase additionally floors to `now` if a full term from expiry would
+    // land wholly in the past (grace > duration on a still-bound order), so the
+    // client is never charged for a dead-on-arrival term.
+    const base = renewalBase(freshOrd.expiresAt, o.plan.durationDays, now);
     const newExpiry = new Date(base.getTime() + o.plan.durationDays * 86_400_000);
     await tx.order.update({
       where: { id: orderId },

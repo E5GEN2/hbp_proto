@@ -5,12 +5,13 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
-import { renewalUnitPrice } from '@/lib/renewal';
+import { renewalUnitPrice, renewalBase } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
 import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPayment } from '@/lib/nowpayments';
 import { reprovisionRenewedOrder } from '@/lib/transitions';
+import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 import { sendAdminTelegram, adminNewOrderAlert } from '@/lib/telegram';
 import { appUrl } from '@/lib/app-url';
 
@@ -372,7 +373,10 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   paymentMethod: 'balance' | 'crypto' | 'card';
   coin: ReturnType<typeof npCoin>; // whitelist-validated by the caller (non-null when crypto+npEnabled)
 }) {
-  const order = await prisma.order.findUnique({ where: { id: renewOf }, include: { plan: true } });
+  const order = await prisma.order.findUnique({
+    where: { id: renewOf },
+    include: { plan: true, client: { select: { tier: true, graceHoursOverride: true } } },
+  });
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   if (order.clientId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (order.status === 'CANCELLED' || order.status === 'PENDING_RENEWAL') {
@@ -380,6 +384,16 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   }
   if (!order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan' }, { status: 400 });
+  }
+  // Once past grace AND its proxies are released the order can no longer be
+  // renewed contiguously — the client buys a fresh order instead. renewalClosed
+  // is clock + live-assignment based (not order.status); the checkout renewal
+  // page shows the same "buy again" affordance, this is the server backstop
+  // (renewal-policy PR).
+  const tierGrace = await loadTierGraceHours();
+  const liveCount = await prisma.assignment.count({ where: { orderId: order.id, releasedAt: null } });
+  if (renewalClosed(order.expiresAt, liveCount, order.client, tierGrace, Date.now())) {
+    return NextResponse.json({ error: 'This order has fully expired — start a new order to get fresh proxies.' }, { status: 400 });
   }
   // Funds already attached to a charge on this order and under verification —
   // a second charge would bill the client twice for one renewal. Same rule the
@@ -502,7 +516,12 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
       return;
     }
 
-    const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+    // Anchor on the ORIGINAL expiry (renewal-policy PR): a checkout renewal
+    // extends contiguously from the due date, not `now`. Renewal-closed orders
+    // are refused before the charge (see the renewalClosed guard at the top of
+    // handleRenewal); renewalBase additionally floors to `now` if a full term
+    // from expiry would be wholly in the past, so no past-dated charged term.
+    const base = renewalBase(freshOrd.expiresAt, order.plan.durationDays, now);
     const newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
     await tx.order.update({
       where: { id: order.id },

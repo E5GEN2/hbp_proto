@@ -2,11 +2,14 @@
 // both the pay panel and any server code can share one source of truth about
 // what "the window lapsed" means.
 //
-// The NOWPayments account force-expires every fixed-rate charge at ~10 min
-// (payment.payExpiresAt = NP valid_until). That is a REAL deadline for every
-// coin, not merely a rate lock — at the window NP kills the charge and later
-// funds land on a dead charge (→ MANUAL_REVIEW). These helpers drive the pay
-// panel's phase without ever telling the client a dead address is still live.
+// Window reality (2026-08-12): floating-rate charges live ~7 days
+// (payment.payExpiresAt = NP valid_until). Sending is_fee_paid_by_user:true
+// silently converts a charge to FIXED rate with a 10-MINUTE window (the
+// 2026-08-10 incident) — nowpayments.ts must never re-add it. Everything here
+// treats the window length as data, so both regimes stay handled: at the
+// window NP kills the charge and later funds land on a dead charge
+// (→ MANUAL_REVIEW). These helpers drive the pay panel's phase without ever
+// telling the client a dead address is still live.
 
 // Transfer visibly in flight at NP — the window no longer matters for it.
 export function transferDetected(npStatus: string | null): boolean {
@@ -35,13 +38,22 @@ export function localWindowPassed(npStatus: string | null, msLeft: number | null
   return msLeft != null && msLeft <= 0;
 }
 
-// Show the countdown: every coin, while the charge is live and nothing is
-// detected yet. 'waiting' must NOT hide it (NP 'waiting' = "no transfer seen";
-// the reconciler mirrors npStatus onto open payments within minutes).
+// A "long" window carries no time pressure worth narrating. Floating-rate
+// charges live ~7 days (valid_until) — counting that down ("10080:00") would
+// manufacture urgency where none exists. Anything above this threshold hides
+// the countdown line entirely; the threshold stays low enough that a
+// regression to the 10-minute fixed-rate window (the is_fee_paid_by_user
+// trap) would immediately show the countdown again.
+export const LONG_WINDOW_MS = 2 * 3_600_000; // 2h
+
+// Show the countdown: every coin, while the charge is live, nothing is
+// detected yet, AND the window is short enough to matter. 'waiting' must NOT
+// hide it (NP 'waiting' = "no transfer seen"; the reconciler mirrors npStatus
+// onto open payments within minutes).
 export function showWindowCountdown(npStatus: string | null, msLeft: number | null): boolean {
   if (transferDetected(npStatus)) return false;
   if (npStatus === 'expired' || npStatus === 'failed') return false;
-  return msLeft != null && msLeft > 0;
+  return msLeft != null && msLeft > 0 && msLeft <= LONG_WINDOW_MS;
 }
 
 export function statusLine(npStatus: string | null): { text: string; warn?: boolean } {
@@ -49,14 +61,23 @@ export function statusLine(npStatus: string | null): { text: string; warn?: bool
     case 'confirming': return { text: 'Payment detected — confirming on the network…' };
     case 'confirmed':
     case 'sending': return { text: 'Confirmed — finalizing your payment…' };
-    case 'partially_paid': return { text: 'Partial amount received — send the remaining balance from the same wallet, or contact support.', warn: true };
+    // No remainder amount is shown because none is known client-side: with
+    // multi-day floating windows the on-screen pay_amount is a stale quote, so
+    // "send the remaining balance" next to the FULL original amount invited a
+    // double-pay (review 2026-08-12). Support reconciles; the admin was
+    // already alerted by the underpaid branch.
+    case 'partially_paid': return { text: 'Partial amount received — don’t resend the full amount. Support has been notified; message us to settle the difference.', warn: true };
     default: return { text: 'Waiting for your transfer…' };
   }
 }
 
 export function fmtLeft(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  // Roll hours out separately — the countdown can now start at 2:00:00 (the
+  // LONG_WINDOW_MS ceiling); "120:00" read as two minutes at a glance.
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 

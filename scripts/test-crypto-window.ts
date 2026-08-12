@@ -36,6 +36,11 @@ eq('no countdown once detected', showWindowCountdown('confirming', 8 * MIN), fal
 eq('no countdown after expired', showWindowCountdown('expired', 8 * MIN), false);
 eq('no countdown when clock at 0', showWindowCountdown(null, 0), false);
 eq('no countdown when no expiry', showWindowCountdown(null, null), false);
+// Long floating-rate windows (~7d) carry no urgency — no countdown theater.
+eq('no countdown for a 7-day window', showWindowCountdown(null, 7 * 24 * 60 * MIN), false);
+eq('no countdown just above the 2h threshold', showWindowCountdown('waiting', 2 * 60 * MIN + 1000), false);
+eq('countdown at exactly the 2h threshold', showWindowCountdown(null, 2 * 60 * MIN), true);
+eq('countdown for a 90-min window', showWindowCountdown(null, 90 * MIN), true);
 
 // ── transferDetected ──────────────────────────────────────────────────────
 for (const s of ['confirming', 'confirmed', 'sending', 'partially_paid']) eq(`detected: ${s}`, transferDetected(s), true);
@@ -50,6 +55,10 @@ eq('statusLine partial warns', statusLine('partially_paid').warn, true);
 eq('fmt 10:00', fmtLeft(10 * MIN), '10:00');
 eq('fmt 0:09', fmtLeft(9000), '0:09');
 eq('fmt clamps negative', fmtLeft(-5000), '0:00');
+// Hours roll out separately — the countdown can start at the 2h ceiling now.
+eq('fmt 2h → 2:00:00 (not 120:00)', fmtLeft(2 * 60 * MIN), '2:00:00');
+eq('fmt 90 min → 1:30:00', fmtLeft(90 * MIN), '1:30:00');
+eq('fmt 59:59 stays mm:ss', fmtLeft(59 * MIN + 59_000), '59:59');
 
 // ── classifyIpn — the money policy table ──────────────────────────────────
 type Case = [string, string, boolean, PaymentPhase, IpnAction];

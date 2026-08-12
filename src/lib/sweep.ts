@@ -7,6 +7,7 @@ import { autoBackfillEnabled } from './runtime-flags';
 import { backfillOrderProxies, refreshProvisionException } from './transitions';
 import { failAwaitingPayment } from './settle-payment';
 import { reconcileCryptoPayments } from './np-reconcile';
+import { loadTierGraceHours, effectiveGraceHours } from './grace';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -24,7 +25,7 @@ import type { RenewalBucket } from '@prisma/client';
  *      vanish from the client portal at that moment. Renewal of an order
  *      whose proxies were released re-provisions fresh ones
  *      (reprovisionRenewedOrder); while proxies are still bound (in grace)
- *      renewal is a plain term extension. gracePeriodHours = 0 → release on
+ *      renewal is a plain term extension. Client grace = 0 → release on
  *      the tick after expiry. Kill-switch: autoReleaseAfterGrace flag.
  *   1c. Pre-renewal reminders: non-auto-renew ACTIVE orders inside their
  *      plan's preRenewalReminderHours window get ONE bell notification +
@@ -109,6 +110,10 @@ export async function runSweep(): Promise<SweepResult> {
     let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
     let autoRenewed = 0, autoRenewFailed = 0, backfilled = 0, reconciled = 0;
 
+    // Per-tier grace hours, read once per sweep (client override applied
+    // per-order below). Grace is a client attribute now (lib/grace.ts).
+    const tierGrace = await loadTierGraceHours();
+
     // ── 0. Reconcile crypto payments against NOWPayments (IPN-independent) ───
     //   Authoritative settlement safety net: polls the NP API for open crypto
     //   payments and settles `finished` charges even when IPNs never arrive or
@@ -130,7 +135,7 @@ export async function runSweep(): Promise<SweepResult> {
       include: { plan: true, client: true },
     });
     for (const o of dueOrders) {
-      const graceMs = o.plan.gracePeriodHours * 3_600_000;
+      const graceMs = effectiveGraceHours(o.client, tierGrace) * 3_600_000;
       const graceEnd = (o.expiresAt?.getTime() ?? now) + graceMs;
       const inGrace = graceMs > 0 && now < graceEnd;
       let autoRenewGaveUp = false;
@@ -177,7 +182,7 @@ export async function runSweep(): Promise<SweepResult> {
         }
       }
 
-      const bucket = targetBucket({ expiresAt: o.expiresAt, renewalBucket: o.renewalBucket, graceHours: o.plan.gracePeriodHours }, now);
+      const bucket = targetBucket({ expiresAt: o.expiresAt, renewalBucket: o.renewalBucket, graceHours: effectiveGraceHours(o.client, tierGrace) }, now);
       await prisma.$transaction(async tx => {
         const fresh = await tx.order.findUnique({ where: { id: o.id }, select: { status: true } });
         if (fresh?.status !== 'ACTIVE') return; // renewed/cancelled since the read
@@ -217,10 +222,10 @@ export async function runSweep(): Promise<SweepResult> {
     if (await autoReleaseEnabled()) {
       const stranded = await prisma.order.findMany({
         where: { status: 'EXPIRED', expiresAt: { not: null }, assignments: { some: { releasedAt: null } } },
-        include: { plan: { select: { gracePeriodHours: true } }, assignments: { where: { releasedAt: null } } },
+        include: { client: { select: { tier: true, graceHoursOverride: true } }, assignments: { where: { releasedAt: null } } },
       });
       for (const o of stranded) {
-        const graceEnd = o.expiresAt!.getTime() + o.plan.gracePeriodHours * 3_600_000;
+        const graceEnd = o.expiresAt!.getTime() + effectiveGraceHours(o.client, tierGrace) * 3_600_000;
         if (now < graceEnd) continue; // still inside grace — proxies stay bound
         const releasedAt = new Date(now);
         await prisma.$transaction(async tx => {
@@ -355,10 +360,10 @@ export async function runSweep(): Promise<SweepResult> {
     // ── 2. Re-classify renewal buckets (ACTIVE approaching + EXPIRED aging) ─
     const classifiable = await prisma.order.findMany({
       where: { status: { in: ['ACTIVE', 'EXPIRED'] }, expiresAt: { not: null } },
-      select: { id: true, expiresAt: true, renewalBucket: true, plan: { select: { gracePeriodHours: true } } },
+      select: { id: true, expiresAt: true, renewalBucket: true, client: { select: { tier: true, graceHoursOverride: true } } },
     });
     for (const o of classifiable) {
-      const bucket = targetBucket({ expiresAt: o.expiresAt, renewalBucket: o.renewalBucket, graceHours: o.plan.gracePeriodHours }, now);
+      const bucket = targetBucket({ expiresAt: o.expiresAt, renewalBucket: o.renewalBucket, graceHours: effectiveGraceHours(o.client, tierGrace) }, now);
       if (bucket !== o.renewalBucket) {
         await prisma.order.update({ where: { id: o.id }, data: { renewalBucket: bucket } });
         bucketUpdates++;

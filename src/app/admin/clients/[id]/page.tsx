@@ -11,6 +11,7 @@ import { AdjustBalanceButton } from '@/components/admin/ActionButtons';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
+import { loadTierGraceHours, effectiveGraceHours, DEFAULT_TIER_GRACE_HOURS } from '@/lib/grace';
 
 const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -41,11 +42,18 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
   const carriers = catalogItems.filter(i => i.kind === 'CARRIER').map(i => i.value);
   const regions = catalogItems.filter(i => i.kind === 'REGION').map(i => i.value);
 
+  // Effective grace for the preferences panel: per-client override or the
+  // client's tier default (Settings → Grace / lib/grace.ts).
+  const tierGrace = await loadTierGraceHours();
+  const effGrace = effectiveGraceHours(c, tierGrace);
+  const graceIsOverride = c.graceHoursOverride != null;
+
   const editInitial = {
     name: c.name, telegram: c.telegram, country: c.country, tier: c.tier,
     preferredCarrier: c.preferredCarrier, preferredRegion: c.preferredRegion,
     emailRenewal: c.emailRenewal, emailIncidents: c.emailIncidents, emailMarketing: c.emailMarketing,
     telegramAll: c.telegramAll, preRenewalReminderHours: c.preRenewalReminderHours,
+    graceHoursOverride: c.graceHoursOverride,
   };
 
   const status = c.status.toLowerCase();
@@ -191,6 +199,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
                 <div className="preference-row"><span className="pref-label">Marketing emails</span><span className="pref-control"><span className={`toggle-v2${c.emailMarketing ? ' on' : ''}`} /></span></div>
                 <div className="preference-row"><span className="pref-label">Telegram alerts</span><span className="pref-control"><span className={`toggle-v2${c.telegramAll ? ' on' : ''}`} /></span></div>
                 <div className="preference-row"><span className="pref-label">Pre-renewal reminder</span><span className="pref-control">{c.preRenewalReminderHours}h</span></div>
+                <div className="preference-row"><span className="pref-label">Grace period</span><span className="pref-control">{effGrace}h {graceIsOverride ? <span style={{ color: 'var(--muted)' }}>· custom</span> : <span style={{ color: 'var(--muted)' }}>· {c.tier === 'VIP' ? 'VIP' : cap(c.tier)} default</span>}</span></div>
               </div>
             </div>
 

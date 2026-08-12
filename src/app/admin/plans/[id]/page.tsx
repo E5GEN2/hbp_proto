@@ -48,7 +48,6 @@ export default async function AdminEditPlanPage({ params }: { params: { id: stri
     autoRenewDefault: plan.autoRenewDefault,
     renewalAllowed: plan.renewalAllowed,
     preRenewalReminderHours: plan.preRenewalReminderHours,
-    gracePeriodHours: plan.gracePeriodHours,
     renewalDiscountPct: plan.renewalDiscountPct,
     lowCapacityThresholdPct: plan.lowCapacityThresholdPct,
   };

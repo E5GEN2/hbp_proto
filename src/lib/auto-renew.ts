@@ -14,6 +14,7 @@ import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
 import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
+import { renewalBase } from './renewal';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
@@ -57,7 +58,16 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       if (!freshOrd || freshOrd.status !== 'ACTIVE') {
         throw new AutoRenewFail(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);
       }
-      const base = freshOrd.expiresAt && freshOrd.expiresAt > now ? freshOrd.expiresAt : now;
+      // Anchor on the ORIGINAL expiry so an auto-renew that fires slightly
+      // after the due instant (the sweep runs on a tick) produces a contiguous,
+      // drift-free term rather than a fresh window from `now` (renewal-policy
+      // PR). renewalBase floors to `now` when a full term from expiry would land
+      // in the past (a sweep/app outage longer than one term, or grace >
+      // duration) — CRITICAL here: without that floor a stale past-due expiry
+      // would yield newExpiry ≤ now, the order would stay in the due set, and
+      // the null-reset of autoRenewLastAttemptAt below would re-charge it every
+      // tick. The floor guarantees newExpiry > now, so it charges exactly once.
+      const base = renewalBase(freshOrd.expiresAt, order.plan.durationDays, now);
       newExpiry = new Date(base.getTime() + order.plan.durationDays * 86_400_000);
 
       const me = await tx.user.findUnique({ where: { id: order.clientId } });

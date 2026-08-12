@@ -9,6 +9,7 @@ import { ClientOrderDetailActions } from '@/components/client/OrderDetailActions
 import { money } from '@/lib/money';
 import { daysLeft, fmtAdminStamp } from '@/lib/date';
 import { byRecency, LIFECYCLE } from '@/lib/timeline';
+import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 
 
 
@@ -28,6 +29,15 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
   const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
   const dl = daysLeft(order.expiresAt);
   const expiringActive = order.status === 'ACTIVE' && dl != null && dl > 0 && dl <= 7;
+  // Renewal closed (past grace AND proxies released) → the action header offers
+  // "Buy again" (fresh checkout of the same terms, no renewOf) instead of
+  // "Renew". renewalClosed = clock + live-assignment count; order.assignments is
+  // already filtered to releasedAt=null, so its length is the live count. The
+  // server enforces the same predicate (renewal-policy PR).
+  const tierGrace = await loadTierGraceHours();
+  const graceClient = { tier: me?.tier ?? 'STANDARD' as const, graceHoursOverride: me?.graceHoursOverride ?? null };
+  const pastGrace = renewalClosed(order.expiresAt, order.assignments.length, graceClient, tierGrace, Date.now());
+  const buyAgainHref = `/checkout?duration=${order.plan.durationDays}&qty=${order.qty}&location=${encodeURIComponent(order.region)}`;
   const isPaid = ['PAID', 'CONFIRMED', 'FREE'].includes(order.paymentStatus);
   const lastPay = order.payments[0] ?? null;
 
@@ -82,6 +92,8 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
                 paymentStatus={order.paymentStatus}
                 autoRenew={order.autoRenew}
                 expiringActive={expiringActive}
+                pastGrace={pastGrace}
+                buyAgainHref={buyAgainHref}
               />
             </div>
           </div>

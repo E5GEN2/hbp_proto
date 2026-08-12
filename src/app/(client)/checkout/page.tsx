@@ -12,6 +12,7 @@ import { renewalUnitPrice } from '@/lib/renewal';
 import { safeReturn } from '@/lib/safe-return';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 import { allocatedByPlan } from '@/lib/plan-availability';
+import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 import { TELEGRAM_SUPPORT_URL, SOLD_OUT_COPY } from '@/lib/support';
 import { CheckoutFlow } from './CheckoutFlow';
 import { CheckoutSuccess } from './CheckoutSuccess';
@@ -262,6 +263,34 @@ export default async function CheckoutPage({ searchParams }: {
       );
     }
 
+    // A settled order fully past grace (proxies released) can no longer be
+    // renewed contiguously — show "buy again" rather than a pay panel that would
+    // re-issue a policy-dead renewal charge via /api/checkout/repay
+    // (renewal-policy PR; repay enforces the same rule server-side). New orders
+    // are exempt (never activated). reviewPay above takes precedence.
+    if (!isNewOrder) {
+      const resumeTierGrace = await loadTierGraceHours();
+      const resumeLive = await prisma.assignment.count({ where: { orderId: resumeOrder.id, releasedAt: null } });
+      if (renewalClosed(resumeOrder.expiresAt, resumeLive, me, resumeTierGrace, Date.now())) {
+        const buyAgainHref = `/checkout?duration=${resumeOrder.plan.durationDays}&qty=${resumeOrder.qty}&location=${encodeURIComponent(resumeOrder.region)}`;
+        return (
+          <>
+            <ClientTopbar breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: `Order ${resumeOrder.id}`, href: `/orders/${resumeOrder.id}` }, { label: 'Renew' }]} balance={Number(me.balance)} />
+            <main style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
+              <div className="panel" style={{ padding: 24 }}>
+                <h2 style={{ marginTop: 0, color: 'var(--text)' }}>This order cannot be renewed</h2>
+                <p style={{ color: 'var(--muted)' }}>This order has fully expired and its proxies were released. Buy a new order to get fresh proxies.</p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Link href={buyAgainHref} className="btn primary">Buy again</Link>
+                  <Link href={`/orders/${resumeOrder.id}`} className="btn ghost">View order</Link>
+                </div>
+              </div>
+            </main>
+          </>
+        );
+      }
+    }
+
     const awaiting = resumeOrder.status === 'CANCELLED' || resumeOrder.status === 'PENDING_RENEWAL'
       ? null
       : await prisma.payment.findFirst({
@@ -394,7 +423,18 @@ export default async function CheckoutPage({ searchParams }: {
     if (!renewalOrder || renewalOrder.clientId !== session!.user.id) {
       notFound();
     }
-    if (renewalOrder.status === 'CANCELLED' || renewalOrder.status === 'PENDING_RENEWAL' || !renewalOrder.plan.renewalAllowed) {
+    // Once past grace AND its proxies are released a renewal is no longer
+    // contiguous, so the client buys a fresh order (renewal-policy PR). The
+    // renewal client is the signed-in user, so `me` carries the tier + grace
+    // override. renewalClosed = clock + live-assignment count (not order.status,
+    // which is EXPIRED throughout grace).
+    const tierGrace = await loadTierGraceHours();
+    const renewLive = await prisma.assignment.count({ where: { orderId: renewalOrder.id, releasedAt: null } });
+    const renewPastGrace = renewalClosed(renewalOrder.expiresAt, renewLive, me, tierGrace, Date.now());
+    if (renewalOrder.status === 'CANCELLED' || renewalOrder.status === 'PENDING_RENEWAL' || !renewalOrder.plan.renewalAllowed || renewPastGrace) {
+      // "Buy again" points at a NEW checkout of the same plan terms (no
+      // renewOf) — a fresh order with fresh proxies, since the old one is done.
+      const buyAgainHref = `/checkout?duration=${renewalOrder.plan.durationDays}&qty=${renewalOrder.qty}&location=${encodeURIComponent(renewalOrder.region)}`;
       return (
         <>
           <ClientTopbar title="Checkout" balance={Number(me.balance)} />
@@ -402,9 +442,22 @@ export default async function CheckoutPage({ searchParams }: {
             <div className="panel" style={{ padding: 24 }}>
               <h2 style={{ marginTop: 0, color: 'var(--text)' }}>This order cannot be renewed</h2>
               <p style={{ color: 'var(--muted)' }}>
-                {renewalOrder.status === 'CANCELLED' ? 'The order was cancelled.' : 'Renewals are not available for this plan.'}
+                {renewalOrder.status === 'CANCELLED'
+                  ? 'The order was cancelled.'
+                  : renewPastGrace
+                    ? 'This order has fully expired and its proxies were released. Buy a new order to get fresh proxies.'
+                    : 'Renewals are not available for this plan.'}
               </p>
-              <Link href={`/orders/${renewalOrder.id}`} className="btn primary">View order</Link>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {/* Buy again = a NEW order of the same terms (no renewOf); it's a
+                    fresh purchase, so it doesn't depend on the plan's renewal
+                    flag. Offered whenever the order is past grace, matching the
+                    OrdersList / order-detail affordance. */}
+                {renewPastGrace && (
+                  <Link href={buyAgainHref} className="btn primary">Buy again</Link>
+                )}
+                <Link href={`/orders/${renewalOrder.id}`} className={renewPastGrace ? 'btn ghost' : 'btn primary'}>View order</Link>
+              </div>
             </div>
           </main>
         </>

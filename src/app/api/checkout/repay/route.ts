@@ -7,6 +7,7 @@ import { nextPaymentId } from '@/lib/id';
 import { enabledProviders } from '@/lib/runtime-flags';
 import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPayment } from '@/lib/nowpayments';
 import { renewalUnitPrice } from '@/lib/renewal';
+import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 import { money } from '@/lib/money';
 
 const Schema = z.object({ orderId: z.string().optional(), paymentId: z.string().optional(), payCoin: z.string() })
@@ -130,7 +131,10 @@ export async function POST(req: Request) {
 
   if (!orderId) return NextResponse.json({ error: 'Bad input' }, { status: 400 }); // refine guarantees this; narrows the type
 
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { plan: true } });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { plan: true, client: { select: { tier: true, graceHoursOverride: true } } },
+  });
   if (!order || order.clientId !== userId) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   if (order.status === 'CANCELLED' || order.status === 'PENDING_RENEWAL') {
     return NextResponse.json({ error: 'This order is no longer awaiting payment.' }, { status: 400 });
@@ -138,6 +142,19 @@ export async function POST(req: Request) {
   const isNewOrder = order.status === 'NEW';
   if (!isNewOrder && !order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan.' }, { status: 400 });
+  }
+  // Repay re-issues a lapsed direct charge; for a RENEWAL charge it must honour
+  // the same past-grace policy as place/clientRenewOrder, or it becomes a
+  // bypass — re-issuing a renewal charge (at the discounted price) that
+  // reactivates a policy-dead order. New-order charges are exempt (never
+  // activated, no grace). renewalClosed = clock + live-assignment based
+  // (renewal-policy PR).
+  if (!isNewOrder) {
+    const tierGrace = await loadTierGraceHours();
+    const liveCount = await prisma.assignment.count({ where: { orderId: order.id, releasedAt: null } });
+    if (renewalClosed(order.expiresAt, liveCount, order.client, tierGrace, Date.now())) {
+      return NextResponse.json({ error: 'This order has fully expired — start a new order to get fresh proxies.' }, { status: 400 });
+    }
   }
 
   // Funds already attached to a charge on this order (under verification) — a

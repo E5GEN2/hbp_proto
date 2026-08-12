@@ -270,7 +270,17 @@ export async function markPaymentPaid({
  * Admin refunds a confirmed payment.
  * Credits client balance, tags order with refund-pending exception.
  */
-export async function refundPayment({
+// ── Manual refund flow (owner decision 2026-08-12) ──────────────────────────
+// Refunds are TWO-STEP and the money moves OUTSIDE the portal: the admin
+// initiates (reason recorded, client notified «being processed»), returns the
+// funds manually (crypto back to the client's wallet), then completes with a
+// PROOF (tx hash / reference) — only then does the payment become REFUNDED.
+// The portal does NOT credit the internal balance: the old auto-credit both
+// double-refunded (external return + store credit) and MINTED money on
+// deposit refunds (the TOPUP's own credit stayed). Deposits are therefore
+// not refundable at all — adjust the client's balance instead (variant B).
+
+export async function initiateRefund({
   paymentId, actor, amount, reason,
 }: { paymentId: string; actor: Actor; amount?: number; reason: string }) {
   return prisma.$transaction(async tx => {
@@ -279,57 +289,74 @@ export async function refundPayment({
       include: { order: true },
     });
     if (!pay) throw new Error('Payment not found');
-    // CONFIRMED/PAID = admin-initiated refund; REFUND_REQUESTED = executing a
-    // client's refund request (the flag clientRequestRefund raised).
-    // MANUAL_REVIEW = funds arrived on a charge that had already died (the
-    // classic case: money landed on a cancelled order). Refunding is the whole
-    // point of that queue — and since a refund here credits the client's
-    // internal balance rather than sending crypto back, it is exactly the
-    // right resolution. Without it the park had NO exit at all: MarkPaid
-    // refuses a cancelled order and Refund was uncallable, so the row sat in
-    // MANUAL_REVIEW forever, holding the ops bell at +1 and showing the client
-    // "Verifying" indefinitely (re-review C1/C3/C4).
+    if (!pay.orderId) {
+      // A deposit's own TOPUP credit already sits on the balance — "refunding"
+      // it here would leave that credit in place while money also goes back
+      // externally. Balance corrections go through Adjust balance, which
+      // debits with a ledger entry.
+      throw new Error('Deposits are not refundable — use Adjust balance on the client instead.');
+    }
+    if (!reason?.trim()) throw new Error('Reason required');
+    // CONFIRMED/PAID = admin-initiated; REFUND_REQUESTED = executing a client's
+    // request; MANUAL_REVIEW = funds on a dead charge (e.g. a cancelled order)
+    // — refunding is that queue's exit (re-review C1/C3/C4).
     if (!['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'].includes(pay.status)) {
       throw new Error(`Cannot refund from status ${pay.status}`);
     }
 
     const refundAmount = roundCents(amount ?? Number(pay.gross));
-    const now = new Date();
 
-    // Status-guarded flip (optimistic concurrency): two admins double-clicking
-    // Refund, or a refund racing a settle, would otherwise both credit the
-    // balance. Count 0 → somebody already moved this row; abort the tx.
+    // Status-guarded flip (optimistic concurrency): two admins double-clicking,
+    // or a refund racing a settle — count 0 → somebody moved the row first.
     const flipped = await tx.payment.updateMany({
       where: { id: paymentId, status: { in: ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'] } },
-      data: { status: 'REFUNDED', refundedAmount: refundAmount, refundedAt: now },
+      data: { status: 'REFUND_IN_PROGRESS', refundedAmount: refundAmount, refundReason: reason.trim() },
     });
     if (flipped.count === 0) throw new Error('This payment was just updated — reload to see its current state.');
 
-    // Credit balance ledger — atomic increment (P1-1)
-    const newBalance = await creditBalance(tx, pay.clientId, refundAmount);
-    await tx.balanceLedgerEntry.create({
-      data: {
-        userId: pay.clientId,
-        op: 'REFUND_CREDIT',
-        amount: refundAmount,
-        balanceAfter: newBalance,
-        refPaymentId: paymentId,
-        refOrderId: pay.orderId ?? null,
-        note: reason,
-      },
-    });
+    await notify(tx, pay.clientId,
+      `Refund of ${money(refundAmount)} for ${pay.orderId} is being processed — we'll notify you when it's sent`,
+      'INFO', `/orders/${pay.orderId}`);
+    await log(tx, actor.id, 'PAYMENT.REFUND_INITIATE', 'PAYMENT', paymentId,
+      `Refund initiated ${money(refundAmount)} · ${reason.trim()} · actor=${actor.name ?? actor.id}`);
+    return { ok: true, refundAmount };
+  });
+}
 
-    // Issuing the refund RESOLVES the refund-pending signal (Phase B finding
-    // B-4: the old code re-tagged the order REFUND_PENDING *after* refunding,
-    // so «refund review pending» counted finished refunds forever). Clear only
-    // when NO other reviewable payment remains on the order (renewals stack
-    // several payments) — same rule as the settled-refunds migration.
+export async function completeRefund({
+  paymentId, actor, proof,
+}: { paymentId: string; actor: Actor; proof: string }) {
+  return prisma.$transaction(async tx => {
+    const pay = await tx.payment.findUnique({
+      where: { id: paymentId },
+      include: { order: true },
+    });
+    if (!pay) throw new Error('Payment not found');
+    if (pay.status !== 'REFUND_IN_PROGRESS') {
+      throw new Error(`Cannot complete a refund from status ${pay.status} — initiate it first.`);
+    }
+    // The proof is what makes the refund auditable: without a tx hash /
+    // reference there is no record the money actually left (owner rule).
+    if (!proof?.trim()) throw new Error('Proof of the completed refund is required (tx hash / reference).');
+
+    const now = new Date();
+    const refundAmount = roundCents(Number(pay.refundedAmount ?? pay.gross));
+
+    const flipped = await tx.payment.updateMany({
+      where: { id: paymentId, status: 'REFUND_IN_PROGRESS' },
+      data: { status: 'REFUNDED', refundedAt: now, refundProof: proof.trim() },
+    });
+    if (flipped.count === 0) throw new Error('This payment was just updated — reload to see its current state.');
+
+    // Completing the refund RESOLVES the refund-pending signal (Phase B
+    // finding B-4). Clear only when NO other reviewable payment remains on
+    // the order (renewals stack several payments).
     if (pay.order && pay.order.exception === 'REFUND_PENDING') {
       const reviewable = await tx.payment.count({
         where: {
           orderId: pay.order.id,
           id: { not: paymentId },
-          status: { in: ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'AWAITING', 'PENDING', 'MANUAL_REVIEW'] },
+          status: { in: ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS', 'AWAITING', 'PENDING', 'MANUAL_REVIEW'] },
         },
       });
       if (reviewable === 0) {
@@ -341,15 +368,11 @@ export async function refundPayment({
     }
 
     await notify(tx, pay.clientId,
-      `Refund of ${money(refundAmount)} credited to your balance · ${reason}`,
-      'SUCCESS',
-      pay.orderId ? `/orders/${pay.orderId}` : '/billing',
-    );
-
+      `Refund of ${money(refundAmount)} for ${pay.orderId} has been sent`,
+      'SUCCESS', pay.orderId ? `/orders/${pay.orderId}` : '/billing');
     await log(tx, actor.id, 'PAYMENT.REFUND', 'PAYMENT', paymentId,
-      `Refund ${money(refundAmount)} · ${reason} · actor=${actor.name ?? actor.id}`);
-
-    return { ok: true, newBalance };
+      `Refund completed ${money(refundAmount)} · proof=${proof.trim().slice(0, 120)} · actor=${actor.name ?? actor.id}`);
+    return { ok: true, refundAmount };
   });
 }
 
@@ -2053,10 +2076,15 @@ export async function clientRequestRefund({
     if (pay.status !== 'CONFIRMED' && pay.status !== 'PAID') throw new Error('Only confirmed payments can be refund-requested');
     if (!reason?.trim()) throw new Error('Reason required');
 
-    await tx.payment.update({
-      where: { id: paymentId },
+    // Status-guarded flip: an admin's initiateRefund could commit
+    // REFUND_IN_PROGRESS between the read above and here; an unguarded update
+    // would regress it to REFUND_REQUESTED, wiping the admin's in-flight
+    // refund (review 2026-08-12). Count 0 → the payment moved; bail.
+    const flipped = await tx.payment.updateMany({
+      where: { id: paymentId, status: { in: ['CONFIRMED', 'PAID'] } },
       data: { status: 'REFUND_REQUESTED' },
     });
+    if (flipped.count === 0) throw new Error('This payment was just updated — reload to see its current state.');
     if (pay.order) {
       await tx.order.update({
         where: { id: pay.order.id },

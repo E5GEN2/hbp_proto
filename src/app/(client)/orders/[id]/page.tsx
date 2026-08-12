@@ -49,6 +49,7 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
     if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.paid, tone: 'success', title: 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
     else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, seq: LIFECYCLE.awaiting, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
     else if (p.status === 'FAILED') events.push({ at: p.createdAt, seq: LIFECYCLE.failed, tone: 'danger', title: 'Payment failed', detail: 'Retry from this order or contact support.' });
+    else if (p.status === 'REFUND_REQUESTED' || p.status === 'REFUND_IN_PROGRESS') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.refunded, tone: 'warning', title: `Refund in progress · ${money(Number(p.refundedAmount ?? p.gross))}`, detail: p.status === 'REFUND_IN_PROGRESS' ? 'Being returned to you — you’ll be notified when it’s sent.' : 'Your refund request is under review.' });
     else if (p.status === 'REFUNDED') events.push({ at: p.refundedAt ?? p.createdAt, seq: LIFECYCLE.refunded, tone: 'muted', title: `Refunded ${money(Number(p.refundedAmount ?? p.gross))}` });
   }
   if (order.activatedAt) events.push({ at: order.activatedAt, seq: LIFECYCLE.provisioned, tone: 'violet', title: 'Provisioned', detail: `${order.assignments.length} mobile ${order.assignments.length === 1 ? 'proxy is' : 'proxies are'} live.` });

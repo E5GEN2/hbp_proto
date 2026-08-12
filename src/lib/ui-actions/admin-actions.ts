@@ -5,7 +5,8 @@ import * as S from '@/lib/admin-actions';
 import { unwrapAction } from './unwrap';
 
 export const markPaidAction = unwrapAction(S.markPaidAction);
-export const refundPaymentAction = unwrapAction(S.refundPaymentAction);
+export const initiateRefundAction = unwrapAction(S.initiateRefundAction);
+export const completeRefundAction = unwrapAction(S.completeRefundAction);
 export const cancelOrderAction = unwrapAction(S.cancelOrderAction);
 export const suspendOrderAction = unwrapAction(S.suspendOrderAction);
 export const resumeOrderAction = unwrapAction(S.resumeOrderAction);

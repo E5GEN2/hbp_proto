@@ -7,7 +7,7 @@ import { money } from '@/lib/money';
 import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { ReplaceProxyModal } from './modals/ReplaceProxyModal';
 import { MarkPaidModal } from './modals/MarkPaidModal';
-import { RefundModal } from './modals/RefundModal';
+import { RefundModal, CompleteRefundModal } from './modals/RefundModal';
 import { MarkFaultyModal } from './modals/MarkFaultyModal';
 import { EditProxyModal, type EditProxyInitial } from './modals/EditProxyModal';
 import { RiskModal } from './modals/RiskModal';
@@ -55,6 +55,16 @@ export function RefundButton({ paymentId, amount }: { paymentId: string; amount:
     <>
       <button className="btn danger" onClick={() => setOpen(true)}>Refund</button>
       <RefundModal open={open} onClose={() => setOpen(false)} paymentId={paymentId} maxAmount={amount} />
+    </>
+  );
+}
+
+export function CompleteRefundButton({ paymentId, amount }: { paymentId: string; amount: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn primary" onClick={() => setOpen(true)}>Complete refund</button>
+      <CompleteRefundModal open={open} onClose={() => setOpen(false)} paymentId={paymentId} amount={amount} />
     </>
   );
 }

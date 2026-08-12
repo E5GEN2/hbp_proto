@@ -468,7 +468,10 @@ export async function runSweep(): Promise<SweepResult> {
     for (const o of deadNew) {
       const done = await prisma.$transaction(async tx => {
         const live = await tx.payment.findFirst({
-          where: { orderId: o.id, status: { in: ['AWAITING', 'MANUAL_REVIEW', 'CONFIRMED'] } }, select: { id: true },
+          // Refund states are "live" too: an order whose payment is being
+          // refunded must not be auto-cancelled with a "window expired" bell
+          // while the money is still going back to the client (review C).
+          where: { orderId: o.id, status: { in: ['AWAITING', 'MANUAL_REVIEW', 'CONFIRMED', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS'] } }, select: { id: true },
         });
         if (live) return false; // being paid / under review / settled — leave it
         // Age off the newest charge, not the order: a just-failed retry keeps

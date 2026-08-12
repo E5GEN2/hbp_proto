@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { MarkPaidButton, RefundButton } from '@/components/admin/ActionButtons';
+import { MarkPaidButton, RefundButton, CompleteRefundButton } from '@/components/admin/ActionButtons';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
@@ -14,10 +14,12 @@ import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
 
 const CONFIRMABLE = ['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'];
 // REFUND_REQUESTED = client's request awaiting execution. MANUAL_REVIEW =
-// funds landed on a dead charge; refunding to balance is the resolution when
-// the order can't be honoured (e.g. it was cancelled) — without it that queue
-// had no exit at all.
+// funds landed on a dead charge; the manual-refund flow is that queue's exit.
+// Refunds are two-step (owner 2026-08-12): initiate → admin returns the money
+// externally → complete with proof. Deposits are not refundable (the action
+// itself refuses TOPUP rows — use Adjust balance).
 const REFUNDABLE = ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'];
+const REFUND_COMPLETABLE = ['REFUND_IN_PROGRESS'];
 
 export default async function PaymentDetail({ params }: { params: { id: string } }) {
   await requireAdmin();
@@ -45,14 +47,24 @@ export default async function PaymentDetail({ params }: { params: { id: string }
   //  Download invoice is REAL now — audit B-8, admin-only PDF.)
   const noteBtn = <AddNoteToolbar key="note" objectType="PAYMENT" objectId={p.id} label="Add note" />;
   const markPaidBtn = <MarkPaidButton key="paid" paymentId={p.id} paymentLabel={`${p.provider} · ${money(gross)}`} />;
-  const refundBtn = <RefundButton key="refund" paymentId={p.id} amount={gross} />;
+  // Deposits (TOPUP) are not refundable — hide the affordance entirely.
+  const refundBtn = p.kind !== 'TOPUP' ? <RefundButton key="refund" paymentId={p.id} amount={gross} /> : null;
+  const completeRefundBtn = <CompleteRefundButton key="complete-refund" paymentId={p.id} amount={refunded > 0 ? refunded : gross} />;
   const invoiceBtn = p.invoice
     ? <a key="invoice" className="btn" href={`/api/admin/invoices/${p.invoice.id}/pdf`}>Download invoice</a>
     : null;
   let actions: ReactNode[];
-  if (REFUNDABLE.includes(p.status)) actions = [noteBtn, refundBtn];
-  else if (CONFIRMABLE.includes(p.status)) actions = [markPaidBtn, noteBtn];
-  else actions = [noteBtn];
+  if (REFUND_COMPLETABLE.includes(p.status)) {
+    actions = [completeRefundBtn, noteBtn];
+  } else {
+    // Additive, not either/or: MANUAL_REVIEW sits in BOTH lists — its two
+    // legitimate exits are MarkPaid (the money is good → settle) and Refund
+    // (return it). The old either/or branching dropped MarkPaid for it.
+    actions = [];
+    if (CONFIRMABLE.includes(p.status)) actions.push(markPaidBtn);
+    actions.push(noteBtn);
+    if (REFUNDABLE.includes(p.status) && refundBtn) actions.push(refundBtn);
+  }
   if (invoiceBtn) actions = [invoiceBtn, ...actions];
 
   const c = p.client;
@@ -104,6 +116,8 @@ export default async function PaymentDetail({ params }: { params: { id: string }
                   <div className="kv-row"><span className="kv-key">Provider fees</span><span className="kv-val">−{money(fees)}</span></div>
                   {refunded > 0 && <div className="kv-row"><span className="kv-key">Refunds</span><span className="kv-val">−{money(refunded)}</span></div>}
                   <div className="kv-row"><span className="kv-key">Net</span><span className="kv-val">{money(refunded > 0 ? netAfterRefunds : net)}</span></div>
+                  {p.refundReason && <div className="kv-row"><span className="kv-key">Refund reason</span><span className="kv-val">{p.refundReason}</span></div>}
+                  {p.refundProof && <div className="kv-row"><span className="kv-key">Refund proof</span><span className="kv-val mono">{p.refundProof}</span></div>}
                 </div>
               </div>
 

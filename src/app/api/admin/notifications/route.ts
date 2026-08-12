@@ -34,7 +34,10 @@ export async function GET() {
     }),
     prisma.order.count({ where: { renewalBucket: 'GRACE' } }),
     prisma.payment.count({ where: { status: { in: ['AWAITING', 'PENDING', 'MANUAL_REVIEW'] } } }),
-    prisma.payment.count({ where: { status: 'REFUND_REQUESTED' } }),
+    // Matches the payments page's "Refund requested" tab: client requests plus
+    // refunds initiated but not yet completed with proof (manual-refund flow) —
+    // counter and destination must agree.
+    prisma.payment.count({ where: { status: { in: ['REFUND_REQUESTED', 'REFUND_IN_PROGRESS'] } } }),
     underProvisionedCount(),
     // Crypto that arrived but under-covered the price (late/rate-drift payment):
     // still AWAITING with NP's own status mirrored as partially_paid. These are

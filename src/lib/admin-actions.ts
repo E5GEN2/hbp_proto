@@ -32,9 +32,16 @@ export const markPaidAction = guarded(async function markPaidAction(paymentId: s
   return r;
 });
 
-export const refundPaymentAction = guarded(async function refundPaymentAction(paymentId: string, amount: number, reason: string) {
+export const initiateRefundAction = guarded(async function initiateRefundAction(paymentId: string, amount: number, reason: string) {
   const actor = await getAdminActor();
-  const r = await T.refundPayment({ paymentId, actor, amount, reason });
+  const r = await T.initiateRefund({ paymentId, actor, amount, reason });
+  bust();
+  return r;
+});
+
+export const completeRefundAction = guarded(async function completeRefundAction(paymentId: string, proof: string) {
+  const actor = await getAdminActor();
+  const r = await T.completeRefund({ paymentId, actor, proof });
   bust();
   return r;
 });

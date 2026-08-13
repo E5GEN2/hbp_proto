@@ -13,8 +13,8 @@ import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyIdBatch
 import { renewalUnitPrice, renewalBase } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
-import { sendTelegram, sendAdminTelegram, adminNewOrderAlert } from './telegram';
-import { sendEmail, incidentEmail, escapeHtml } from './email';
+import { sendTelegram, sendAdminTelegram, adminNewOrderAlert, flushTelegram, type TelegramOutbox } from './telegram';
+import { sendEmail, incidentEmail, proxiesReadyEmail, escapeHtml } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
@@ -61,6 +61,8 @@ export async function markPaymentPaid({
 }: { paymentId: string; actor: Actor; source?: string; externalRef?: string }) {
   // Built inside the tx, sent after commit (no HTTP inside $transaction).
   let adminAlert: string | null = null;
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const telegramOutbox: TelegramOutbox = [];
   const result = await prisma.$transaction(async tx => {
     const pay = await tx.payment.findUnique({
       where: { id: paymentId },
@@ -225,6 +227,22 @@ export async function markPaymentPaid({
         `/orders/${ord.id}`,
       );
 
+      // Same delivery notice as the manual Assign path: this branch just
+      // provisioned the order to full and flipped it ACTIVE, so the client's
+      // proxies are live. Admin MarkPaid sent NO client email at all before —
+      // unlike the automatic crypto settle, which does (orderPaidEmail) — so
+      // whether the client heard about their own order depended on which route
+      // confirmed the payment. Not gated: it is the delivery receipt for a paid
+      // order. The partial/PROVISIONING case deliberately stays bell-only —
+      // the ready mail belongs to the moment the proxies actually go live.
+      if (willActivate && fullyAssigned) {
+        emailOutbox.push({ to: pay.client.email, ...proxiesReadyEmail(ord.id, ord.qty, false) });
+        telegramOutbox.push({
+          chatId: pay.client.telegramAll ? pay.client.telegramChatId : null,
+          text: `✅ Order ${ord.id} activated — ${ord.qty} ${ord.qty === 1 ? 'proxy' : 'proxies'} ready`,
+        });
+      }
+
       // "New order" alert only when the order first becomes paid — a repeat
       // payment on an already-paid order (renewal confirm on a PAID, FREE
       // comp, or legacy CONFIRMED order) is not a new order, no re-alert.
@@ -272,6 +290,8 @@ export async function markPaymentPaid({
     return { ok: true };
   });
   if (adminAlert) await sendAdminTelegram(adminAlert);
+  for (const e of emailOutbox) await sendEmail(e);
+  await flushTelegram(telegramOutbox);
   return result;
 }
 
@@ -680,7 +700,9 @@ export async function reprovisionRenewedOrder(
 export async function assignProxyManually({
   orderId, proxyIds, actor,
 }: { orderId: string; proxyIds: string[] | null; actor: Actor }) {
-  return prisma.$transaction(async tx => {
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const telegramOutbox: TelegramOutbox = [];
+  const result = await prisma.$transaction(async tx => {
     // Serialize concurrent assigns to the SAME order: the deficit is computed
     // from the open-assignment count, and two READ-COMMITTED transactions each
     // reading it before the other commits could jointly over-fill past qty with
@@ -689,7 +711,11 @@ export async function assignProxyManually({
     await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
     const ord = await tx.order.findUnique({
       where: { id: orderId },
-      include: { plan: true, assignments: { where: { releasedAt: null } } },
+      include: {
+        plan: true,
+        assignments: { where: { releasedAt: null } },
+        client: { select: { email: true, emailIncidents: true, telegramChatId: true, telegramAll: true } },
+      },
     });
     if (!ord) throw new Error('Order not found');
     // Server-side mirror of the UI showAssign gate (report №8) — the action
@@ -765,7 +791,25 @@ export async function assignProxyManually({
           credentialsChannel: ord.credentialsChannel ?? null,
         },
       });
-      await notify(tx, ord.clientId, `Your proxies for ${orderId} are ready`, 'SUCCESS', `/orders/${orderId}`);
+      // Delivery notice on every channel we have — this is the moment
+      // orderPaidEmail / resumeOrder promised to tell the client about, and it
+      // used to produce nothing but a bell they had to be in the portal to see.
+      // Two wordings, same split the sweep's backfill already makes: a first
+      // fill ACTIVATES the order, a later one RESTORES a reopened deficit.
+      const restored = ord.status === 'ACTIVE';
+      const readyMsg = restored
+        ? `Order ${orderId} is back to its full ${ord.qty} ${ord.qty === 1 ? 'proxy' : 'proxies'}`
+        : `Your proxies for ${orderId} are ready`;
+      await notify(tx, ord.clientId, readyMsg, 'SUCCESS', `/orders/${orderId}`);
+      // The activation notice is transactional — it is the delivery receipt for
+      // something the client paid for, so it is NOT gated, exactly like
+      // orderPaidEmail. The restore variant closes an incident thread, so it
+      // honours emailIncidents like every other incident mail (and like the
+      // sweep's own backfill mail, which is the same event via the pool).
+      if (!restored || ord.client.emailIncidents) {
+        emailOutbox.push({ to: ord.client.email, ...proxiesReadyEmail(orderId, ord.qty, restored) });
+      }
+      telegramOutbox.push({ chatId: ord.client.telegramAll ? ord.client.telegramChatId : null, text: `✅ ${readyMsg}` });
     }
     // One reconciler for the exception + excInfo, full or partial: it recounts
     // SERVING assignments vs qty, so a partial top-up refreshes the stale
@@ -779,6 +823,9 @@ export async function assignProxyManually({
       `${autoMode ? 'Auto-assigned' : 'Manually assigned'} ${picked.length} ${picked.length === 1 ? 'proxy' : 'proxies'} · [${picked.join(', ')}]${autoMode ? ' · pool-first' : ''}`);
     return { ok: true, fullyAssigned, assigned: picked };
   });
+  for (const e of emailOutbox) await sendEmail(e);
+  await flushTelegram(telegramOutbox);
+  return result;
 }
 
 // P1-3 (truth-in-UI, owner decision 2026-07-20): the old "Send credentials"

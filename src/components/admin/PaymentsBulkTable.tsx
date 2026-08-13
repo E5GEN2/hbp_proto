@@ -72,26 +72,24 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
       </div>
 
       <div className="table-wrap">
-        <table className="dt" style={{ minWidth: 1250 }}>
-          {/* colgroup (10 cols). Same px anchors as before at the new budget
-              B*=1250: chk 55, Payment ID 110, Type 84, Order/Client ID 110,
-              Email 190 (fits ~24 chars on one line; longer wraps per the
-              no-ellipsis rule), Provider·Method auto (~186, wraps at the ·),
-              Amount 105, Status 155, Date 146. minWidth bumped 1060→1250 for
-              the added Email column. Type went 74→84 because "Deposit" needs
-              80 (48 + 2×16 pad) and was breaking mid-word at 74; the 10px come
-              out of the auto column, so B* is unaffected. */}
+        <table className="dt" style={{ minWidth: 1170 }}>
+          {/* colgroup (9 cols). B*=1170: chk 55, Payment ID 110, Type 84,
+              Order ID 110, Client 220 (composite id-over-email, see the cell
+              below — 220 clears the longest live client email at 11.5px so
+              nothing needs a hover), Provider·Method auto (~185, wraps at the
+              ·), Amount 105, Status 155, Date 146. Type is 84 (not the older
+              74) because "Deposit" needs 80 (48 + 2×16 pad) and was breaking
+              mid-word. Plain % of 1170. */}
           <colgroup>
-            <col style={{ width: '4.4360%' }} />
-            <col style={{ width: '8.7872%' }} />
-            <col style={{ width: '6.7200%' }} />
-            <col style={{ width: '8.7872%' }} />
-            <col style={{ width: '8.7872%' }} />
-            <col style={{ width: '15.2000%' }} />
+            <col style={{ width: '4.7009%' }} />
+            <col style={{ width: '9.4017%' }} />
+            <col style={{ width: '7.1795%' }} />
+            <col style={{ width: '9.4017%' }} />
+            <col style={{ width: '18.8034%' }} />
             <col />
-            <col style={{ width: '8.3600%' }} />
-            <col style={{ width: '12.3680%' }} />
-            <col style={{ width: '11.6880%' }} />
+            <col style={{ width: '8.9744%' }} />
+            <col style={{ width: '13.2479%' }} />
+            <col style={{ width: '12.4786%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -99,8 +97,7 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
               <th className="col-id">Payment ID</th>
               <th className="col-text">Type</th>
               <th className="col-id">Order ID</th>
-              <th className="col-id">Client ID</th>
-              <th className="col-text">Email</th>
+              <th className="col-id">Client</th>
               <th className="col-text">Provider · Method</th>
               <th className="col-money">Amount</th>
               <th className="col-status">Status</th>
@@ -109,7 +106,7 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
           </thead>
           <tbody>
             {payments.length === 0 ? (
-              <tr><td colSpan={10}><div className="empty"><div className="empty-desc">No payments match the current view.</div></div></td></tr>
+              <tr><td colSpan={9}><div className="empty"><div className="empty-desc">No payments match the current view.</div></div></td></tr>
             ) : payments.map(p => (
               <tr key={p.id} style={selected.has(p.id) ? { background: 'var(--accent-subtle)' } : undefined}>
                 <td className="col-chk">
@@ -120,8 +117,12 @@ export function PaymentsBulkTable({ payments }: { payments: Row[] }) {
                   ? <span style={{ color: 'var(--accent)', fontWeight: 500 }}>Deposit</span>
                   : <span className="muted">Order</span>}</td>
                 <td className="col-id">{p.orderId ? <span className="cell-tip" data-tip={p.orderId}><Link href={`/admin/orders/${p.orderId}`} className="td-link">{p.orderId}</Link></span> : <span className="muted">—</span>}</td>
-                <td className="col-id">{p.clientId ? <span className="cell-tip" data-tip={p.clientId}><Link href={`/admin/clients/${p.clientId}`} className="client-link">{p.clientId}</Link></span> : <span className="muted">—</span>}</td>
-                <td className="col-text">{p.clientEmail ? <span className="cell-tip" data-tip={p.clientEmail}>{p.clientEmail}</span> : <span className="muted">—</span>}</td>
+                <td className="col-id">{p.clientId ? (
+                  <div className="client-cell-body">
+                    <div className="client-cell-name"><Link href={`/admin/clients/${p.clientId}`} className="client-link">{p.clientId}</Link></div>
+                    {p.clientEmail && <div className="client-cell-contact cell-tip" data-tip={p.clientEmail}>{p.clientEmail}</div>}
+                  </div>
+                ) : <span className="muted">—</span>}</td>
                 <td className="col-text muted">{p.provider} · {p.method}</td>
                 <td className="col-money">{money(p.gross)}</td>
                 <td className="col-status"><span className={`chip ${p.statusChip}`}>{p.statusLabel}</span></td>

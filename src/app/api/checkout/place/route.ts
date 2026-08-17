@@ -324,10 +324,17 @@ export async function POST(req: Request) {
       data: {
         id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         userId,
+        // Honest per state (the else branch used to claim "proxies are being
+        // prepared" for an UNPAID crypto order, where nothing is provisioned
+        // until the transfer lands). isInstant ⇒ balance/card paid this instant
+        // (order is ACTIVE or PROVISIONING); !isInstant ⇒ crypto/other, order is
+        // NEW awaiting payment.
         title:
           finalStatus === 'ACTIVE'
             ? `Order ${orderId} activated — ${qty} ${qty === 1 ? 'proxy' : 'proxies'} ready`
-            : `Order ${orderId} received — your proxies are being prepared`,
+            : isInstant
+              ? `Order ${orderId} confirmed — your proxies are being prepared`
+              : `Order ${orderId} placed — complete payment to start provisioning`,
         kind: finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO',
         link: `/orders/${orderId}`,
       },

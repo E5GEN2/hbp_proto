@@ -187,7 +187,12 @@ export async function POST(req: Request) {
   await prisma.$transaction(async tx => {
     // 0. Authoritative capacity re-check INSIDE the transaction (audit B-5) —
     //    the pre-check above ran before the (slow) processor call, so a
-    //    concurrent order could have taken the last seats in between.
+    //    concurrent order could have taken the last seats in between. Lock the
+    //    plan row first so the recheck serializes against any other order-
+    //    create on this plan (admin New Order + concurrent client checkouts) —
+    //    the aggregate is read-then-write, so without the lock two checkouts
+    //    both read the same free-seat count and oversell.
+    await tx.$queryRaw`SELECT id FROM plans WHERE id = ${planId} FOR UPDATE`;
     const allocNow = await tx.order.aggregate({
       _sum: { qty: true },
       where: { planId, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },

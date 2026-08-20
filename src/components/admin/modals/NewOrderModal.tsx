@@ -63,12 +63,21 @@ export function NewOrderModal({
   // Custom expiry bounds: strictly after now, strictly inside the plan term.
   const expiryMin = fmtUtcInput(Date.now() + 60_000);
   const expiryMax = plan ? fmtUtcInput(Date.now() + plan.durationDays * 86_400_000 - 60_000) : undefined;
-  const expiryEnabled = !!plan && isInstant;
+  // A custom absolute expiry is only honoured when the order activates NOW —
+  // it needs an instant method, an auto-provision plan, and auto-assign on
+  // (pool depth is still the server's call). Otherwise the order would be born
+  // PROVISIONING and the date couldn't apply, so the field is disabled.
+  const expiryEnabled = !!plan && isInstant && plan.autoProvision && autoAssign;
 
   function setMethod(v: 'stripe' | 'invoice' | 'crypto' | 'comp') {
     setPaymentMethod(v);
     if (v === 'comp') setDiscount(0); // comp is $0 — a discount is meaningless
     if (v === 'invoice' || v === 'crypto') setExpiresAt(''); // term starts at payment confirmation
+  }
+
+  function setAutoAssignChecked(next: boolean) {
+    setAutoAssign(next);
+    if (!next) setExpiresAt(''); // a held order activates later — no now-anchored date
   }
 
   function submit() {
@@ -77,7 +86,7 @@ export function NewOrderModal({
     if (!planId || !plan) return setErr('Pick a plan');
     if (!isComp && !(total > 0)) return setErr('Total must be greater than $0 — use Comp for a free order');
     let expiresIso: string | null = null;
-    if (expiresAt) {
+    if (expiryEnabled && expiresAt) {
       const parsed = parseUtcInput(expiresAt);
       if (!parsed) return setErr('Invalid expiry date');
       const nowMs = Date.now();
@@ -177,12 +186,15 @@ export function NewOrderModal({
           <input
             id="no-expires" className="form-input" type="datetime-local"
             value={expiresAt} min={expiryMin} max={expiryMax} disabled={!expiryEnabled}
+            style={{ colorScheme: 'dark' }}
             onChange={e => setExpiresAt(e.target.value)}
           />
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-            {expiryEnabled
-              ? `Defaults to the plan term (${plan!.durationDays}d) — a custom date must fall inside it`
-              : plan ? 'Term starts when the payment confirms' : 'Pick a plan first'}
+            {!plan ? 'Pick a plan first'
+              : expiryEnabled ? `Defaults to the plan term (${plan.durationDays}d) — a custom date must fall inside it`
+              : !isInstant ? 'Term starts when the payment confirms'
+              : !plan.autoProvision ? 'Plan provisions manually — term starts when proxies are assigned'
+              : 'Turn on auto-assign to set a custom expiry'}
           </div>
         </div>
         <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 24 }}>
@@ -199,7 +211,7 @@ export function NewOrderModal({
             <button
               type="button" role="switch" aria-checked={autoAssign} aria-label="Auto-assign proxies"
               className={`toggle-v2 ${autoAssign ? 'on' : ''}`}
-              onClick={() => setAutoAssign(v => !v)}
+              onClick={() => setAutoAssignChecked(!autoAssign)}
               disabled={!plan || !isInstant || !plan.autoProvision}
               style={{ cursor: !plan || !isInstant || !plan.autoProvision ? 'default' : 'pointer', padding: 0, opacity: !plan || !isInstant || !plan.autoProvision ? 0.45 : 1 }}
             />

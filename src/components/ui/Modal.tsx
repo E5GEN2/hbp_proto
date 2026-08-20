@@ -13,6 +13,24 @@ export type ModalProps = {
 
 export function Modal({ open, onClose, title, children, footer, size = 'md', closeOnBackdrop = true }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // onClose can be a fresh closure every parent render (many callers inline it,
+  // and some rerender on each keystroke). Read it through a ref so the focus/
+  // scroll effect below depends only on `open` — keying it on onClose tore the
+  // effect down and refocused the dialog root on every keystroke, breaking text
+  // entry in modals with reason/phrase inputs (review find P1).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Capture the trigger to restore focus to on close. Read during the render
+  // that flips open→true, BEFORE the dialog (and any autoFocus child) commits
+  // — at that point document.activeElement is still the real opener, not the
+  // autofocused field the post-commit effect would otherwise capture.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  if (typeof document !== 'undefined' && open && !wasOpen.current) {
+    openerRef.current = document.activeElement as HTMLElement | null;
+  }
+  wasOpen.current = open;
 
   useEffect(() => {
     if (!open) return;
@@ -20,10 +38,13 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
     // open, keep Tab cycling inside it, hand focus back to the opener on
     // close. The FormSelect menu portals OUTSIDE the dialog but its options
     // are non-focusable divs, so the trap never needs to reach it.
-    const opener = document.activeElement as HTMLElement | null;
-    const t = setTimeout(() => ref.current?.focus(), 0);
+    const t = setTimeout(() => {
+      const root = ref.current;
+      // Don't steal focus from content that autoFocused itself.
+      if (root && !root.contains(document.activeElement)) root.focus();
+    }, 0);
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
       if (e.key !== 'Tab') return;
       const root = ref.current;
       if (!root) return;
@@ -44,9 +65,12 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
       clearTimeout(t);
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
-      opener?.focus?.();
+      // Restore focus only to a trigger still in the document (after a
+      // router.push the opener may be gone — don't yank focus/scroll then).
+      const opener = openerRef.current;
+      if (opener && document.contains(opener)) opener.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

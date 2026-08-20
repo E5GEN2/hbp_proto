@@ -268,6 +268,12 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
   background-color: var(--surface);
 }
 .form-input::placeholder, .form-textarea::placeholder { color: var(--muted); }
+/* Disabled inputs must read as disabled — author colors above override the UA
+   greying, so a plain disabled field looked identical to an active one. */
+.form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 /* Canon selects ship a custom SVG chevron — no native browser arrow
    (client-panel.html:700 / prototype.html:1776). */
 .form-select {

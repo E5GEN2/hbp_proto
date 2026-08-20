@@ -1704,7 +1704,20 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
 
     const isComp = input.paymentMethod === 'comp';
     const { unitPrice, total, fees, net } = newOrderMoney(Number(plan.price), discount, input.qty, input.paymentMethod);
+    // Only Comp may be $0. A 100% discount on a paid method would otherwise mint
+    // a $0 "paid" order (Stripe invoice / eternal $0 AWAITING) that bypasses the
+    // Comp semantics and the Provider=Comp filter — the modal blocks it, mirror
+    // that on the server (the action is callable directly past the UI).
+    if (!isComp && total <= 0) {
+      throw new Error('Total must be greater than $0 — use the Comp method for a free order');
+    }
     const willActivate = isInstant && plan.autoProvision;
+    // Snapshot the admin's auto-assign choice onto the order. autoAssign OFF on
+    // an auto-provision plan means "hold for manual assignment" — persist that
+    // as autoProvision:false so the sweep's backfill (which keys on
+    // order.autoProvision) doesn't grab arbitrary proxies on the next tick and
+    // override the choice. autoAssign ON (default) leaves the plan snapshot.
+    const orderAutoProvision = plan.autoProvision && (input.autoAssign ?? true);
     // (Term is computed as `finalExpires` below — the order create uses that;
     // no pay-time expiry here.)
 
@@ -1735,13 +1748,22 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
       : isInstant ? 'PROVISIONING' as const
       : 'NEW' as const;
     const finalActivated = finalStatus === 'ACTIVE' ? now : null;
-    // A custom expiry is an absolute date — the admin's stated intent — so an
-    // instant order born PROVISIONING (pool short / auto-assign off) keeps it
-    // too: both later activation paths (assignProxyManually, sweep backfill)
-    // preserve a non-null expiresAt rather than restarting the clock.
+    // A custom absolute expiry only makes sense when the order activates NOW —
+    // a short term "starting now" is meaningless if the proxies aren't
+    // delivered now. If an instant order can't be born ACTIVE (pool short /
+    // auto-assign off / manual plan), refuse rather than stamp the date on a
+    // PROVISIONING row: the sweep only expires ACTIVE orders, so a non-null
+    // expiry on a PROVISIONING order would be a zombie term (never expires,
+    // eats plan quota) and a later activation would carry a possibly-past date
+    // into ACTIVE — an instant expire, or an unconsented auto-renew charge on
+    // the next tick. PROVISIONING/NEW orders keep expiresAt null (invariant)
+    // and start their clock at real activation.
+    if (customExpires && finalStatus !== 'ACTIVE') {
+      throw new Error('Custom expiry needs the order to activate immediately — that requires auto-assign on an auto-provision plan with enough proxies in the pool right now. Leave the expiry at the plan default, or shorten the term later via Extend.');
+    }
     const finalExpires =
       finalStatus === 'ACTIVE' ? (customExpires ?? new Date(now.getTime() + plan.durationDays * 86_400_000))
-      : customExpires;
+      : null;
     // Exception only when auto-assign was actually attempted and came up short
     // — a comp order on a manual-provisioning plan never queries the pool, so
     // stamping it "Pool exhausted" was a false alarm (audit find).
@@ -1763,7 +1785,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
         status: finalStatus,
         autoRenew: input.autoRenew ?? plan.autoRenewDefault,
-        autoProvision: plan.autoProvision,
+        autoProvision: orderAutoProvision,
         source: 'admin',
         activatedAt: finalActivated,
         expiresAt: finalExpires,

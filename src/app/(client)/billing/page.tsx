@@ -37,6 +37,10 @@ function statusChip(status: string): { cls: string; label: string } {
   // externally; REFUNDED lands only once proof is recorded.
   if (status === 'REFUND_IN_PROGRESS') return { cls: 'awaiting', label: 'Refunding' };
   if (status === 'REFUND_REQUESTED') return { cls: 'review', label: 'Refund requested' };
+  // Comp payments: globals.css has no `.chip.free` rule, so the fallthrough
+  // rendered an unstyled token — map to the green `paid` chip like the admin
+  // side's PAY_CHIP does (same bug class as MANUAL_REVIEW above).
+  if (status === 'FREE') return { cls: 'paid', label: 'Free' };
   return { cls: status.toLowerCase(), label: status.charAt(0) + status.slice(1).toLowerCase() };
 }
 

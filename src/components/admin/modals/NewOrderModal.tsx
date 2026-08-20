@@ -71,8 +71,20 @@ export function NewOrderModal({
 
   function setMethod(v: 'stripe' | 'invoice' | 'crypto' | 'comp') {
     setPaymentMethod(v);
-    if (v === 'comp') setDiscount(0); // comp is $0 — a discount is meaningless
-    if (v === 'invoice' || v === 'crypto') setExpiresAt(''); // term starts at payment confirmation
+    if (v === 'comp') {
+      setDiscount(0); // comp is $0 — a discount is meaningless
+      // A comped client never consented to any payment relationship — the
+      // default-ON auto-renew would charge their real balance full price at
+      // expiry (or dun them for a gift). Opt-in only for comp.
+      setAutoRenew(false);
+    }
+    if (v === 'invoice' || v === 'crypto') {
+      setExpiresAt(''); // term starts at payment confirmation
+      // The auto-assign toggle greys out for non-instant methods — reset it so
+      // a stale OFF from a previous instant selection can't silently ride
+      // along and hold provisioning at payment confirmation (review find).
+      setAutoAssign(true);
+    }
   }
 
   function setAutoAssignChecked(next: boolean) {
@@ -220,6 +232,12 @@ export function NewOrderModal({
             </span>
           </span>
         </div>
+        {autoRenew && plan && (isComp || (expiryEnabled && expiresAt !== '')) && (
+          <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--warning)', marginTop: -6 }}>
+            Auto-renew will charge the client the full plan price ({money(round2(plan.price * qty))}) from their balance at expiry
+            {isComp ? ' — they never paid for this comp order' : ' — the custom date brings that charge forward'}.
+          </div>
+        )}
         <div style={{ gridColumn: '1 / -1', background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 12.5 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--muted)' }}>Subtotal</span>
@@ -241,6 +259,13 @@ export function NewOrderModal({
             <span style={{ color: 'var(--text)', fontWeight: 600 }}>Total</span>
             <span className="mono" style={{ color: 'var(--text)', fontWeight: 650 }}>{money(total)}</span>
           </div>
+          {/* The footer button silently disables at $0 non-comp — say why here,
+              or a $0-priced plan reads as a dead Create button (review find). */}
+          {plan && !isComp && !(total > 0) && (
+            <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--warning)' }}>
+              Total is $0 — use the Comp method for a free order
+            </div>
+          )}
         </div>
         {err && <div style={{ gridColumn: '1 / -1', padding: 10, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12 }}>{err}</div>}
       </div>

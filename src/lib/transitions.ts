@@ -550,10 +550,22 @@ export async function extendOrder({
   return prisma.$transaction(async tx => {
     const ord = await tx.order.findUnique({ where: { id: orderId }, include: { plan: true } });
     if (!ord) throw new Error('Order not found');
-    if (ord.status === 'CANCELLED') throw new Error('Cannot extend a cancelled order');
+    // Server-side mirror of the UI gate (the button renders for ACTIVE/EXPIRED
+    // only): a NEW/PROVISIONING/SUSPENDED order has not started (or has paused)
+    // its term — stamping expiresAt on it would violate the null-until-active
+    // invariant: the sweep only expires ACTIVE orders, so the date would be a
+    // zombie term, and a later activation would carry a possibly-past date
+    // into ACTIVE (same hazard class as the New Order custom-expiry guard).
+    if (ord.status !== 'ACTIVE' && ord.status !== 'EXPIRED') {
+      throw new Error(
+        ord.status === 'CANCELLED' ? 'Cannot extend a cancelled order'
+        : ord.status === 'SUSPENDED' ? 'Cannot extend a suspended order — resume it first'
+        : `Cannot extend a ${ord.status.toLowerCase()} order — its term starts at activation`);
+    }
 
     const now = new Date();
     const days = additionalDays ?? ord.plan.durationDays;
+    if (!Number.isInteger(days) || days < 1 || days > 3650) throw new Error('Days must be an integer 1..3650');
 
     // An EXPIRED order has had its proxies auto-released to the pool — a bare
     // term shift would reactivate it with nothing assigned. Re-provision
@@ -765,6 +777,14 @@ export async function assignProxyManually({
           expiresAt: ord.expiresAt ?? new Date(now.getTime() + ord.plan.durationDays * 86_400_000),
           credentialsSentAt: ord.credentialsSentAt ?? now,
           credentialsChannel: ord.credentialsChannel ?? null,
+          // A New-Order "hold for manual assignment" (autoProvision snapshotted
+          // false on an auto-provision plan) is a one-time creation choice, not
+          // a lifetime fulfilment mode — once the admin has hand-picked the
+          // proxies, restore the plan's flag so mid-term faulty-proxy backfill
+          // and renewal re-provisioning self-heal again (review find). No-op
+          // for genuinely manual plans (plan flag is false) and for normal
+          // orders (already equal).
+          autoProvision: ord.plan.autoProvision,
         },
       });
       await notify(tx, ord.clientId, `Your proxies for ${orderId} are ready`, 'SUCCESS', `/orders/${orderId}`);
@@ -1717,7 +1737,10 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     // as autoProvision:false so the sweep's backfill (which keys on
     // order.autoProvision) doesn't grab arbitrary proxies on the next tick and
     // override the choice. autoAssign ON (default) leaves the plan snapshot.
-    const orderAutoProvision = plan.autoProvision && (input.autoAssign ?? true);
+    // Instant methods only: the modal greys the toggle out for invoice/crypto,
+    // so an OFF arriving with them is stale UI state — honoring it would
+    // silently hold provisioning at payment confirmation (review find).
+    const orderAutoProvision = plan.autoProvision && (isInstant ? (input.autoAssign ?? true) : true);
     // (Term is computed as `finalExpires` below — the order create uses that;
     // no pay-time expiry here.)
 
@@ -1759,7 +1782,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     // the next tick. PROVISIONING/NEW orders keep expiresAt null (invariant)
     // and start their clock at real activation.
     if (customExpires && finalStatus !== 'ACTIVE') {
-      throw new Error('Custom expiry needs the order to activate immediately — that requires auto-assign on an auto-provision plan with enough proxies in the pool right now. Leave the expiry at the plan default, or shorten the term later via Extend.');
+      throw new Error('Custom expiry needs the order to activate immediately — that requires auto-assign on an auto-provision plan with enough proxies in the pool right now. Register or free up proxies first, or create the order without a custom expiry.');
     }
     const finalExpires =
       finalStatus === 'ACTIVE' ? (customExpires ?? new Date(now.getTime() + plan.durationDays * 86_400_000))

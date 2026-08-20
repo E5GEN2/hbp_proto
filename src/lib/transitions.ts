@@ -17,6 +17,8 @@ import { sendTelegram, sendAdminTelegram, adminNewOrderAlert } from './telegram'
 import { sendEmail, incidentEmail, escapeHtml } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
+import { mockPaymentsAllowed } from './runtime-flags';
+import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney } from './new-order-policy';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import { loadTierGraceHours, renewalClosed } from './grace';
 import bcrypt from 'bcryptjs';
@@ -1645,6 +1647,11 @@ export type NewOrderInput = {
   paymentMethod: 'stripe' | 'invoice' | 'crypto' | 'comp';
   autoAssign?: boolean;
   autoRenew?: boolean;
+  // Optional custom expiry (ISO datetime). Instant methods (comp/stripe) only —
+  // for crypto/invoice the term starts at payment confirmation, so an absolute
+  // date set at creation would be meaningless (or already past) by then.
+  // Bounds: strictly after now, strictly before now + plan.durationDays.
+  expiresAt?: string | null;
 };
 
 // ORD-/PAY- are random by product rule (2026-07-06) — uniqueness-checked
@@ -1665,7 +1672,28 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     const plan = await tx.plan.findUnique({ where: { id: input.planId } });
     if (!plan || !plan.active || plan.deletedAt) throw new Error('Plan unavailable');
 
-    if (input.qty < 1) throw new Error('Quantity must be ≥ 1');
+    // Input bounds, custom-expiry rule, and money math live in
+    // new-order-policy.ts (pure, standalone-tested).
+    const discount = input.discountPct ?? 0;
+    assertNewOrderBounds(input.qty, discount);
+
+    const isInstant = isInstantMethod(input.paymentMethod);
+    const now = new Date();
+
+    // The admin "Stripe" method self-confirms without a processor (mock).
+    // Gate it exactly like the client card path — with mock payments off in
+    // production it would mint a fully-PAID order backed by no real charge.
+    if (input.paymentMethod === 'stripe' && !mockPaymentsAllowed()) {
+      throw new Error('Card (mock) payments are disabled on this deployment — use Bank transfer or Crypto with Mark paid, or Comp');
+    }
+
+    const customExpires = resolveCustomExpiry(input.expiresAt, input.paymentMethod, plan.durationDays, now);
+
+    // Serialize concurrent creates on this plan — the quota check below is
+    // read-then-write, so without a lock two simultaneous orders both read the
+    // same allocation and oversell (same recipe as reprovisionRenewedOrder /
+    // assignProxyManually, which lock the order row for the same reason).
+    await tx.$queryRaw`SELECT id FROM plans WHERE id = ${plan.id} FOR UPDATE`;
 
     // Capacity check
     const alloc = await tx.order.aggregate({
@@ -1674,14 +1702,11 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     });
     if (plan.availableQuota - (alloc._sum.qty ?? 0) < input.qty) throw new Error('Plan capacity insufficient');
 
-    const discount = input.discountPct ?? 0;
-    const unitPrice = Number(plan.price) * (1 - discount / 100);
-    const total = unitPrice * input.qty;
-    const isInstant = input.paymentMethod === 'comp' || input.paymentMethod === 'stripe';
+    const isComp = input.paymentMethod === 'comp';
+    const { unitPrice, total, fees, net } = newOrderMoney(Number(plan.price), discount, input.qty, input.paymentMethod);
     const willActivate = isInstant && plan.autoProvision;
-    const now = new Date();
-    // (Term is computed as `finalExpires` below, gated on ACTIVE — the order
-    // create uses that; no pay-time expiry here.)
+    // (Term is computed as `finalExpires` below — the order create uses that;
+    // no pay-time expiry here.)
 
     const orderId = await nextOrderIdInTx(tx);
     const payId = await nextPaymentIdInTx(tx);
@@ -1703,15 +1728,25 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
       }
     }
     const fullyAssigned = candidatesToAssign.length >= input.qty;
+    // (comp is isInstant, and candidates are only picked under willActivate,
+    // so the old separate comp clauses were redundant — same matrix.)
     const finalStatus =
-      input.paymentMethod === 'comp' && fullyAssigned ? 'ACTIVE' as const
-      : willActivate && fullyAssigned ? 'ACTIVE' as const
-      : isInstant || input.paymentMethod === 'comp' ? 'PROVISIONING' as const
+      willActivate && fullyAssigned ? 'ACTIVE' as const
+      : isInstant ? 'PROVISIONING' as const
       : 'NEW' as const;
     const finalActivated = finalStatus === 'ACTIVE' ? now : null;
-    const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+    // A custom expiry is an absolute date — the admin's stated intent — so an
+    // instant order born PROVISIONING (pool short / auto-assign off) keeps it
+    // too: both later activation paths (assignProxyManually, sweep backfill)
+    // preserve a non-null expiresAt rather than restarting the clock.
+    const finalExpires =
+      finalStatus === 'ACTIVE' ? (customExpires ?? new Date(now.getTime() + plan.durationDays * 86_400_000))
+      : customExpires;
+    // Exception only when auto-assign was actually attempted and came up short
+    // — a comp order on a manual-provisioning plan never queries the pool, so
+    // stamping it "Pool exhausted" was a false alarm (audit find).
     const finalException =
-      (willActivate || input.paymentMethod === 'comp') && (input.autoAssign ?? true) && !fullyAssigned
+      willActivate && (input.autoAssign ?? true) && !fullyAssigned
         ? 'PAID_NOT_PROVISIONED' as const : null;
     const finalExcInfo = finalException ? `Pool exhausted — only ${candidatesToAssign.length}/${input.qty} provisioned` : null;
 
@@ -1723,7 +1758,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         qty: input.qty,
         unitPrice,
         amount: total,
-        discountPct: discount,
+        discountPct: isComp ? 0 : discount, // discount is meaningless on a $0 comp order
         region: plan.region,
         paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
         status: finalStatus,
@@ -1747,8 +1782,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         provider: input.paymentMethod === 'stripe' ? 'Stripe' : input.paymentMethod === 'crypto' ? 'CoinPayments' : input.paymentMethod === 'invoice' ? 'Bank transfer' : 'Comp',
         method: input.paymentMethod === 'stripe' ? 'Visa •• 4242' : input.paymentMethod === 'crypto' ? 'USDT-TRC20' : input.paymentMethod === 'invoice' ? 'Bank wire' : 'Comp',
         gross: total,
-        fees: isInstant && input.paymentMethod === 'stripe' ? total * 0.03 : 0,
-        net: total,
+        fees,
+        net,
         status: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'CONFIRMED' : 'AWAITING'),
         confirmedAt: isInstant ? now : null,
       },
@@ -1775,8 +1810,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     await notify(tx, input.clientId,
       finalStatus === 'ACTIVE'
         ? `Order ${orderId} activated — ${input.qty} ${input.qty === 1 ? 'proxy' : 'proxies'} ready`
-        : isInstant || input.paymentMethod === 'comp'
-          ? `Order ${orderId} received — your proxies are being prepared`
+        : isInstant
+          ? `Order ${orderId} confirmed — your proxies are being prepared`
           : `Order ${orderId} created — awaiting payment`,
       finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO',
       `/orders/${orderId}`,

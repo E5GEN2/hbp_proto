@@ -20,7 +20,7 @@ export type FormSelectOption = { value: string; label?: ReactNode; disabled?: bo
    which clipped an absolutely-positioned menu. A fixed portal escapes every
    ancestor's clip; z-index sits above modals so in-modal selects still open
    over the dialog. Position is re-measured on scroll/resize while open. */
-export function FormSelect({ value, onChange, options, placeholder = 'Choose…', disabled = false, wrapStyle, btnStyle, btnClassName = 'form-select' }: {
+export function FormSelect({ value, onChange, options, placeholder = 'Choose…', disabled = false, wrapStyle, btnStyle, btnClassName = 'form-select', ariaLabelledby }: {
   value: string;
   onChange: (v: string) => void;
   options: FormSelectOption[];
@@ -31,6 +31,9 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
   /** Class(es) for the closed control — defaults to the canon .form-select
       field look; pass e.g. "orders-filter-select" for compact variants. */
   btnClassName?: string;
+  /** id of the visible label element — gives the trigger an accessible name
+      (screen readers otherwise announce only the current value). */
+  ariaLabelledby?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -68,17 +71,21 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
       const t = e.target as Node;
       if (!rootRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    // Escape while the menu is open dismisses ONLY the menu. Registered in the
+    // capture phase with stopPropagation so Modal's bubble-phase document
+    // listener never sees it — one Escape used to close the dropdown AND the
+    // whole modal, throwing away the half-filled form (audit find).
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
     // capture=true catches scrolling ANCESTORS (the page, a modal body), not
     // just window — keep the menu pinned to the button.
     const onScroll = () => measure();
     document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
     return () => {
       document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onScroll);
     };
@@ -132,7 +139,7 @@ export function FormSelect({ value, onChange, options, placeholder = 'Choose…'
       <button
         ref={btnRef}
         type="button" className={`${btnClassName} form-select-btn`} style={btnStyle} disabled={disabled}
-        aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox" aria-expanded={open} aria-labelledby={ariaLabelledby} onClick={() => setOpen(o => !o)}
       >
         <span className="form-select-btn-text">{shown}</span>
       </button>

@@ -11,6 +11,72 @@ export function renewalUnitPrice(price: number, discountPct: number | null | und
   return Math.round(price * (100 - pct)) / 100;
 }
 
+// Per-order renewal discount (owner decision 2026-08-21): an admin can grant a
+// discount on a specific order's future PAID renewals — percent of the unit
+// price or a flat $ off the total — limited to N cycles or indefinite.
+// While ACTIVE it REPLACES the plan's renewalDiscountPct (never stacks);
+// exhausted (cyclesLeft === 0) or absent → the plan discount applies as before.
+// This is the ONE pricing function for every renewal charge and display —
+// audit B-6 rule: the shown price must always equal the charged one.
+export type OrderRenewalDiscountFields = {
+  qty: number;
+  renewalDiscountValue: unknown; // Prisma Decimal | number | null
+  renewalDiscountIsPercent: boolean | null;
+  renewalDiscountCyclesLeft: number | null;
+};
+
+export function orderRenewalDiscountActive(o: {
+  renewalDiscountValue: unknown; renewalDiscountCyclesLeft: number | null;
+}): boolean {
+  return o.renewalDiscountValue != null &&
+    (o.renewalDiscountCyclesLeft === null || o.renewalDiscountCyclesLeft > 0);
+}
+
+export function renewalPricing(
+  plan: { price: unknown; renewalDiscountPct: number | null },
+  order: OrderRenewalDiscountFields,
+): {
+  unit: number; total: number;
+  source: 'order' | 'plan' | 'none';
+  // Human label for the discount line, e.g. "−15%" or "−$5.00" ('' when none)
+  label: string;
+} {
+  const price = Number(plan.price);
+  const round = (n: number) => Math.round(n * 100) / 100;
+  if (orderRenewalDiscountActive(order)) {
+    const v = Number(order.renewalDiscountValue);
+    if (order.renewalDiscountIsPercent) {
+      const unit = renewalUnitPrice(price, Math.min(100, Math.max(0, v)));
+      return { unit, total: round(unit * order.qty), source: 'order', label: `−${v}%` };
+    }
+    // Flat $ off the TOTAL, floored at $0. unit is the effective per-proxy
+    // price (display only — charges always use `total`).
+    const total = Math.max(0, round(price * order.qty - v));
+    return { unit: round(total / order.qty), total, source: 'order', label: `−$${v.toFixed(2)}` };
+  }
+  const pct = plan.renewalDiscountPct ?? 0;
+  const unit = renewalUnitPrice(price, pct);
+  return {
+    unit, total: round(unit * order.qty),
+    source: pct > 0 ? 'plan' : 'none',
+    label: pct > 0 ? `−${pct}%` : '',
+  };
+}
+
+// The exactly-once cycles-left decrement, spread into the success
+// `tx.order.update` data at every PAID renewal settle point (auto-renew,
+// client one-click, checkout instant, crypto settle, admin MarkPaid renewal).
+// Admin comp Extend does NOT consume a cycle (free grant, no discount applied).
+// null = indefinite → no write; 0 already exhausted → no write (the charge was
+// priced by the plan discount).
+export function renewalDiscountDecrement(o: {
+  renewalDiscountValue: unknown; renewalDiscountCyclesLeft: number | null;
+}): { renewalDiscountCyclesLeft?: number } {
+  if (o.renewalDiscountValue == null) return {};
+  if (o.renewalDiscountCyclesLeft === null || o.renewalDiscountCyclesLeft <= 0) return {};
+  return { renewalDiscountCyclesLeft: o.renewalDiscountCyclesLeft - 1 };
+}
+
 // The base date a renewal extends FROM (renewal-policy PR). Anchor on the
 // order's ORIGINAL expiry so paying late within grace buys no bonus time and
 // auto-renew keeps a stable renewal date (no drift from the sweep's tick

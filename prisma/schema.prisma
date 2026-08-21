@@ -278,7 +278,19 @@ model Order {
   unitPrice                          Decimal             @db.Decimal(10, 2)
   amount                             Decimal             @db.Decimal(10, 2) // qty * unitPrice
   discountPct                        Int                 @default(0)
+  discountAmount                     Decimal?            @db.Decimal(10, 2) // flat $ off the total at creation (alt to discountPct)
   region                             String
+
+  // Admin-set absolute end date, persisted at creation and CONSUMED (stamped
+  // into expiresAt, then cleared) at first activation — survives PROVISIONING.
+  customExpiresAt                    DateTime?
+
+  // Per-order renewal discount (admin grant). REPLACES plan.renewalDiscountPct
+  // while active. value: % of unit price when isPercent, else $ off the total.
+  // cyclesLeft: null = indefinite; N = remaining paid renewals; 0 = exhausted.
+  renewalDiscountValue               Decimal?            @db.Decimal(10, 2)
+  renewalDiscountIsPercent           Boolean?
+  renewalDiscountCyclesLeft          Int?
 
   paymentStatus                      PaymentStatus
   status                             OrderStatus

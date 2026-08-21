@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { nextPaymentId } from '@/lib/id';
 import { enabledProviders } from '@/lib/runtime-flags';
 import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPayment } from '@/lib/nowpayments';
-import { renewalUnitPrice } from '@/lib/renewal';
+import { renewalPricing } from '@/lib/renewal';
 import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 import { money } from '@/lib/money';
 
@@ -193,7 +193,7 @@ export async function POST(req: Request) {
   // renewal charge paths use (never client-supplied).
   const total = isNewOrder
     ? Number(order.amount)
-    : renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+    : renewalPricing(order.plan, order).total;
   // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
   if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });
 

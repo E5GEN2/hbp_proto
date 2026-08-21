@@ -87,6 +87,15 @@ export async function buildInvoicePdf(inv: InvoiceWithRelations): Promise<Uint8A
   // ── Totals ───────────────────────────────────────────────────────────────
   const fees = Number(inv.payment.fees);
   y -= 22;
+  // The line-item amount is already the discounted total — this row only
+  // states the applied discount, mirroring the fees "(included)" convention.
+  const discPct = inv.order?.discountPct ?? 0;
+  const discAmt = inv.order?.discountAmount != null ? Number(inv.order.discountAmount) : 0;
+  if (discPct > 0 || discAmt > 0) {
+    const label = discPct > 0 ? `Discount applied (-${discPct}%)` : `Discount applied (-${money(discAmt)})`;
+    page.drawText(label, { x: 340, y, size: 9, font, color: MUTED });
+    y -= 18;
+  }
   if (fees > 0) {
     page.drawText('Processing fees (included)', { x: 340, y, size: 9, font, color: MUTED });
     page.drawText(money(fees), { x: right - font.widthOfTextAtSize(money(fees), 9), y, size: 9, font, color: MUTED });

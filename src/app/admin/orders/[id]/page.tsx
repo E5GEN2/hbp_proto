@@ -11,6 +11,7 @@ import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActio
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
+import { RenewalDiscountPanel } from '@/components/admin/RenewalDiscountPanel';
 
 // Exception → header chip (short label + exc-chip tone) and the
 // top-of-page exception banner copy. Mirrors the canon excLabels /
@@ -405,6 +406,12 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                 <div className="kv-row"><span className="kv-key">Quantity</span><span className="kv-val">{order.qty} {order.qty > 1 ? 'proxies' : 'proxy'}</span></div>
                 <div className="kv-row"><span className="kv-key">Carrier · Region</span><span className="kv-val">{order.plan.carrier} · {order.region}</span></div>
                 <div className="kv-row"><span className="kv-key">Amount</span><span className="kv-val">{amountStr}</span></div>
+                {order.discountPct > 0 && (
+                  <div className="kv-row"><span className="kv-key">Discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>−{order.discountPct}%</span></div>
+                )}
+                {order.discountAmount != null && Number(order.discountAmount) > 0 && (
+                  <div className="kv-row"><span className="kv-key">Discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>−{money(Number(order.discountAmount))}</span></div>
+                )}
               </div>
             </div>
 
@@ -415,9 +422,21 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                 <div className="kv-row"><span className="kv-key">Created</span><span className="kv-val">{fmtAdminStamp(order.createdAt)}</span></div>
                 <div className="kv-row"><span className="kv-key">Activated</span><span className="kv-val">{order.activatedAt ? fmtAdminStamp(order.activatedAt) : '—'}</span></div>
                 <div className="kv-row"><span className="kv-key">Expires</span><span className="kv-val">{order.expiresAt ? fmtAdminStamp(order.expiresAt) : '—'}</span></div>
+                {!order.expiresAt && order.customExpiresAt && (
+                  <div className="kv-row"><span className="kv-key">Custom expiry</span><span className="kv-val">{fmtAdminStamp(order.customExpiresAt)} <span className="muted">· applies at activation</span></span></div>
+                )}
                 <div className="kv-row"><span className="kv-key">Auto-renew</span><span className="kv-val"><span className={`chip ${order.autoRenew ? 'active' : 'expired'}`}>{order.autoRenew ? 'ON' : 'OFF'}</span></span></div>
               </div>
             </div>
+
+            <RenewalDiscountPanel
+              orderId={order.id}
+              active={order.status !== 'CANCELLED'}
+              planRenewalPct={order.plan.renewalDiscountPct}
+              current={order.renewalDiscountValue != null
+                ? { value: Number(order.renewalDiscountValue), isPercent: order.renewalDiscountIsPercent ?? true, cyclesLeft: order.renewalDiscountCyclesLeft }
+                : null}
+            />
 
             <EntityActivityWidget
               objectType="ORDER"

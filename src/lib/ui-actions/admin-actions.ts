@@ -11,6 +11,7 @@ export const cancelOrderAction = unwrapAction(S.cancelOrderAction);
 export const suspendOrderAction = unwrapAction(S.suspendOrderAction);
 export const resumeOrderAction = unwrapAction(S.resumeOrderAction);
 export const extendOrderAction = unwrapAction(S.extendOrderAction);
+export const setOrderRenewalDiscountAction = unwrapAction(S.setOrderRenewalDiscountAction);
 export const assignProxyAction = unwrapAction(S.assignProxyAction);
 export const listAssignCandidatesAction = unwrapAction(S.listAssignCandidatesAction);
 export const markCredentialsDeliveredAction = unwrapAction(S.markCredentialsDeliveredAction);

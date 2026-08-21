@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
-import { renewalUnitPrice } from '@/lib/renewal';
+import { renewalPricing } from '@/lib/renewal';
 import { safeReturn } from '@/lib/safe-return';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 import { allocatedByPlan } from '@/lib/plan-availability';
@@ -67,9 +67,17 @@ export default async function CheckoutPage({ searchParams }: {
     // order page which shows the true status + next action.
     if (order.status !== 'ACTIVE' && order.status !== 'PROVISIONING') redirect(`/orders/${order.id}`);
     const renewed = searchParams.renewed === '1';
-    const total = renewed
-      ? renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty
-      : Number(order.amount);
+    // For a renewal show what was ACTUALLY charged (the payment row) — the
+    // renewal may have consumed a one-time per-order discount cycle, so a
+    // recompute could disagree with the money that just moved.
+    let total = Number(order.amount);
+    if (renewed) {
+      const lastPay = await prisma.payment.findFirst({
+        where: { orderId: order.id, status: 'CONFIRMED' },
+        orderBy: { confirmedAt: 'desc' }, select: { gross: true },
+      });
+      total = lastPay ? Number(lastPay.gross) : renewalPricing(order.plan, order).total;
+    }
     return (
       <>
         <ClientTopbar breadcrumb={[{ label: 'Orders', href: '/orders' }, { label: `Order ${order.id}` }]} balance={Number(me.balance)} />
@@ -338,7 +346,7 @@ export default async function CheckoutPage({ searchParams }: {
                 ? Number(direct.gross)
                 : isNewOrder
                 ? Number(resumeOrder.amount)
-                : renewalUnitPrice(Number(resumeOrder.plan.price), resumeOrder.plan.renewalDiscountPct) * resumeOrder.qty}
+                : renewalPricing(resumeOrder.plan, resumeOrder).total}
               initial={direct ? toPanelData(direct) : null}
               expiredMode={!direct}
               renewal={!isNewOrder}
@@ -483,7 +491,7 @@ export default async function CheckoutPage({ searchParams }: {
       name: p.name,
       region: renewalOrder.region,
       carrier: p.carrier,
-      price: renewalUnitPrice(Number(p.price), p.renewalDiscountPct),
+      price: renewalPricing(p, renewalOrder).unit,
       autoProvision: p.autoProvision,
       available: renewalOrder.qty,
     }];
@@ -584,7 +592,7 @@ export default async function CheckoutPage({ searchParams }: {
           allowCard={allowCard}
           allowCrypto={allowCrypto}
           renewOf={renewalOrder?.id}
-          renewalDiscountPct={renewalOrder ? renewalOrder.plan.renewalDiscountPct : 0}
+          renewalDiscount={renewalOrder ? (() => { const rp = renewalPricing(renewalOrder.plan, renewalOrder); return { label: rp.label, total: rp.total }; })() : null}
           allSoldOut={allSoldOut}
         />
       </main>

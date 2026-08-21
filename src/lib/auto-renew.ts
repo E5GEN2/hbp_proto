@@ -9,12 +9,11 @@
 
 import { prisma } from './prisma';
 import { nextPaymentId, nextInvoiceId } from './id';
-import { renewalUnitPrice } from './renewal';
 import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
 import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
-import { renewalBase } from './renewal';
+import { renewalBase, renewalPricing, renewalDiscountDecrement } from './renewal';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
@@ -41,7 +40,9 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   });
   if (pending) return { renewed: false, reason: `renewal payment ${pending.id} already awaiting confirmation` };
 
-  const price = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  // Per-order renewal discount (admin grant) replaces the plan discount while
+  // active; renewalPricing is the single source for both (audit B-6 parity).
+  const price = renewalPricing(order.plan, order).total;
   const paymentId = await nextPaymentId();
   const now = new Date();
   let newExpiry = now; // real value assigned in-tx from the FRESH expiry base
@@ -145,6 +146,9 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           lastReminderAt: null,
           autoRenewLastAttemptAt: null,
           exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
+          // Consume one cycle of the per-order renewal discount (no-op when
+          // indefinite/absent/exhausted) — this charge was priced with it.
+          ...renewalDiscountDecrement(order),
         },
       });
 

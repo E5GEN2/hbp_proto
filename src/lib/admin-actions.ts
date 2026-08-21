@@ -74,6 +74,13 @@ export const extendOrderAction = guarded(async function extendOrderAction(orderI
   return r;
 });
 
+export const setOrderRenewalDiscountAction = guarded(async function setOrderRenewalDiscountAction(orderId: string, input: T.OrderRenewalDiscountInput) {
+  const actor = await getAdminActor();
+  const r = await T.setOrderRenewalDiscount({ orderId, input, actor });
+  bust();
+  return r;
+});
+
 // proxyIds === null ⇒ auto-assign from the pool (in-tx pool-first pick).
 export const assignProxyAction = guarded(async function assignProxyAction(orderId: string, proxyIds: string[] | null) {
   const actor = await getAdminActor();

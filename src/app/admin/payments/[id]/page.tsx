@@ -112,6 +112,9 @@ export default async function PaymentDetail({ params }: { params: { id: string }
                   {orderOverridden && <div className="kv-row"><span className="kv-key">Reconciliation</span><span className="kv-val">Payment state: {statusLabel} · manual fulfillment override</span></div>}
                   <div className="kv-row"><span className="kv-key">Provider</span><span className="kv-val">{p.provider}</span></div>
                   <div className="kv-row"><span className="kv-key">Method</span><span className="kv-val">{p.method}</span></div>
+                  {p.order && (p.order.discountPct > 0 || (p.order.discountAmount != null && Number(p.order.discountAmount) > 0)) && (
+                    <div className="kv-row"><span className="kv-key">Discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>{p.order.discountPct > 0 ? `−${p.order.discountPct}%` : `−${money(Number(p.order.discountAmount))}`} <span className="muted">· gross is post-discount</span></span></div>
+                  )}
                   <div className="kv-row"><span className="kv-key">Gross</span><span className="kv-val">{money(gross)}</span></div>
                   <div className="kv-row"><span className="kv-key">Provider fees</span><span className="kv-val">−{money(fees)}</span></div>
                   {refunded > 0 && <div className="kv-row"><span className="kv-key">Refunds</span><span className="kv-val">−{money(refunded)}</span></div>}

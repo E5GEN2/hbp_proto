@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
-import { renewalUnitPrice, renewalBase } from '@/lib/renewal';
+import { renewalBase, renewalPricing, renewalDiscountDecrement } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
@@ -423,9 +423,10 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     return NextResponse.json({ error: `A renewal payment (${pending.id}) is already awaiting confirmation.`, orderId: order.id }, { status: 409 });
   }
 
-  // Renewal discount (audit B-6) — same helper as the client UI and the
-  // one-click balance renewal, so all three surfaces agree to the cent.
-  const total = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  // Renewal discounts (audit B-6) — renewalPricing is the ONE source for every
+  // renewal charge and display (a per-order admin grant replaces the plan
+  // discount while active), so all surfaces agree to the cent.
+  const total = renewalPricing(order.plan, order).total;
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
@@ -509,7 +510,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     // clock held for manual Assign).
     const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, userId, now) : null;
     if (repro) {
-      await tx.order.update({ where: { id: order.id }, data: repro.data });
+      // Paid renewal -> consume one per-order discount cycle (no-op when
+      // indefinite/absent/exhausted) — the charge above was priced with it.
+      await tx.order.update({ where: { id: order.id }, data: { ...repro.data, ...renewalDiscountDecrement(order) } });
       await tx.log.create({
         data: {
           actorId: userId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
@@ -544,6 +547,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
         renewalBucket: 'RENEWED',
         lastReminderAt: null,
         exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
+        ...renewalDiscountDecrement(order),
       },
     });
 

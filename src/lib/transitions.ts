@@ -10,7 +10,7 @@
 
 import { prisma } from './prisma';
 import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyIdBatch, nextAssignmentId } from './id';
-import { renewalUnitPrice, renewalBase } from './renewal';
+import { renewalBase, renewalPricing, renewalDiscountDecrement, orderRenewalDiscountActive } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram, sendAdminTelegram, adminNewOrderAlert, flushTelegram, type TelegramOutbox } from './telegram';
@@ -18,7 +18,7 @@ import { sendEmail, incidentEmail, proxiesReadyEmail, escapeHtml } from './email
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import { mockPaymentsAllowed } from './runtime-flags';
-import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney } from './new-order-policy';
+import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney, applyCustomExpiry } from './new-order-policy';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import { loadTierGraceHours, renewalClosed } from './grace';
 import bcrypt from 'bcryptjs';
@@ -126,7 +126,10 @@ export async function markPaymentPaid({
         const reproOrd = { id: ord.id, qty: ord.qty, region: ord.region, activatedAt: freshOrd.activatedAt, autoProvision: ord.autoProvision, plan: { carrier: plan.carrier, pool: plan.pool, durationDays: plan.durationDays } };
         const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, actor.id, now) : null;
         if (repro) {
-          await tx.order.update({ where: { id: ord.id }, data: repro.data });
+          // Paid renewal → consume one per-order discount cycle (no-op when
+          // indefinite/absent/exhausted). The charge amount was frozen at
+          // payment creation with the discount already applied.
+          await tx.order.update({ where: { id: ord.id }, data: { ...repro.data, ...renewalDiscountDecrement(ord) } });
           await log(tx, actor.id, 'ORDER.EXTEND', 'ORDER', ord.id,
             `Renewal confirmed via MarkPaid · re-provisioned ${repro.assignedCount}/${ord.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
           await notify(tx, ord.clientId,
@@ -153,6 +156,7 @@ export async function markPaymentPaid({
               renewalBucket: 'RENEWED',
               lastReminderAt: null,
               exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
+              ...renewalDiscountDecrement(ord),
             },
           });
           await notify(tx, ord.clientId, `Order ${ord.id} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${ord.id}`);
@@ -197,20 +201,29 @@ export async function markPaymentPaid({
       // waiting on a manual Assign must not burn its term while it waits. This
       // matches checkout/place and settle-payment (both null-until-ACTIVE);
       // Assign then stamps now+durationDays when the last proxy lands (P1 #2).
-      const expiresAt = willActivate && fullyAssigned ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+      // A persisted admin custom expiry is consumed here (stale → full term,
+      // logged below — money just landed, never park or kill a paid order).
+      const activating = willActivate && fullyAssigned;
+      const custom = applyCustomExpiry(ord.customExpiresAt, plan.durationDays, now);
+      const expiresAt = activating ? custom.expiresAt : null;
       await tx.order.update({
         where: { id: ord.id },
         data: {
           paymentStatus: 'PAID',
-          status: willActivate && fullyAssigned ? 'ACTIVE' : 'PROVISIONING',
-          activatedAt: willActivate && fullyAssigned ? now : null,
+          status: activating ? 'ACTIVE' : 'PROVISIONING',
+          activatedAt: activating ? now : null,
           expiresAt,
-          credentialsSentAt: willActivate && fullyAssigned ? now : null,
+          ...(activating ? { customExpiresAt: null } : {}),
+          credentialsSentAt: activating ? now : null,
           credentialsChannel: null,
           exception: willActivate && !fullyAssigned ? 'PAID_NOT_PROVISIONED' : null,
           excInfo: willActivate && !fullyAssigned ? `Pool capacity hit — only ${assignedCount}/${ord.qty} provisioned` : null,
         },
       });
+      if (activating && custom.stale) {
+        await log(tx, actor.id, 'ORDER.UPDATE', 'ORDER', ord.id,
+          `Custom expiry ${fmtDate(ord.customExpiresAt!)} passed before activation — full plan term applied`);
+      }
 
       // Mint invoice
       const invoiceId = await nextInvoiceId();
@@ -797,6 +810,15 @@ export async function assignProxyManually({
     const currentlyAssigned = ord.assignments.length + picked.length;
     const fullyAssigned = currentlyAssigned >= ord.qty;
     if (fullyAssigned) {
+      // First activation consumes a persisted admin custom expiry. If the date
+      // passed while the order waited, REFUSE rather than silently grant a full
+      // term or activate born-expired — the admin is right here and can cancel
+      // and recreate with a fresh date (the recreation flow this feature
+      // serves). Top-ups of an already-active term (ord.expiresAt set) skip
+      // this entirely. The throw rolls back the whole tx — no proxies stick.
+      if (ord.expiresAt === null && ord.customExpiresAt && ord.customExpiresAt.getTime() <= now.getTime()) {
+        throw new Error(`Custom expiry ${fmtDate(ord.customExpiresAt)} has already passed — cancel this order and recreate it with a new date, or extend after activating without one`);
+      }
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -804,7 +826,9 @@ export async function assignProxyManually({
           activatedAt: ord.activatedAt ?? now,
           // Honour the plan's real term — was hardcoded +30d, so a 7- or
           // 90-day plan provisioned via manual Assign got 30 days (P1 #1).
-          expiresAt: ord.expiresAt ?? new Date(now.getTime() + ord.plan.durationDays * 86_400_000),
+          // A pending custom expiry (recreation flow) wins over the full term.
+          expiresAt: ord.expiresAt ?? ord.customExpiresAt ?? new Date(now.getTime() + ord.plan.durationDays * 86_400_000),
+          customExpiresAt: null,
           credentialsSentAt: ord.credentialsSentAt ?? now,
           credentialsChannel: ord.credentialsChannel ?? null,
           // A New-Order "hold for manual assignment" (autoProvision snapshotted
@@ -1717,13 +1741,15 @@ export type NewOrderInput = {
   planId: string;
   qty: number;
   discountPct?: number;
+  // Flat $ off the total — the alternative to discountPct (at most one set).
+  discountUsd?: number;
   paymentMethod: 'stripe' | 'invoice' | 'crypto' | 'comp';
   autoAssign?: boolean;
   autoRenew?: boolean;
-  // Optional custom expiry (ISO datetime). Instant methods (comp/stripe) only —
-  // for crypto/invoice the term starts at payment confirmation, so an absolute
-  // date set at creation would be meaningless (or already past) by then.
-  // Bounds: strictly after now, strictly before now + plan.durationDays.
+  // Optional custom expiry (ISO datetime), any method. Born-ACTIVE orders
+  // consume it immediately; otherwise it persists in customExpiresAt and is
+  // applied at first activation. Bounds: strictly after now, strictly before
+  // now + plan.durationDays.
   expiresAt?: string | null;
 };
 
@@ -1748,7 +1774,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     // Input bounds, custom-expiry rule, and money math live in
     // new-order-policy.ts (pure, standalone-tested).
     const discount = input.discountPct ?? 0;
-    assertNewOrderBounds(input.qty, discount);
+    const discountUsd = input.discountUsd ?? 0;
+    assertNewOrderBounds(input.qty, discount, discountUsd, Number(plan.price));
 
     const isInstant = isInstantMethod(input.paymentMethod);
     const now = new Date();
@@ -1776,7 +1803,7 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     if (plan.availableQuota - (alloc._sum.qty ?? 0) < input.qty) throw new Error('Plan capacity insufficient');
 
     const isComp = input.paymentMethod === 'comp';
-    const { unitPrice, total, fees, net } = newOrderMoney(Number(plan.price), discount, input.qty, input.paymentMethod);
+    const { unitPrice, total, fees, net } = newOrderMoney(Number(plan.price), discount, discountUsd, input.qty, input.paymentMethod);
     // Only Comp may be $0. A 100% discount on a paid method would otherwise mint
     // a $0 "paid" order (Stripe invoice / eternal $0 AWAITING) that bypasses the
     // Comp semantics and the Provider=Comp filter — the modal blocks it, mirror
@@ -1824,22 +1851,16 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
       : isInstant ? 'PROVISIONING' as const
       : 'NEW' as const;
     const finalActivated = finalStatus === 'ACTIVE' ? now : null;
-    // A custom absolute expiry only makes sense when the order activates NOW —
-    // a short term "starting now" is meaningless if the proxies aren't
-    // delivered now. If an instant order can't be born ACTIVE (pool short /
-    // auto-assign off / manual plan), refuse rather than stamp the date on a
-    // PROVISIONING row: the sweep only expires ACTIVE orders, so a non-null
-    // expiry on a PROVISIONING order would be a zombie term (never expires,
-    // eats plan quota) and a later activation would carry a possibly-past date
-    // into ACTIVE — an instant expire, or an unconsented auto-renew charge on
-    // the next tick. PROVISIONING/NEW orders keep expiresAt null (invariant)
-    // and start their clock at real activation.
-    if (customExpires && finalStatus !== 'ACTIVE') {
-      throw new Error('Custom expiry needs the order to activate immediately — that requires auto-assign on an auto-provision plan with enough proxies in the pool right now. Register or free up proxies first, or create the order without a custom expiry.');
-    }
+    // Custom expiry (owner decision 2026-08-21, replaces the born-ACTIVE-only
+    // rule): an order born ACTIVE consumes the date immediately; otherwise the
+    // date is persisted in customExpiresAt — a SEPARATE column, so expiresAt
+    // stays null until activation (invariant: the sweep only expires ACTIVE
+    // orders; a ticking expiresAt on a PROVISIONING row would be a zombie
+    // term). Each activation path applies-and-clears it via applyCustomExpiry.
     const finalExpires =
       finalStatus === 'ACTIVE' ? (customExpires ?? new Date(now.getTime() + plan.durationDays * 86_400_000))
       : null;
+    const pendingCustomExpires = finalStatus === 'ACTIVE' ? null : customExpires;
     // Exception only when auto-assign was actually attempted and came up short
     // — a comp order on a manual-provisioning plan never queries the pool, so
     // stamping it "Pool exhausted" was a false alarm (audit find).
@@ -1857,7 +1878,9 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         unitPrice,
         amount: total,
         discountPct: isComp ? 0 : discount, // discount is meaningless on a $0 comp order
+        discountAmount: isComp || discountUsd <= 0 ? null : discountUsd,
         region: plan.region,
+        customExpiresAt: pendingCustomExpires,
         paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
         status: finalStatus,
         autoRenew: input.autoRenew ?? plan.autoRenewDefault,
@@ -2294,10 +2317,10 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   const parkedPay = await prisma.payment.findFirst({ where: { orderId, status: 'MANUAL_REVIEW' }, select: { id: true } });
   if (parkedPay) throw new Error('A payment for this order is being verified — no need to pay again.');
 
-  // Renewals honour the plan's renewal discount (audit B-6) — same helper as
-  // the checkout renewal path, so the displayed price equals the charged one.
-  const unit = renewalUnitPrice(Number(o.plan.price), o.plan.renewalDiscountPct);
-  const price = unit * o.qty;
+  // Renewals honour the discounts (audit B-6) — renewalPricing is the ONE
+  // pricing source for every renewal charge and display: a per-order admin
+  // grant replaces the plan discount while active.
+  const price = renewalPricing(o.plan, o).total;
   const balance = Number(o.client.balance);
 
   if (balance < price) {
@@ -2350,7 +2373,9 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     const reproOrd = { id: orderId, qty: o.qty, region: o.region, activatedAt: freshOrd.activatedAt, autoProvision: o.autoProvision, plan: { carrier: o.plan.carrier, pool: o.plan.pool, durationDays: o.plan.durationDays } };
     const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, clientId, now) : null;
     if (repro) {
-      await tx.order.update({ where: { id: orderId }, data: repro.data });
+      // A paid renewal consumes one per-order discount cycle (no-op when
+      // indefinite/absent/exhausted) — this charge was priced with it.
+      await tx.order.update({ where: { id: orderId }, data: { ...repro.data, ...renewalDiscountDecrement(o) } });
       const newExpiry = repro.fullyAssigned ? new Date(now.getTime() + o.plan.durationDays * 86_400_000) : null;
       await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
         `Client renewal · ${money(price)} from balance · re-provisioned ${repro.assignedCount}/${o.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
@@ -2379,12 +2404,57 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
         renewalBucket: 'RENEWED',
         lastReminderAt: null,
         exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
+        ...renewalDiscountDecrement(o),
       },
     });
     await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
       `Client renewal · ${money(price)} from balance · new expiry ${fmtDate(newExpiry)}`);
     await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${orderId}`);
     return { ok: true, redirect: null, newExpiry: newExpiry.toISOString() };
+  });
+}
+
+// Per-order renewal discount (owner decision 2026-08-21): admin grants a
+// discount on this order's future PAID renewals — % of unit price or flat $
+// off the total — for one cycle, N cycles, or indefinitely. While active it
+// REPLACES the plan's renewalDiscountPct (renewalPricing). `null` input clears.
+export type OrderRenewalDiscountInput = {
+  value: number;
+  isPercent: boolean;
+  cycles: number | null; // null = indefinite; N >= 1 = remaining paid renewals
+} | null;
+
+export async function setOrderRenewalDiscount({
+  orderId, input, actor,
+}: { orderId: string; input: OrderRenewalDiscountInput; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const ord = await tx.order.findUnique({ where: { id: orderId }, include: { plan: true } });
+    if (!ord) throw new Error('Order not found');
+    if (ord.status === 'CANCELLED') throw new Error('Cannot set a renewal discount on a cancelled order');
+    if (input) {
+      if (!Number.isFinite(input.value) || input.value <= 0) throw new Error('Discount value must be > 0');
+      if (input.isPercent) {
+        if (!Number.isInteger(input.value) || input.value > 100) throw new Error('Percent discount must be an integer 1..100');
+      } else {
+        if (Math.round(input.value * 100) !== input.value * 100) throw new Error('Discount amount must be whole cents');
+        const fullTotal = Math.round(Number(ord.plan.price) * ord.qty * 100) / 100;
+        if (input.value > fullTotal) throw new Error(`Discount amount cannot exceed the renewal total (${money(fullTotal)})`);
+      }
+      if (input.cycles !== null && (!Number.isInteger(input.cycles) || input.cycles < 1 || input.cycles > 120)) {
+        throw new Error('Cycles must be an integer 1..120, or indefinite');
+      }
+    }
+    await tx.order.update({
+      where: { id: orderId },
+      data: input
+        ? { renewalDiscountValue: input.value, renewalDiscountIsPercent: input.isPercent, renewalDiscountCyclesLeft: input.cycles }
+        : { renewalDiscountValue: null, renewalDiscountIsPercent: null, renewalDiscountCyclesLeft: null },
+    });
+    await log(tx, actor.id, 'ORDER.UPDATE', 'ORDER', orderId,
+      input
+        ? `Renewal discount set · ${input.isPercent ? `${input.value}%` : money(input.value)} · ${input.cycles === null ? 'indefinite' : `${input.cycles} cycle${input.cycles === 1 ? '' : 's'}`}${orderRenewalDiscountActive(ord) ? ' (replaced previous)' : ''}`
+        : 'Renewal discount cleared');
+    return { ok: true };
   });
 }
 

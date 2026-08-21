@@ -13,7 +13,7 @@ import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
 import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
-import { renewalBase, renewalPricing, renewalDiscountDecrement } from './renewal';
+import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from './renewal';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
@@ -42,7 +42,8 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
 
   // Per-order renewal discount (admin grant) replaces the plan discount while
   // active; renewalPricing is the single source for both (audit B-6 parity).
-  const price = renewalPricing(order.plan, order).total;
+  const pricing = renewalPricing(order.plan, order);
+  const price = pricing.total;
   const paymentId = await nextPaymentId();
   const now = new Date();
   let newExpiry = now; // real value assigned in-tx from the FRESH expiry base
@@ -111,6 +112,8 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           status: 'CONFIRMED',
           confirmedAt: now,
           source: 'auto-renew',
+          // Charge-time snapshot: did the per-order discount price this charge?
+          renewalDiscountApplied: pricing.source === 'order',
         },
       });
 
@@ -146,11 +149,12 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           lastReminderAt: null,
           autoRenewLastAttemptAt: null,
           exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
-          // Consume one cycle of the per-order renewal discount (no-op when
-          // indefinite/absent/exhausted) — this charge was priced with it.
-          ...renewalDiscountDecrement(order),
         },
       });
+      // Consume one discount cycle ONLY when the discount priced this charge
+      // (atomic guarded decrement — never below 0, never eats a concurrent
+      // re-grant; indefinite/exhausted are excluded by the SQL guard).
+      if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, order.id);
 
       await tx.log.create({
         data: {

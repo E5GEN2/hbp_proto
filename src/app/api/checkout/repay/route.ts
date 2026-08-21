@@ -191,9 +191,8 @@ export async function POST(req: Request) {
 
   // NEW order → the original amount; renewal → the same discounted price the
   // renewal charge paths use (never client-supplied).
-  const total = isNewOrder
-    ? Number(order.amount)
-    : renewalPricing(order.plan, order).total;
+  const repayPricing = isNewOrder ? null : renewalPricing(order.plan, order);
+  const total = isNewOrder ? Number(order.amount) : repayPricing!.total;
   // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
   if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });
 
@@ -246,6 +245,9 @@ export async function POST(req: Request) {
           payAddress: npPay.payAddress,
           payinExtraId: npPay.payinExtraId,
           payExpiresAt: npPay.expiresAt,
+          // Renewal charge-time snapshot: cycle consumed at settle only when
+          // the per-order discount priced THIS re-issued charge (review R1).
+          renewalDiscountApplied: isNewOrder ? null : repayPricing!.source === 'order',
         },
       });
       if (isNewOrder) {

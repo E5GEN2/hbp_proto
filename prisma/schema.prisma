@@ -366,6 +366,10 @@ model Payment {
   // until proof is recorded.
   refundReason    String?
   refundProof     String?
+  // Renewal charges only: true when the per-order renewal discount priced this
+  // charge — the cycle is consumed at settle ONLY when true (charge-time
+  // snapshot; the order's fields may change while a crypto charge is in flight).
+  renewalDiscountApplied Boolean?
   externalRef     String?
   source          String?
   createdAt       DateTime      @default(now())

@@ -322,8 +322,10 @@ export async function runSweep(): Promise<SweepResult> {
           const activating = fresh.status === 'PROVISIONING' && r.fully;
           if (activating) {
             const custom = applyCustomExpiry(fresh.customExpiresAt, o.plan.durationDays, nowD);
-            await tx.order.update({
-              where: { id: o.id },
+            // Status-guarded like the expiry step: a concurrent cancel/settle
+            // between the fresh read and here must not be overwritten (R1).
+            await tx.order.updateMany({
+              where: { id: o.id, status: 'PROVISIONING' },
               data: {
                 status: 'ACTIVE',
                 activatedAt: fresh.activatedAt ?? nowD,

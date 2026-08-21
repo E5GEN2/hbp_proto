@@ -63,18 +63,25 @@ export function renewalPricing(
   };
 }
 
-// The exactly-once cycles-left decrement, spread into the success
-// `tx.order.update` data at every PAID renewal settle point (auto-renew,
-// client one-click, checkout instant, crypto settle, admin MarkPaid renewal).
-// Admin comp Extend does NOT consume a cycle (free grant, no discount applied).
-// null = indefinite → no write; 0 already exhausted → no write (the charge was
-// priced by the plan discount).
-export function renewalDiscountDecrement(o: {
-  renewalDiscountValue: unknown; renewalDiscountCyclesLeft: number | null;
-}): { renewalDiscountCyclesLeft?: number } {
-  if (o.renewalDiscountValue == null) return {};
-  if (o.renewalDiscountCyclesLeft === null || o.renewalDiscountCyclesLeft <= 0) return {};
-  return { renewalDiscountCyclesLeft: o.renewalDiscountCyclesLeft - 1 };
+// The exactly-once cycle consumption, called at every PAID renewal settle
+// point (auto-renew, client one-click, checkout instant, crypto settle, admin
+// MarkPaid renewal) — GATED by the caller on the charge-time snapshot
+// (payment.renewalDiscountApplied / renewalPricing().source === 'order'):
+// a cycle is consumed only for a charge the order discount actually priced
+// (adversarial review R1 — a grant made while a full-price crypto charge was
+// in flight must not be eaten by that charge's settle). Admin comp Extend
+// never consumes a cycle (free grant, nothing was priced).
+// Atomic guarded decrement: `WHERE cyclesLeft > 0` excludes NULL (indefinite)
+// and 0 (exhausted) and can never go negative — and unlike an absolute write
+// from a pre-tx snapshot it can't clobber a concurrent admin re-grant (R1).
+export async function consumeRenewalDiscountCycle(
+  tx: { order: { updateMany: (args: { where: { id: string; renewalDiscountCyclesLeft: { gt: number } }; data: { renewalDiscountCyclesLeft: { decrement: number } } }) => Promise<unknown> } },
+  orderId: string,
+): Promise<void> {
+  await tx.order.updateMany({
+    where: { id: orderId, renewalDiscountCyclesLeft: { gt: 0 } },
+    data: { renewalDiscountCyclesLeft: { decrement: 1 } },
+  });
 }
 
 // The base date a renewal extends FROM (renewal-policy PR). Anchor on the

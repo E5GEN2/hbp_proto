@@ -13,7 +13,7 @@ import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } f
 import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
 import { isResurrectable, RESURRECTABLE_STATUSES } from './crypto-window';
-import { renewalBase, renewalDiscountDecrement } from './renewal';
+import { renewalBase, consumeRenewalDiscountCycle } from './renewal';
 import { applyCustomExpiry } from './new-order-policy';
 
 export type SettleResult =
@@ -189,11 +189,12 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
       if (repro) {
         reproShort = !repro.fullyAssigned;
         newExpiry = repro.fullyAssigned ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
-        // Paid renewal → consume one per-order discount cycle (no-op when
-        // indefinite/absent/exhausted). The crypto charge was priced with the
-        // discount at creation; only one renewal can be in flight (AWAITING
-        // guard), so creation-time price and this decrement can't diverge.
-        await tx.order.update({ where: { id: order.id }, data: { ...repro.data, ...renewalDiscountDecrement(order) } });
+        await tx.order.update({ where: { id: order.id }, data: repro.data });
+        // Consume one discount cycle ONLY when the CHARGE was priced with the
+        // per-order discount — the payment row's charge-time snapshot, never
+        // the order's current fields (a grant made while this charge was in
+        // flight must not be eaten by its settle; review R1).
+        if (payment.renewalDiscountApplied) await consumeRenewalDiscountCycle(tx, order.id);
         await tx.log.create({
           data: {
             actorId: order.clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id,
@@ -228,9 +229,9 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
           renewalBucket: 'RENEWED',
           lastReminderAt: null,
           exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
-          ...renewalDiscountDecrement(order),
         },
       });
+      if (payment.renewalDiscountApplied) await consumeRenewalDiscountCycle(tx, order.id);
       await tx.log.create({
         data: {
           actorId: order.clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id,

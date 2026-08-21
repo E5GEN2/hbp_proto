@@ -89,8 +89,11 @@ export async function buildInvoicePdf(inv: InvoiceWithRelations): Promise<Uint8A
   y -= 22;
   // The line-item amount is already the discounted total — this row only
   // states the applied discount, mirroring the fees "(included)" convention.
-  const discPct = inv.order?.discountPct ?? 0;
-  const discAmt = inv.order?.discountAmount != null ? Number(inv.order.discountAmount) : 0;
+  // Purchase invoices only: renewal invoices are priced by renewalPricing,
+  // not the creation discount (review R1) — gate on created-with-the-order.
+  const isPurchase = inv.order != null && Math.abs(inv.payment.createdAt.getTime() - inv.order.createdAt.getTime()) < 300_000;
+  const discPct = isPurchase ? (inv.order?.discountPct ?? 0) : 0;
+  const discAmt = isPurchase && inv.order?.discountAmount != null ? Number(inv.order.discountAmount) : 0;
   if (discPct > 0 || discAmt > 0) {
     const label = discPct > 0 ? `Discount applied (-${discPct}%)` : `Discount applied (-${money(discAmt)})`;
     page.drawText(label, { x: 340, y, size: 9, font, color: MUTED });

@@ -293,7 +293,9 @@ export function NewOrderModal({
               or a $0-priced plan reads as a dead Create button (review find). */}
           {plan && !isComp && !(total > 0) && (
             <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--warning)' }}>
-              Total is $0 — use the Comp method for a free order
+              {discountUnit === 'usd' && discount >= subtotal
+                ? 'The $ discount covers the whole total — reduce it, or use the Comp method for a free order'
+                : 'Total is $0 — use the Comp method for a free order'}
             </div>
           )}
         </div>

@@ -5,7 +5,7 @@ import {
   renewalUnitPrice,
   renewalPricing,
   orderRenewalDiscountActive,
-  renewalDiscountDecrement,
+  consumeRenewalDiscountCycle,
 } from '../src/lib/renewal';
 
 let pass = 0, fail = 0;
@@ -50,12 +50,19 @@ eq('string price coerces', renewalPricing({ price: '19.99' as unknown, renewalDi
 eq('cent rounding on $ discount', renewalPricing(plan, ord({ qty: 3, renewalDiscountValue: 0.01, renewalDiscountIsPercent: false, renewalDiscountCyclesLeft: null })),
   { unit: 55, total: 164.99, source: 'order', label: '−$0.01' });
 
-// ---------- renewalDiscountDecrement ----------
-eq('absent → no write', renewalDiscountDecrement(ord()), {});
-eq('indefinite → no write', renewalDiscountDecrement(ord({ renewalDiscountValue: 10, renewalDiscountCyclesLeft: null })), {});
-eq('cycles 3 → 2', renewalDiscountDecrement(ord({ renewalDiscountValue: 10, renewalDiscountCyclesLeft: 3 })), { renewalDiscountCyclesLeft: 2 });
-eq('cycles 1 → 0 (one-time consumed)', renewalDiscountDecrement(ord({ renewalDiscountValue: 10, renewalDiscountCyclesLeft: 1 })), { renewalDiscountCyclesLeft: 0 });
-eq('cycles 0 → no write (never negative)', renewalDiscountDecrement(ord({ renewalDiscountValue: 10, renewalDiscountCyclesLeft: 0 })), {});
+// ---------- consumeRenewalDiscountCycle (SQL shape via a fake tx) ----------
+// The guard lives in the WHERE (cyclesLeft > 0 excludes NULL/0 — can't go
+// negative, can't clobber a concurrent re-grant); assert the exact call shape.
+async function main() {
+  const calls: unknown[] = [];
+  const fakeTx = { order: { updateMany: async (args: unknown) => { calls.push(args); return {}; } } };
+  await consumeRenewalDiscountCycle(fakeTx as never, 'ORD-1');
+  eq('consume issues one guarded atomic decrement', calls, [{
+    where: { id: 'ORD-1', renewalDiscountCyclesLeft: { gt: 0 } },
+    data: { renewalDiscountCyclesLeft: { decrement: 1 } },
+  }]);
 
-console.log(`\nrenewal pricing: ${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+  console.log(`\nrenewal pricing: ${pass} passed, ${fail} failed`);
+  if (fail > 0) process.exit(1);
+}
+main();

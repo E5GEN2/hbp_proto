@@ -10,7 +10,7 @@
 
 import { prisma } from './prisma';
 import { nextInvoiceId, nextOrderId, nextPaymentId, nextUserId, nextProxyIdBatch, nextAssignmentId } from './id';
-import { renewalBase, renewalPricing, renewalDiscountDecrement, orderRenewalDiscountActive } from './renewal';
+import { renewalBase, renewalPricing, consumeRenewalDiscountCycle, orderRenewalDiscountActive } from './renewal';
 import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram, sendAdminTelegram, adminNewOrderAlert, flushTelegram, type TelegramOutbox } from './telegram';
@@ -126,10 +126,7 @@ export async function markPaymentPaid({
         const reproOrd = { id: ord.id, qty: ord.qty, region: ord.region, activatedAt: freshOrd.activatedAt, autoProvision: ord.autoProvision, plan: { carrier: plan.carrier, pool: plan.pool, durationDays: plan.durationDays } };
         const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, actor.id, now) : null;
         if (repro) {
-          // Paid renewal → consume one per-order discount cycle (no-op when
-          // indefinite/absent/exhausted). The charge amount was frozen at
-          // payment creation with the discount already applied.
-          await tx.order.update({ where: { id: ord.id }, data: { ...repro.data, ...renewalDiscountDecrement(ord) } });
+          await tx.order.update({ where: { id: ord.id }, data: repro.data });
           await log(tx, actor.id, 'ORDER.EXTEND', 'ORDER', ord.id,
             `Renewal confirmed via MarkPaid · re-provisioned ${repro.assignedCount}/${ord.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
           await notify(tx, ord.clientId,
@@ -156,11 +153,15 @@ export async function markPaymentPaid({
               renewalBucket: 'RENEWED',
               lastReminderAt: null,
               exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
-              ...renewalDiscountDecrement(ord),
             },
           });
           await notify(tx, ord.clientId, `Order ${ord.id} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${ord.id}`);
         }
+        // Consume one discount cycle ONLY when the CHARGE was priced with the
+        // per-order discount — the payment row's charge-time snapshot, never
+        // the order's current fields (a grant made while this charge was in
+        // flight must not be eaten by its settle; review R1).
+        if (pay.renewalDiscountApplied) await consumeRenewalDiscountCycle(tx, ord.id);
         // No adminNewOrderAlert for a renewal (mirrors settle-payment — the
         // "new paid order" alert is for first purchases only).
       } else {
@@ -461,6 +462,7 @@ export async function cancelOrder({
         cancelledReason: reason,
         autoRenew: false,
         renewalBucket: null,
+        customExpiresAt: null, // a pending custom expiry dies with the order
         // If paid, raise refund-pending so finance can close the loop.
         // If not, the charge dies with the order — snapshot/feed must not
         // keep showing "Awaiting" on a cancelled order.
@@ -2314,13 +2316,25 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   // A charge on this order already carries funds under verification — taking
   // balance now would charge twice for one term. The checkout and repay paths
   // enforce the same rule (re-review C2).
-  const parkedPay = await prisma.payment.findFirst({ where: { orderId, status: 'MANUAL_REVIEW' }, select: { id: true } });
-  if (parkedPay) throw new Error('A payment for this order is being verified — no need to pay again.');
+  const parkedPay = await prisma.payment.findFirst({ where: { orderId, status: { in: ['MANUAL_REVIEW', 'AWAITING'] } }, select: { id: true, status: true } });
+  // AWAITING mirrors handleRenewal / auto-renew (review R1): a crypto renewal
+  // in flight was priced (possibly with a one-cycle discount) — a one-click
+  // renewal on top would double-charge AND consume the cycle a second time.
+  if (parkedPay) {
+    throw new Error(parkedPay.status === 'AWAITING'
+      ? 'A renewal payment is already awaiting confirmation — complete or cancel it first.'
+      : 'A payment for this order is being verified — no need to pay again.');
+  }
+  // An order that never activated (paid, waiting for proxies) has no term to
+  // extend — a renewal here would stamp expiresAt on a PROVISIONING row
+  // (invariant break) and start the clock before delivery (review R1).
+  if (!o.activatedAt) throw new Error('This order has not been delivered yet — renewal opens once it activates.');
 
   // Renewals honour the discounts (audit B-6) — renewalPricing is the ONE
   // pricing source for every renewal charge and display: a per-order admin
   // grant replaces the plan discount while active.
-  const price = renewalPricing(o.plan, o).total;
+  const pricing = renewalPricing(o.plan, o);
+  const price = pricing.total;
   const balance = Number(o.client.balance);
 
   if (balance < price) {
@@ -2352,6 +2366,7 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
         provider: 'Balance', method: 'Balance',
         gross: price, fees: 0, net: price,
         status: 'CONFIRMED', confirmedAt: now,
+        renewalDiscountApplied: pricing.source === 'order',
       },
     });
     const invId = await nextInvoiceIdInTx(tx);
@@ -2373,9 +2388,10 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     const reproOrd = { id: orderId, qty: o.qty, region: o.region, activatedAt: freshOrd.activatedAt, autoProvision: o.autoProvision, plan: { carrier: o.plan.carrier, pool: o.plan.pool, durationDays: o.plan.durationDays } };
     const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, clientId, now) : null;
     if (repro) {
-      // A paid renewal consumes one per-order discount cycle (no-op when
-      // indefinite/absent/exhausted) — this charge was priced with it.
-      await tx.order.update({ where: { id: orderId }, data: { ...repro.data, ...renewalDiscountDecrement(o) } });
+      await tx.order.update({ where: { id: orderId }, data: repro.data });
+      // Consume one discount cycle ONLY when the discount priced this charge
+      // (atomic guarded decrement — see consumeRenewalDiscountCycle).
+      if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, orderId);
       const newExpiry = repro.fullyAssigned ? new Date(now.getTime() + o.plan.durationDays * 86_400_000) : null;
       await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
         `Client renewal · ${money(price)} from balance · re-provisioned ${repro.assignedCount}/${o.qty}${repro.fullyAssigned ? '' : ' · PAID_NOT_PROVISIONED'}`);
@@ -2404,9 +2420,9 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
         renewalBucket: 'RENEWED',
         lastReminderAt: null,
         exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
-        ...renewalDiscountDecrement(o),
       },
     });
+    if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, orderId);
     await log(tx, clientId, 'ORDER.EXTEND', 'ORDER', orderId,
       `Client renewal · ${money(price)} from balance · new expiry ${fmtDate(newExpiry)}`);
     await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${orderId}`);
@@ -2436,7 +2452,8 @@ export async function setOrderRenewalDiscount({
       if (input.isPercent) {
         if (!Number.isInteger(input.value) || input.value > 100) throw new Error('Percent discount must be an integer 1..100');
       } else {
-        if (Math.round(input.value * 100) !== input.value * 100) throw new Error('Discount amount must be whole cents');
+        // roundCents equality, not float re-scaling (same R1 fix as bounds).
+        if (Math.round(input.value * 100) / 100 !== input.value) throw new Error('Discount amount must be whole cents');
         const fullTotal = Math.round(Number(ord.plan.price) * ord.qty * 100) / 100;
         if (input.value > fullTotal) throw new Error(`Discount amount cannot exceed the renewal total (${money(fullTotal)})`);
       }

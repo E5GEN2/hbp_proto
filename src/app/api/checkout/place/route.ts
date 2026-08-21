@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
-import { renewalBase, renewalPricing, renewalDiscountDecrement } from '@/lib/renewal';
+import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
@@ -397,6 +397,13 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   if (!order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan' }, { status: 400 });
   }
+  // An order that never activated has no term to extend — a renewal here would
+  // stamp expiresAt on a PROVISIONING/NEW row (null-until-active invariant) and
+  // start the clock before delivery, silently dropping any pending admin
+  // custom expiry (review R1). Mirrors clientRenewOrder.
+  if (!order.activatedAt) {
+    return NextResponse.json({ error: 'This order has not been delivered yet — renewal opens once it activates.' }, { status: 400 });
+  }
   // Once past grace AND its proxies are released the order can no longer be
   // renewed contiguously — the client buys a fresh order instead. renewalClosed
   // is clock + live-assignment based (not order.status); the checkout renewal
@@ -426,7 +433,8 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   // Renewal discounts (audit B-6) — renewalPricing is the ONE source for every
   // renewal charge and display (a per-order admin grant replaces the plan
   // discount while active), so all surfaces agree to the cent.
-  const total = renewalPricing(order.plan, order).total;
+  const pricing = renewalPricing(order.plan, order);
+  const total = pricing.total;
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
@@ -474,6 +482,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
         payAddress: npPay?.payAddress ?? null,
         payinExtraId: npPay?.payinExtraId ?? null,
         payExpiresAt: npPay?.expiresAt ?? null,
+        // Charge-time snapshot: the cycle is consumed at settle ONLY when the
+        // per-order discount priced THIS charge (review R1).
+        renewalDiscountApplied: pricing.source === 'order',
       },
     });
 
@@ -510,9 +521,10 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     // clock held for manual Assign).
     const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, userId, now) : null;
     if (repro) {
-      // Paid renewal -> consume one per-order discount cycle (no-op when
-      // indefinite/absent/exhausted) — the charge above was priced with it.
-      await tx.order.update({ where: { id: order.id }, data: { ...repro.data, ...renewalDiscountDecrement(order) } });
+      await tx.order.update({ where: { id: order.id }, data: repro.data });
+      // Consume one discount cycle ONLY when the discount priced this charge
+      // (atomic guarded decrement; instant path — same tx as the charge).
+      if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, order.id);
       await tx.log.create({
         data: {
           actorId: userId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
@@ -547,9 +559,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
         renewalBucket: 'RENEWED',
         lastReminderAt: null,
         exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
-        ...renewalDiscountDecrement(order),
       },
     });
+    if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, order.id);
 
     await tx.log.create({
       data: {

@@ -19,3 +19,10 @@ ALTER TABLE "orders" ADD COLUMN "customExpiresAt" TIMESTAMP(3);
 ALTER TABLE "orders" ADD COLUMN "renewalDiscountValue" DECIMAL(10,2);
 ALTER TABLE "orders" ADD COLUMN "renewalDiscountIsPercent" BOOLEAN;
 ALTER TABLE "orders" ADD COLUMN "renewalDiscountCyclesLeft" INTEGER;
+
+-- Snapshot on the CHARGE of whether the per-order renewal discount priced it.
+-- The cycle is consumed at settle ONLY when this is true — a discount granted
+-- while a full-price crypto charge was in flight must not be eaten by that
+-- charge's settle, and a discounted charge's settle must consume even if the
+-- fields changed meanwhile (adversarial review R1).
+ALTER TABLE "payments" ADD COLUMN "renewalDiscountApplied" BOOLEAN;

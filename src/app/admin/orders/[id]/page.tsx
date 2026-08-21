@@ -422,7 +422,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                 <div className="kv-row"><span className="kv-key">Created</span><span className="kv-val">{fmtAdminStamp(order.createdAt)}</span></div>
                 <div className="kv-row"><span className="kv-key">Activated</span><span className="kv-val">{order.activatedAt ? fmtAdminStamp(order.activatedAt) : '—'}</span></div>
                 <div className="kv-row"><span className="kv-key">Expires</span><span className="kv-val">{order.expiresAt ? fmtAdminStamp(order.expiresAt) : '—'}</span></div>
-                {!order.expiresAt && order.customExpiresAt && (
+                {!order.expiresAt && order.customExpiresAt && order.status !== 'CANCELLED' && (
                   <div className="kv-row"><span className="kv-key">Custom expiry</span><span className="kv-val">{fmtAdminStamp(order.customExpiresAt)} <span className="muted">· applies at activation</span></span></div>
                 )}
                 <div className="kv-row"><span className="kv-key">Auto-renew</span><span className="kv-val"><span className={`chip ${order.autoRenew ? 'active' : 'expired'}`}>{order.autoRenew ? 'ON' : 'OFF'}</span></span></div>

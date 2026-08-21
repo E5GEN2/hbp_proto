@@ -27,7 +27,9 @@ export function assertNewOrderBounds(
   if (!Number.isFinite(discountUsd) || discountUsd < 0) {
     throw new Error('Discount amount must be ≥ $0');
   }
-  if (Math.round(discountUsd * 100) !== discountUsd * 100) {
+  // NB: compare via roundCents, not `v*100 === round(v*100)` — float re-scaling
+  // false-rejects ~11% of valid cent amounts ($19.99 → 1998.999…; review R1).
+  if (roundCents(discountUsd) !== discountUsd) {
     throw new Error('Discount amount must be whole cents');
   }
   if (discountPct > 0 && discountUsd > 0) {

@@ -148,8 +148,8 @@ export async function POST(req: Request) {
   // expiresAt null) has no term to extend. Without this, the "fresh address"
   // button on such an order would ORIGINATE a renewal charge whose settle
   // stamps expiresAt on a PROVISIONING row — an unexpirable zombie term.
-  if (!isNewOrder && !order.activatedAt) {
-    return NextResponse.json({ error: 'This order has not been delivered yet — renewal opens once it activates.' }, { status: 400 });
+  if (!isNewOrder && (!order.activatedAt || !order.expiresAt)) {
+    return NextResponse.json({ error: 'This order has no active term to extend — renewal opens once its proxies are delivered.' }, { status: 400 });
   }
   // Repay re-issues a lapsed direct charge; for a RENEWAL charge it must honour
   // the same past-grace policy as place/clientRenewOrder, or it becomes a

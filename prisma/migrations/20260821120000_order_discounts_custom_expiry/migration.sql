@@ -26,3 +26,16 @@ ALTER TABLE "orders" ADD COLUMN "renewalDiscountCyclesLeft" INTEGER;
 -- charge's settle, and a discounted charge's settle must consume even if the
 -- fields changed meanwhile (adversarial review R1).
 ALTER TABLE "payments" ADD COLUMN "renewalDiscountApplied" BOOLEAN;
+
+-- Backfill (R3): the AWAITING-scoped renewal guards key on this stamp being
+-- non-null for renewal-originated charges. Live pre-deploy renewal charges
+-- (AWAITING crypto renewals in their ≤72h window, or parked MANUAL_REVIEW)
+-- would otherwise be invisible to the one-click-renew guard until they die.
+-- Renewal-shaped = order charge on a non-NEW order created well after the
+-- order itself (purchase charges are created in the same tx as the order).
+UPDATE "payments" p SET "renewalDiscountApplied" = false
+FROM "orders" o
+WHERE p."orderId" = o.id
+  AND p.status IN ('AWAITING', 'MANUAL_REVIEW')
+  AND o.status <> 'NEW'
+  AND p."createdAt" > o."createdAt" + interval '5 minutes';

@@ -2338,10 +2338,13 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
       ? 'A renewal payment is already awaiting confirmation — complete or cancel it first.'
       : 'A payment for this order is being verified — no need to pay again.');
   }
-  // An order that never activated (paid, waiting for proxies) has no term to
-  // extend — a renewal here would stamp expiresAt on a PROVISIONING row
-  // (invariant break) and start the clock before delivery (review R1).
-  if (!o.activatedAt) throw new Error('This order has not been delivered yet — renewal opens once it activates.');
+  // No term — nothing to extend. Keyed on BOTH markers (R3): activatedAt null
+  // = never delivered; expiresAt null with activatedAt set = the clock-held
+  // state reprovisionRenewedOrder leaves after a short-pool renewal
+  // (PROVISIONING + PAID_NOT_PROVISIONED). A renewal in either state would
+  // stamp expiresAt on a PROVISIONING row (invariant break) and burn paid
+  // days before delivery. EXPIRED/grace orders always carry expiresAt.
+  if (!o.activatedAt || !o.expiresAt) throw new Error('This order has no active term to extend — renewal opens once its proxies are delivered.');
 
   // Renewals honour the discounts (audit B-6) — renewalPricing is the ONE
   // pricing source for every renewal charge and display: a per-order admin
@@ -2361,6 +2364,12 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   // Balance covers — direct extend + new payment + invoice
   return prisma.$transaction(async tx => {
     const now = new Date();
+    // Serialize ALL renewal writers on the order row (R3): the in-tx re-check
+    // below is not a serialization point on its own under READ COMMITTED — an
+    // uncommitted concurrent charge is invisible to it. With every renewal
+    // writer taking this lock first, the second one waits and then SEES the
+    // first one's committed charge.
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
     // Re-check in-tx (R2): a concurrent checkout-crypto renewal could have
     // inserted its AWAITING charge after the pre-tx guard above — committing
     // this balance renewal on top would double-charge and double-consume.

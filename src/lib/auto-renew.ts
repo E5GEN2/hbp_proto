@@ -35,10 +35,14 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   // confirmation) must not be stacked with an automatic charge — nor may one
   // whose funds arrived and are under verification (MANUAL_REVIEW), which
   // would charge the client twice for the same term (re-review C2).
+  // AWAITING is scoped to STAMPED (renewal-originated) charges (R3, matches
+  // clientRenewOrder): an AWAITING PURCHASE charge under manual-fulfillment
+  // override is not a renewal in flight — the broad check auto-renew-starved
+  // such orders every tick with a mislabelled reason.
   const pending = await prisma.payment.findFirst({
-    where: { orderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } },
+    where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
   });
-  if (pending) return { renewed: false, reason: `renewal payment ${pending.id} already awaiting confirmation` };
+  if (pending) return { renewed: false, reason: `payment ${pending.id} for this order is already ${pending.status === 'AWAITING' ? 'awaiting confirmation' : 'under verification'}` };
 
   // Per-order renewal discount (admin grant) replaces the plan discount while
   // active; renewalPricing is the single source for both (audit B-6 parity).
@@ -56,6 +60,15 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       // from the stale base would swallow the period they just paid for. The
       // status guard mirrors the sweep's expiry-step TOCTOU re-read: never
       // charge an order that stopped being ACTIVE since the snapshot.
+      // Serialize with the other renewal writers (R3) BEFORE reading state —
+      // see clientRenewOrder: an uncommitted concurrent renewal is invisible
+      // to plain reads; the row lock makes the loser wait and see it.
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+      const parkedNow = await tx.payment.findFirst({
+        where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+        select: { id: true },
+      });
+      if (parkedNow) throw new AutoRenewFail(`renewal payment ${parkedNow.id} appeared concurrently — no charge attempted`);
       const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
       if (!freshOrd || freshOrd.status !== 'ACTIVE') {
         throw new AutoRenewFail(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);

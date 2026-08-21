@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { AdminSidebar } from '@/components/admin/Sidebar';
 import { AdminOrderOptionsProvider } from '@/components/admin/shell/NewOrderContext';
 import { TipFloater } from '@/components/ui/TipFloater';
+import { mockPaymentsAllowed } from '@/lib/runtime-flags';
 
 // All admin pages need the DB at request time, never at build time
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     id: p.id, name: p.name, price: Number(p.price), durationDays: p.durationDays,
     carrier: p.carrier, region: p.region,
     available: Math.max(0, p.availableQuota - (allocByPlan.get(p.id) ?? 0)),
+    autoProvision: p.autoProvision,
+    renewalDiscountPct: p.renewalDiscountPct,
   }));
 
   const me = { name: session.user.name ?? '—', email: session.user.email ?? '', role: session.user.role };
@@ -46,7 +49,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="theme-admin" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
       <TipFloater />
       <AdminSidebar user={me} badges={badges} />
-      <AdminOrderOptionsProvider value={{ clients: clientOpts, plans: planOpts }}>
+      <AdminOrderOptionsProvider value={{ clients: clientOpts, plans: planOpts, mockPayments: mockPaymentsAllowed() }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {children}
         </div>

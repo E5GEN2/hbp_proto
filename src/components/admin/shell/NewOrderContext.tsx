@@ -8,17 +8,17 @@ import { NewOrderModal } from '@/components/admin/modals/NewOrderModal';
 // layout fetches the (read-only) client/plan options once and provides them
 // here; the GlobalNewOrder button rendered inside every AdminTopbar reads them.
 type ClientOpt = { id: string; name: string; email: string; balance: number };
-type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number };
-export type OrderOptions = { clients: ClientOpt[]; plans: PlanOpt[] };
+type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number; autoProvision: boolean; renewalDiscountPct: number | null };
+export type OrderOptions = { clients: ClientOpt[]; plans: PlanOpt[]; mockPayments: boolean };
 
-const Ctx = createContext<OrderOptions>({ clients: [], plans: [] });
+const Ctx = createContext<OrderOptions>({ clients: [], plans: [], mockPayments: true });
 
 export function AdminOrderOptionsProvider({ value, children }: { value: OrderOptions; children: React.ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function GlobalNewOrder() {
-  const { clients, plans } = useContext(Ctx);
+  const { clients, plans, mockPayments } = useContext(Ctx);
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -28,7 +28,7 @@ export function GlobalNewOrder() {
         </svg>
         New Order
       </button>
-      <NewOrderModal open={open} onClose={() => setOpen(false)} clients={clients} plans={plans} />
+      <NewOrderModal open={open} onClose={() => setOpen(false)} clients={clients} plans={plans} mockPayments={mockPayments} />
     </>
   );
 }

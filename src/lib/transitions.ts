@@ -17,6 +17,8 @@ import { sendTelegram, sendAdminTelegram, adminNewOrderAlert } from './telegram'
 import { sendEmail, incidentEmail, escapeHtml } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
+import { mockPaymentsAllowed } from './runtime-flags';
+import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney } from './new-order-policy';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import { loadTierGraceHours, renewalClosed } from './grace';
 import bcrypt from 'bcryptjs';
@@ -548,10 +550,26 @@ export async function extendOrder({
   return prisma.$transaction(async tx => {
     const ord = await tx.order.findUnique({ where: { id: orderId }, include: { plan: true } });
     if (!ord) throw new Error('Order not found');
-    if (ord.status === 'CANCELLED') throw new Error('Cannot extend a cancelled order');
+    // Server-side mirror of the UI gate (the button renders for ACTIVE/EXPIRED
+    // only): a NEW/PROVISIONING/SUSPENDED order has not started (or has paused)
+    // its term — stamping expiresAt on it would violate the null-until-active
+    // invariant: the sweep only expires ACTIVE orders, so the date would be a
+    // zombie term, and a later activation would carry a possibly-past date
+    // into ACTIVE (same hazard class as the New Order custom-expiry guard).
+    if (ord.status !== 'ACTIVE' && ord.status !== 'EXPIRED') {
+      throw new Error(
+        ord.status === 'CANCELLED' ? 'Cannot extend a cancelled order'
+        : ord.status === 'SUSPENDED' ? 'Cannot extend a suspended order — resume it first'
+        : `Cannot extend a ${ord.status.toLowerCase()} order — its term starts at activation`);
+    }
 
     const now = new Date();
     const days = additionalDays ?? ord.plan.durationDays;
+    // Sanity bound only (guards Invalid-Date overflow from a direct call) —
+    // generous because `days` defaults to plan.durationDays, which createPlan
+    // caps only at > 0, so a tight cap here could break the default Extend
+    // click on a long plan (review find).
+    if (!Number.isInteger(days) || days < 1 || days > 36_500) throw new Error('Days must be an integer 1..36500');
 
     // An EXPIRED order has had its proxies auto-released to the pool — a bare
     // term shift would reactivate it with nothing assigned. Re-provision
@@ -763,6 +781,16 @@ export async function assignProxyManually({
           expiresAt: ord.expiresAt ?? new Date(now.getTime() + ord.plan.durationDays * 86_400_000),
           credentialsSentAt: ord.credentialsSentAt ?? now,
           credentialsChannel: ord.credentialsChannel ?? null,
+          // A New-Order "hold for manual assignment" (autoProvision snapshotted
+          // false on an auto-provision plan) is a one-time creation choice, not
+          // a lifetime fulfilment mode — once the admin has hand-picked the
+          // proxies, lift the hold so mid-term faulty-proxy backfill and
+          // renewal re-provisioning self-heal again (review find). Upgrade
+          // only: an unconditional `= plan.autoProvision` would DOWNGRADE a
+          // born-auto order to manual when the plan was edited auto→manual
+          // after purchase, violating the purchase-time-snapshot semantics
+          // (transitions.ts:162) on a plain pool-short top-up (round-3 find).
+          ...(ord.plan.autoProvision && !ord.autoProvision ? { autoProvision: true } : {}),
         },
       });
       await notify(tx, ord.clientId, `Your proxies for ${orderId} are ready`, 'SUCCESS', `/orders/${orderId}`);
@@ -1645,6 +1673,11 @@ export type NewOrderInput = {
   paymentMethod: 'stripe' | 'invoice' | 'crypto' | 'comp';
   autoAssign?: boolean;
   autoRenew?: boolean;
+  // Optional custom expiry (ISO datetime). Instant methods (comp/stripe) only —
+  // for crypto/invoice the term starts at payment confirmation, so an absolute
+  // date set at creation would be meaningless (or already past) by then.
+  // Bounds: strictly after now, strictly before now + plan.durationDays.
+  expiresAt?: string | null;
 };
 
 // ORD-/PAY- are random by product rule (2026-07-06) — uniqueness-checked
@@ -1665,7 +1698,28 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     const plan = await tx.plan.findUnique({ where: { id: input.planId } });
     if (!plan || !plan.active || plan.deletedAt) throw new Error('Plan unavailable');
 
-    if (input.qty < 1) throw new Error('Quantity must be ≥ 1');
+    // Input bounds, custom-expiry rule, and money math live in
+    // new-order-policy.ts (pure, standalone-tested).
+    const discount = input.discountPct ?? 0;
+    assertNewOrderBounds(input.qty, discount);
+
+    const isInstant = isInstantMethod(input.paymentMethod);
+    const now = new Date();
+
+    // The admin "Stripe" method self-confirms without a processor (mock).
+    // Gate it exactly like the client card path — with mock payments off in
+    // production it would mint a fully-PAID order backed by no real charge.
+    if (input.paymentMethod === 'stripe' && !mockPaymentsAllowed()) {
+      throw new Error('Card (mock) payments are disabled on this deployment — use Bank transfer or Crypto with Mark paid, or Comp');
+    }
+
+    const customExpires = resolveCustomExpiry(input.expiresAt, input.paymentMethod, plan.durationDays, now);
+
+    // Serialize concurrent creates on this plan — the quota check below is
+    // read-then-write, so without a lock two simultaneous orders both read the
+    // same allocation and oversell (same recipe as reprovisionRenewedOrder /
+    // assignProxyManually, which lock the order row for the same reason).
+    await tx.$queryRaw`SELECT id FROM plans WHERE id = ${plan.id} FOR UPDATE`;
 
     // Capacity check
     const alloc = await tx.order.aggregate({
@@ -1674,14 +1728,27 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     });
     if (plan.availableQuota - (alloc._sum.qty ?? 0) < input.qty) throw new Error('Plan capacity insufficient');
 
-    const discount = input.discountPct ?? 0;
-    const unitPrice = Number(plan.price) * (1 - discount / 100);
-    const total = unitPrice * input.qty;
-    const isInstant = input.paymentMethod === 'comp' || input.paymentMethod === 'stripe';
+    const isComp = input.paymentMethod === 'comp';
+    const { unitPrice, total, fees, net } = newOrderMoney(Number(plan.price), discount, input.qty, input.paymentMethod);
+    // Only Comp may be $0. A 100% discount on a paid method would otherwise mint
+    // a $0 "paid" order (Stripe invoice / eternal $0 AWAITING) that bypasses the
+    // Comp semantics and the Provider=Comp filter — the modal blocks it, mirror
+    // that on the server (the action is callable directly past the UI).
+    if (!isComp && total <= 0) {
+      throw new Error('Total must be greater than $0 — use the Comp method for a free order');
+    }
     const willActivate = isInstant && plan.autoProvision;
-    const now = new Date();
-    // (Term is computed as `finalExpires` below, gated on ACTIVE — the order
-    // create uses that; no pay-time expiry here.)
+    // Snapshot the admin's auto-assign choice onto the order. autoAssign OFF on
+    // an auto-provision plan means "hold for manual assignment" — persist that
+    // as autoProvision:false so the sweep's backfill (which keys on
+    // order.autoProvision) doesn't grab arbitrary proxies on the next tick and
+    // override the choice. autoAssign ON (default) leaves the plan snapshot.
+    // Instant methods only: the modal greys the toggle out for invoice/crypto,
+    // so an OFF arriving with them is stale UI state — honoring it would
+    // silently hold provisioning at payment confirmation (review find).
+    const orderAutoProvision = plan.autoProvision && (isInstant ? (input.autoAssign ?? true) : true);
+    // (Term is computed as `finalExpires` below — the order create uses that;
+    // no pay-time expiry here.)
 
     const orderId = await nextOrderIdInTx(tx);
     const payId = await nextPaymentIdInTx(tx);
@@ -1703,15 +1770,34 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
       }
     }
     const fullyAssigned = candidatesToAssign.length >= input.qty;
+    // (comp is isInstant, and candidates are only picked under willActivate,
+    // so the old separate comp clauses were redundant — same matrix.)
     const finalStatus =
-      input.paymentMethod === 'comp' && fullyAssigned ? 'ACTIVE' as const
-      : willActivate && fullyAssigned ? 'ACTIVE' as const
-      : isInstant || input.paymentMethod === 'comp' ? 'PROVISIONING' as const
+      willActivate && fullyAssigned ? 'ACTIVE' as const
+      : isInstant ? 'PROVISIONING' as const
       : 'NEW' as const;
     const finalActivated = finalStatus === 'ACTIVE' ? now : null;
-    const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + plan.durationDays * 86_400_000) : null;
+    // A custom absolute expiry only makes sense when the order activates NOW —
+    // a short term "starting now" is meaningless if the proxies aren't
+    // delivered now. If an instant order can't be born ACTIVE (pool short /
+    // auto-assign off / manual plan), refuse rather than stamp the date on a
+    // PROVISIONING row: the sweep only expires ACTIVE orders, so a non-null
+    // expiry on a PROVISIONING order would be a zombie term (never expires,
+    // eats plan quota) and a later activation would carry a possibly-past date
+    // into ACTIVE — an instant expire, or an unconsented auto-renew charge on
+    // the next tick. PROVISIONING/NEW orders keep expiresAt null (invariant)
+    // and start their clock at real activation.
+    if (customExpires && finalStatus !== 'ACTIVE') {
+      throw new Error('Custom expiry needs the order to activate immediately — that requires auto-assign on an auto-provision plan with enough proxies in the pool right now. Register or free up proxies first, or create the order without a custom expiry.');
+    }
+    const finalExpires =
+      finalStatus === 'ACTIVE' ? (customExpires ?? new Date(now.getTime() + plan.durationDays * 86_400_000))
+      : null;
+    // Exception only when auto-assign was actually attempted and came up short
+    // — a comp order on a manual-provisioning plan never queries the pool, so
+    // stamping it "Pool exhausted" was a false alarm (audit find).
     const finalException =
-      (willActivate || input.paymentMethod === 'comp') && (input.autoAssign ?? true) && !fullyAssigned
+      willActivate && (input.autoAssign ?? true) && !fullyAssigned
         ? 'PAID_NOT_PROVISIONED' as const : null;
     const finalExcInfo = finalException ? `Pool exhausted — only ${candidatesToAssign.length}/${input.qty} provisioned` : null;
 
@@ -1723,12 +1809,12 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         qty: input.qty,
         unitPrice,
         amount: total,
-        discountPct: discount,
+        discountPct: isComp ? 0 : discount, // discount is meaningless on a $0 comp order
         region: plan.region,
         paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
         status: finalStatus,
         autoRenew: input.autoRenew ?? plan.autoRenewDefault,
-        autoProvision: plan.autoProvision,
+        autoProvision: orderAutoProvision,
         source: 'admin',
         activatedAt: finalActivated,
         expiresAt: finalExpires,
@@ -1747,8 +1833,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         provider: input.paymentMethod === 'stripe' ? 'Stripe' : input.paymentMethod === 'crypto' ? 'CoinPayments' : input.paymentMethod === 'invoice' ? 'Bank transfer' : 'Comp',
         method: input.paymentMethod === 'stripe' ? 'Visa •• 4242' : input.paymentMethod === 'crypto' ? 'USDT-TRC20' : input.paymentMethod === 'invoice' ? 'Bank wire' : 'Comp',
         gross: total,
-        fees: isInstant && input.paymentMethod === 'stripe' ? total * 0.03 : 0,
-        net: total,
+        fees,
+        net,
         status: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'CONFIRMED' : 'AWAITING'),
         confirmedAt: isInstant ? now : null,
       },
@@ -1775,8 +1861,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     await notify(tx, input.clientId,
       finalStatus === 'ACTIVE'
         ? `Order ${orderId} activated — ${input.qty} ${input.qty === 1 ? 'proxy' : 'proxies'} ready`
-        : isInstant || input.paymentMethod === 'comp'
-          ? `Order ${orderId} received — your proxies are being prepared`
+        : isInstant
+          ? `Order ${orderId} confirmed — your proxies are being prepared`
           : `Order ${orderId} created — awaiting payment`,
       finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO',
       `/orders/${orderId}`,

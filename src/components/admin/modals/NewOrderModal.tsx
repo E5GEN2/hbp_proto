@@ -6,9 +6,10 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { createOrderAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
+import { renewalUnitPrice } from '@/lib/renewal';
 
 type ClientOpt = { id: string; name: string; email: string; balance: number };
-type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number; autoProvision: boolean };
+type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number; autoProvision: boolean; renewalDiscountPct: number | null };
 
 // Mirror of the server's cent-rounding (roundCents in lib/balance.ts) so the
 // button/summary totals match what createOrderByAdmin will actually persist.
@@ -41,7 +42,11 @@ export function NewOrderModal({
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'invoice' | 'crypto' | 'comp'>(defaultMethod);
   const [expiresAt, setExpiresAt] = useState(''); // UTC 'YYYY-MM-DDTHH:mm'; '' = plan term
-  const [autoRenew, setAutoRenew] = useState(true);
+  // null = follow the method default: ON for paid methods, OFF for comp (a
+  // comped client never consented to a payment relationship). An explicit
+  // click survives method switches — a forced set in setMethod latched the
+  // toggle one-way across a comp detour (review find).
+  const [autoRenewChoice, setAutoRenewChoice] = useState<boolean | null>(null);
   const [autoAssign, setAutoAssign] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -49,12 +54,13 @@ export function NewOrderModal({
     if (!open) {
       setClientId(''); setPlanId(''); setQty(1); setDiscount(0);
       setPaymentMethod(defaultMethod); setExpiresAt('');
-      setAutoRenew(true); setAutoAssign(true); setErr(null);
+      setAutoRenewChoice(null); setAutoAssign(true); setErr(null);
     }
   }, [open, defaultMethod]);
 
   const plan = plans.find(p => p.id === planId);
   const isComp = paymentMethod === 'comp';
+  const autoRenew = autoRenewChoice ?? !isComp;
   const isInstant = paymentMethod === 'stripe' || isComp;
   const unitPrice = plan ? (isComp ? 0 : round2(plan.price * (1 - discount / 100))) : 0;
   const total = round2(unitPrice * qty);
@@ -69,22 +75,15 @@ export function NewOrderModal({
   // PROVISIONING and the date couldn't apply, so the field is disabled.
   const expiryEnabled = !!plan && isInstant && plan.autoProvision && autoAssign;
 
+  // Note: autoRenew's comp-OFF default and autoAssign's non-instant
+  // irrelevance are handled where they belong — autoRenew via the null-choice
+  // default above, autoAssign by the server ignoring the flag for non-instant
+  // methods. Forcing either state here made a method round-trip silently wipe
+  // a deliberate choice (review find).
   function setMethod(v: 'stripe' | 'invoice' | 'crypto' | 'comp') {
     setPaymentMethod(v);
-    if (v === 'comp') {
-      setDiscount(0); // comp is $0 — a discount is meaningless
-      // A comped client never consented to any payment relationship — the
-      // default-ON auto-renew would charge their real balance full price at
-      // expiry (or dun them for a gift). Opt-in only for comp.
-      setAutoRenew(false);
-    }
-    if (v === 'invoice' || v === 'crypto') {
-      setExpiresAt(''); // term starts at payment confirmation
-      // The auto-assign toggle greys out for non-instant methods — reset it so
-      // a stale OFF from a previous instant selection can't silently ride
-      // along and hold provisioning at payment confirmation (review find).
-      setAutoAssign(true);
-    }
+    if (v === 'comp') setDiscount(0); // comp is $0 — a discount is meaningless
+    if (v === 'invoice' || v === 'crypto') setExpiresAt(''); // term starts at payment confirmation
   }
 
   function setAutoAssignChecked(next: boolean) {
@@ -214,15 +213,20 @@ export function NewOrderModal({
             <button
               type="button" role="switch" aria-checked={autoRenew} aria-label="Auto-renew enabled"
               className={`toggle-v2 ${autoRenew ? 'on' : ''}`}
-              onClick={() => setAutoRenew(v => !v)}
+              onClick={() => setAutoRenewChoice(!autoRenew)}
               style={{ cursor: 'pointer', padding: 0 }}
             />
             <span style={{ fontSize: 12.5, color: 'var(--text)' }}>Auto-renew enabled</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* When greyed out for a non-instant method the server follows the
+                plan (auto) regardless of the kept OFF state — show what will
+                actually happen, not the stale choice (review find). The OFF
+                itself survives, so returning to an instant method restores it. */}
             <button
-              type="button" role="switch" aria-checked={autoAssign} aria-label="Auto-assign proxies"
-              className={`toggle-v2 ${autoAssign ? 'on' : ''}`}
+              type="button" role="switch" aria-label="Auto-assign proxies"
+              aria-checked={plan?.autoProvision ? (isInstant ? autoAssign : true) : false}
+              className={`toggle-v2 ${(plan?.autoProvision ? (isInstant ? autoAssign : true) : false) ? 'on' : ''}`}
               onClick={() => setAutoAssignChecked(!autoAssign)}
               disabled={!plan || !isInstant || !plan.autoProvision}
               style={{ cursor: !plan || !isInstant || !plan.autoProvision ? 'default' : 'pointer', padding: 0, opacity: !plan || !isInstant || !plan.autoProvision ? 0.45 : 1 }}
@@ -234,7 +238,10 @@ export function NewOrderModal({
         </div>
         {autoRenew && plan && (isComp || (expiryEnabled && expiresAt !== '')) && (
           <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--warning)', marginTop: -6 }}>
-            Auto-renew will charge the client the full plan price ({money(round2(plan.price * qty))}) from their balance at expiry
+            {/* renewalUnitPrice × qty is exactly what attemptAutoRenew charges
+                (auto-renew.ts) — full plan price overstated it on plans with a
+                renewal discount (review find). */}
+            Auto-renew will charge the client the renewal price ({money(round2(renewalUnitPrice(plan.price, plan.renewalDiscountPct) * qty))}) from their balance at expiry
             {isComp ? ' — they never paid for this comp order' : ' — the custom date brings that charge forward'}.
           </div>
         )}

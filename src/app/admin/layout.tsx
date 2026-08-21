@@ -39,6 +39,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     carrier: p.carrier, region: p.region,
     available: Math.max(0, p.availableQuota - (allocByPlan.get(p.id) ?? 0)),
     autoProvision: p.autoProvision,
+    renewalDiscountPct: p.renewalDiscountPct,
   }));
 
   const me = { name: session.user.name ?? '—', email: session.user.email ?? '', role: session.user.role };

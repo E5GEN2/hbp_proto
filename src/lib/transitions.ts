@@ -565,7 +565,11 @@ export async function extendOrder({
 
     const now = new Date();
     const days = additionalDays ?? ord.plan.durationDays;
-    if (!Number.isInteger(days) || days < 1 || days > 3650) throw new Error('Days must be an integer 1..3650');
+    // Sanity bound only (guards Invalid-Date overflow from a direct call) —
+    // generous because `days` defaults to plan.durationDays, which createPlan
+    // caps only at > 0, so a tight cap here could break the default Extend
+    // click on a long plan (review find).
+    if (!Number.isInteger(days) || days < 1 || days > 36_500) throw new Error('Days must be an integer 1..36500');
 
     // An EXPIRED order has had its proxies auto-released to the pool — a bare
     // term shift would reactivate it with nothing assigned. Re-provision
@@ -780,11 +784,13 @@ export async function assignProxyManually({
           // A New-Order "hold for manual assignment" (autoProvision snapshotted
           // false on an auto-provision plan) is a one-time creation choice, not
           // a lifetime fulfilment mode — once the admin has hand-picked the
-          // proxies, restore the plan's flag so mid-term faulty-proxy backfill
-          // and renewal re-provisioning self-heal again (review find). No-op
-          // for genuinely manual plans (plan flag is false) and for normal
-          // orders (already equal).
-          autoProvision: ord.plan.autoProvision,
+          // proxies, lift the hold so mid-term faulty-proxy backfill and
+          // renewal re-provisioning self-heal again (review find). Upgrade
+          // only: an unconditional `= plan.autoProvision` would DOWNGRADE a
+          // born-auto order to manual when the plan was edited auto→manual
+          // after purchase, violating the purchase-time-snapshot semantics
+          // (transitions.ts:162) on a plain pool-short top-up (round-3 find).
+          ...(ord.plan.autoProvision && !ord.autoProvision ? { autoProvision: true } : {}),
         },
       });
       await notify(tx, ord.clientId, `Your proxies for ${orderId} are ready`, 'SUCCESS', `/orders/${orderId}`);

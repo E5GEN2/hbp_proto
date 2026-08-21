@@ -324,7 +324,10 @@ export async function runSweep(): Promise<SweepResult> {
             const custom = applyCustomExpiry(fresh.customExpiresAt, o.plan.durationDays, nowD);
             // Status-guarded like the expiry step: a concurrent cancel/settle
             // between the fresh read and here must not be overwritten (R1).
-            await tx.order.updateMany({
+            // Count checked (R2): a lost race must ROLL BACK the whole tx —
+            // otherwise the just-created assignments stick to a cancelled
+            // order and the client gets a false "activated" notify below.
+            const flip = await tx.order.updateMany({
               where: { id: o.id, status: 'PROVISIONING' },
               data: {
                 status: 'ACTIVE',
@@ -334,6 +337,7 @@ export async function runSweep(): Promise<SweepResult> {
                 credentialsSentAt: fresh.credentialsSentAt ?? nowD,
               },
             });
+            if (flip.count === 0) throw new Error('BACKFILL_RACE_LOST');
             if (custom.stale && fresh.expiresAt === null) {
               await tx.log.create({
                 data: { actorId: 'ADM-SYS', action: 'ORDER.UPDATE', objectType: 'ORDER', objectId: o.id, detail: 'Custom expiry passed before backfill activation — full plan term applied' },
@@ -342,6 +346,11 @@ export async function runSweep(): Promise<SweepResult> {
           }
           await refreshProvisionException(tx, o.id);
           return { ...r, activated: activating, firstFill: fresh.status === 'PROVISIONING' };
+        }).catch((e: unknown) => {
+          // Race-lost activation: tx rolled back (assignments included) — the
+          // next tick re-reads the true state. Anything else still throws.
+          if (e instanceof Error && e.message === 'BACKFILL_RACE_LOST') return null;
+          throw e;
         });
         if (outcome && outcome.added > 0) {
           backfilled += outcome.added;

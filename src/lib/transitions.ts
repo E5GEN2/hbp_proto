@@ -2213,7 +2213,7 @@ export async function clientCancelNewOrder({ orderId, clientId }: { orderId: str
       where: { id: orderId },
       // paymentStatus flips too — the order snapshot and dashboard feed read
       // it, and a cancelled order must not keep looking "Awaiting".
-      data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Cancelled by client before payment' },
+      data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Cancelled by client before payment', customExpiresAt: null },
     });
     await tx.payment.updateMany({
       where: { orderId, status: { in: ['AWAITING', 'PENDING'] } },
@@ -2316,10 +2316,23 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   // A charge on this order already carries funds under verification — taking
   // balance now would charge twice for one term. The checkout and repay paths
   // enforce the same rule (re-review C2).
-  const parkedPay = await prisma.payment.findFirst({ where: { orderId, status: { in: ['MANUAL_REVIEW', 'AWAITING'] } }, select: { id: true, status: true } });
   // AWAITING mirrors handleRenewal / auto-renew (review R1): a crypto renewal
   // in flight was priced (possibly with a one-cycle discount) — a one-click
   // renewal on top would double-charge AND consume the cycle a second time.
+  // Scoped to STAMPED charges (renewalDiscountApplied non-null = renewal-
+  // originated): an AWAITING PURCHASE charge (manual-fulfillment override)
+  // is not a renewal in flight (R2). MANUAL_REVIEW stays broad — any funds
+  // under verification block a second charge.
+  const parkedPay = await prisma.payment.findFirst({
+    where: {
+      orderId,
+      OR: [
+        { status: 'MANUAL_REVIEW' },
+        { status: 'AWAITING', renewalDiscountApplied: { not: null } },
+      ],
+    },
+    select: { id: true, status: true },
+  });
   if (parkedPay) {
     throw new Error(parkedPay.status === 'AWAITING'
       ? 'A renewal payment is already awaiting confirmation — complete or cancel it first.'
@@ -2348,6 +2361,14 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   // Balance covers — direct extend + new payment + invoice
   return prisma.$transaction(async tx => {
     const now = new Date();
+    // Re-check in-tx (R2): a concurrent checkout-crypto renewal could have
+    // inserted its AWAITING charge after the pre-tx guard above — committing
+    // this balance renewal on top would double-charge and double-consume.
+    const parkedNow = await tx.payment.findFirst({
+      where: { orderId, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+      select: { id: true },
+    });
+    if (parkedNow) throw new Error('A renewal payment is already awaiting confirmation — complete or cancel it first.');
     const payId = await nextPaymentIdInTx(tx);
     // Guarded in-tx debit (P1-1): the snapshot read above ran OUTSIDE this tx —
     // a concurrent spend could have drained the balance since.

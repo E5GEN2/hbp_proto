@@ -143,6 +143,14 @@ export async function POST(req: Request) {
   if (!isNewOrder && !order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan.' }, { status: 400 });
   }
+  // Same guard as handleRenewal / clientRenewOrder (R2 — this route was the
+  // missed third originator): a paid-but-never-activated order (PROVISIONING,
+  // expiresAt null) has no term to extend. Without this, the "fresh address"
+  // button on such an order would ORIGINATE a renewal charge whose settle
+  // stamps expiresAt on a PROVISIONING row — an unexpirable zombie term.
+  if (!isNewOrder && !order.activatedAt) {
+    return NextResponse.json({ error: 'This order has not been delivered yet — renewal opens once it activates.' }, { status: 400 });
+  }
   // Repay re-issues a lapsed direct charge; for a RENEWAL charge it must honour
   // the same past-grace policy as place/clientRenewOrder, or it becomes a
   // bypass — re-issuing a renewal charge (at the discounted price) that

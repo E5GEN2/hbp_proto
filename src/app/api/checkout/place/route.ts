@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
-import { renewalUnitPrice, renewalBase } from '@/lib/renewal';
+import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
@@ -397,6 +397,13 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   if (!order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan' }, { status: 400 });
   }
+  // No term — nothing to extend (R1+R3, mirrors clientRenewOrder): activatedAt
+  // null = never delivered; expiresAt null with activatedAt set = clock-held
+  // after a short-pool renewal reprovision. Either way a renewal would stamp
+  // expiresAt on a non-ACTIVE row and burn paid days before delivery.
+  if (!order.activatedAt || !order.expiresAt) {
+    return NextResponse.json({ error: 'This order has no active term to extend — renewal opens once its proxies are delivered.' }, { status: 400 });
+  }
   // Once past grace AND its proxies are released the order can no longer be
   // renewed contiguously — the client buys a fresh order instead. renewalClosed
   // is clock + live-assignment based (not order.status); the checkout renewal
@@ -415,17 +422,30 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     return NextResponse.json({ error: 'A payment for this order is being verified — no need to pay again.', orderId: order.id }, { status: 409 });
   }
   // One pending renewal payment at a time — a second POST while crypto is
-  // awaiting confirmation must not stack another charge.
-  const pending = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' } });
+  // awaiting confirmation must not stack another charge. Scoped to STAMPED
+  // (renewal-originated) charges (R3, matches clientRenewOrder/auto-renew).
+  const pending = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING', renewalDiscountApplied: { not: null } } });
   if (pending) {
     // orderId → CheckoutFlow's 409 handler routes to /checkout?resume=… where
     // the payment-aware panel re-opens the pending charge (review find).
     return NextResponse.json({ error: `A renewal payment (${pending.id}) is already awaiting confirmation.`, orderId: order.id }, { status: 409 });
   }
+  // Crypto keeps the BROAD block: payments_one_awaiting_per_order allows only
+  // one AWAITING row per order, so creating a second (even for a renewal on an
+  // order whose PURCHASE charge is still AWAITING under manual-fulfillment
+  // override) would die on the index — 409 with honest copy instead.
+  if (paymentMethod === 'crypto') {
+    const anyAwaiting = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' }, select: { id: true } });
+    if (anyAwaiting) {
+      return NextResponse.json({ error: `A payment (${anyAwaiting.id}) on this order is already awaiting confirmation — complete or cancel it first.`, orderId: order.id }, { status: 409 });
+    }
+  }
 
-  // Renewal discount (audit B-6) — same helper as the client UI and the
-  // one-click balance renewal, so all three surfaces agree to the cent.
-  const total = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  // Renewal discounts (audit B-6) — renewalPricing is the ONE source for every
+  // renewal charge and display (a per-order admin grant replaces the plan
+  // discount while active), so all surfaces agree to the cent.
+  const pricing = renewalPricing(order.plan, order);
+  const total = pricing.total;
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
@@ -455,6 +475,16 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
 
   try {
   await prisma.$transaction(async tx => {
+    // Serialize ALL renewal writers on the order row (R3) — see
+    // clientRenewOrder: an uncommitted concurrent renewal is invisible to
+    // plain reads under READ COMMITTED; the lock makes the loser wait and
+    // then SEE the winner's committed charge in the re-check below.
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+    const parkedNow = await tx.payment.findFirst({
+      where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+      select: { id: true },
+    });
+    if (parkedNow) throw new Error('RENEWAL_RACE');
     await tx.payment.create({
       data: {
         id: paymentId,
@@ -473,6 +503,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
         payAddress: npPay?.payAddress ?? null,
         payinExtraId: npPay?.payinExtraId ?? null,
         payExpiresAt: npPay?.expiresAt ?? null,
+        // Charge-time snapshot: the cycle is consumed at settle ONLY when the
+        // per-order discount priced THIS charge (review R1).
+        renewalDiscountApplied: pricing.source === 'order',
       },
     });
 
@@ -510,6 +543,9 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     const repro = freshOrd.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, order, userId, now) : null;
     if (repro) {
       await tx.order.update({ where: { id: order.id }, data: repro.data });
+      // Consume one discount cycle ONLY when the discount priced this charge
+      // (atomic guarded decrement; instant path — same tx as the charge).
+      if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, order.id);
       await tx.log.create({
         data: {
           actorId: userId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: order.id,
@@ -546,6 +582,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
         exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
       },
     });
+    if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, order.id);
 
     await tx.log.create({
       data: {
@@ -573,6 +610,11 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     // uncommitted sibling — payments_one_awaiting_per_order catches the loser.
     if (e?.code === 'P2002') {
       return NextResponse.json({ error: 'A renewal payment is already awaiting confirmation.', orderId: order.id }, { status: 409 });
+    }
+    // In-tx re-check after the order-row lock (R3): the concurrent renewal
+    // writer won the race — its charge is committed, ours rolls back.
+    if (e?.message === 'RENEWAL_RACE') {
+      return NextResponse.json({ error: 'A renewal for this order was just started elsewhere — reload to see its state.', orderId: order.id }, { status: 409 });
     }
     throw e;
   }

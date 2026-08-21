@@ -39,7 +39,9 @@ export function NewOrderModal({
   const [clientId, setClientId] = useState('');
   const [planId, setPlanId] = useState('');
   const [qty, setQty] = useState(1);
+  // One discount, two units: % of the unit price, or a flat $ off the total.
   const [discount, setDiscount] = useState(0);
+  const [discountUnit, setDiscountUnit] = useState<'pct' | 'usd'>('pct');
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'invoice' | 'crypto' | 'comp'>(defaultMethod);
   const [expiresAt, setExpiresAt] = useState(''); // UTC 'YYYY-MM-DDTHH:mm'; '' = plan term
   // null = follow the method default: ON for paid methods, OFF for comp (a
@@ -52,7 +54,7 @@ export function NewOrderModal({
 
   useEffect(() => {
     if (!open) {
-      setClientId(''); setPlanId(''); setQty(1); setDiscount(0);
+      setClientId(''); setPlanId(''); setQty(1); setDiscount(0); setDiscountUnit('pct');
       setPaymentMethod(defaultMethod); setExpiresAt('');
       setAutoRenewChoice(null); setAutoAssign(true); setErr(null);
     }
@@ -62,18 +64,22 @@ export function NewOrderModal({
   const isComp = paymentMethod === 'comp';
   const autoRenew = autoRenewChoice ?? !isComp;
   const isInstant = paymentMethod === 'stripe' || isComp;
-  const unitPrice = plan ? (isComp ? 0 : round2(plan.price * (1 - discount / 100))) : 0;
-  const total = round2(unitPrice * qty);
+  const subtotal = plan ? round2(plan.price * qty) : 0;
+  // Mirrors newOrderMoney: % applies per unit; $ comes off the TOTAL.
+  const total = !plan || isComp ? 0
+    : discountUnit === 'usd' ? Math.max(0, round2(subtotal - discount))
+    : round2(round2(plan.price * (1 - discount / 100)) * qty);
   const maxQty = plan ? Math.min(plan.available, 20) : 1;
 
   // Custom expiry bounds: strictly after now, strictly inside the plan term.
   const expiryMin = fmtUtcInput(Date.now() + 60_000);
   const expiryMax = plan ? fmtUtcInput(Date.now() + plan.durationDays * 86_400_000 - 60_000) : undefined;
-  // A custom absolute expiry is only honoured when the order activates NOW —
-  // it needs an instant method, an auto-provision plan, and auto-assign on
-  // (pool depth is still the server's call). Otherwise the order would be born
-  // PROVISIONING and the date couldn't apply, so the field is disabled.
-  const expiryEnabled = !!plan && isInstant && plan.autoProvision && autoAssign;
+  // Custom absolute expiry, any method (owner decision 2026-08-21): an order
+  // born ACTIVE consumes it immediately; otherwise the server persists it and
+  // applies it at first activation (Mark paid / crypto settle / manual Assign
+  // / backfill). The primary use case is recreating a paid-then-deleted order
+  // with its original end date.
+  const expiryEnabled = !!plan;
 
   // Note: autoRenew's comp-OFF default and autoAssign's non-instant
   // irrelevance are handled where they belong — autoRenew via the null-choice
@@ -83,12 +89,10 @@ export function NewOrderModal({
   function setMethod(v: 'stripe' | 'invoice' | 'crypto' | 'comp') {
     setPaymentMethod(v);
     if (v === 'comp') setDiscount(0); // comp is $0 — a discount is meaningless
-    if (v === 'invoice' || v === 'crypto') setExpiresAt(''); // term starts at payment confirmation
   }
 
   function setAutoAssignChecked(next: boolean) {
     setAutoAssign(next);
-    if (!next) setExpiresAt(''); // a held order activates later — no now-anchored date
   }
 
   function submit() {
@@ -96,8 +100,11 @@ export function NewOrderModal({
     if (!clientId) return setErr('Pick a client');
     if (!planId || !plan) return setErr('Pick a plan');
     if (!isComp && !(total > 0)) return setErr('Total must be greater than $0 — use Comp for a free order');
+    if (!isComp && discountUnit === 'usd' && discount > subtotal) {
+      return setErr('Discount amount cannot exceed the order total');
+    }
     let expiresIso: string | null = null;
-    if (expiryEnabled && expiresAt) {
+    if (expiresAt) {
       const parsed = parseUtcInput(expiresAt);
       if (!parsed) return setErr('Invalid expiry date');
       const nowMs = Date.now();
@@ -110,8 +117,10 @@ export function NewOrderModal({
     start(async () => {
       try {
         const r = await createOrderAction({
-          clientId, planId, qty, discountPct: discount, paymentMethod,
-          autoRenew, autoAssign, expiresAt: expiresIso,
+          clientId, planId, qty,
+          discountPct: discountUnit === 'pct' ? discount : 0,
+          discountUsd: discountUnit === 'usd' ? discount : 0,
+          paymentMethod, autoRenew, autoAssign, expiresAt: expiresIso,
         });
         toast('Order created', r.orderId, 'success');
         onClose();
@@ -168,12 +177,27 @@ export function NewOrderModal({
           </div>
         </div>
         <div>
-          <label className="form-label" htmlFor="no-discount">Discount (%)</label>
-          <input
-            id="no-discount" className="form-input" type="number" min={0} max={100} step={1}
-            value={discount} disabled={isComp}
-            onChange={e => setDiscount(Math.max(0, Math.min(100, parseInt(e.target.value || '0', 10) || 0)))}
-          />
+          <label className="form-label" htmlFor="no-discount">Discount</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              id="no-discount" className="form-input"
+              type="number" min={0} max={discountUnit === 'pct' ? 100 : undefined} step={discountUnit === 'pct' ? 1 : 0.01}
+              value={discount} disabled={isComp}
+              onChange={e => {
+                if (discountUnit === 'pct') setDiscount(Math.max(0, Math.min(100, parseInt(e.target.value || '0', 10) || 0)));
+                else setDiscount(Math.max(0, round2(parseFloat(e.target.value || '0') || 0)));
+              }}
+              style={{ flex: 1 }}
+            />
+            <div style={{ width: 72 }}>
+              <FormSelect
+                value={discountUnit}
+                onChange={v => { setDiscountUnit(v as 'pct' | 'usd'); setDiscount(0); }}
+                placeholder={null}
+                options={[{ value: 'pct', label: '%' }, { value: 'usd', label: '$' }]}
+              />
+            </div>
+          </div>
         </div>
         <div>
           <label className="form-label" id="no-method-label">Payment method *</label>
@@ -202,10 +226,9 @@ export function NewOrderModal({
           />
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
             {!plan ? 'Pick a plan first'
-              : expiryEnabled ? `Defaults to the plan term (${plan.durationDays}d) — a custom date must fall inside it`
-              : !isInstant ? 'Term starts when the payment confirms'
-              : !plan.autoProvision ? 'Plan provisions manually — term starts when proxies are assigned'
-              : 'Turn on auto-assign to set a custom expiry'}
+              : expiresAt === '' ? `Defaults to the plan term (${plan.durationDays}d) — a custom date must fall inside it`
+              : isInstant ? 'Applies immediately if the order activates now, else at activation'
+              : 'Applies when the payment confirms and the order activates'}
           </div>
         </div>
         <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 24 }}>
@@ -236,7 +259,7 @@ export function NewOrderModal({
             </span>
           </span>
         </div>
-        {autoRenew && plan && (isComp || (expiryEnabled && expiresAt !== '')) && (
+        {autoRenew && plan && (isComp || expiresAt !== '') && (
           <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--warning)', marginTop: -6 }}>
             {/* renewalUnitPrice × qty is exactly what attemptAutoRenew charges
                 (auto-renew.ts) — full plan price overstated it on plans with a
@@ -258,8 +281,8 @@ export function NewOrderModal({
           )}
           {!isComp && discount > 0 && plan && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-              <span style={{ color: 'var(--muted)' }}>Discount ({discount}%)</span>
-              <span className="mono" style={{ color: 'var(--success)' }}>−{money(round2(plan.price * qty) - total)}</span>
+              <span style={{ color: 'var(--muted)' }}>Discount ({discountUnit === 'pct' ? `${discount}%` : money(discount)})</span>
+              <span className="mono" style={{ color: 'var(--success)' }}>−{money(round2(subtotal - total))}</span>
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
@@ -270,7 +293,9 @@ export function NewOrderModal({
               or a $0-priced plan reads as a dead Create button (review find). */}
           {plan && !isComp && !(total > 0) && (
             <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--warning)' }}>
-              Total is $0 — use the Comp method for a free order
+              {discountUnit === 'usd' && discount > 0 && discount >= subtotal
+                ? 'The $ discount covers the whole total — reduce it, or use the Comp method for a free order'
+                : 'Total is $0 — use the Comp method for a free order'}
             </div>
           )}
         </div>

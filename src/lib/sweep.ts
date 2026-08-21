@@ -8,6 +8,7 @@ import { backfillOrderProxies, refreshProvisionException } from './transitions';
 import { failAwaitingPayment } from './settle-payment';
 import { reconcileCryptoPayments } from './np-reconcile';
 import { loadTierGraceHours, effectiveGraceHours } from './grace';
+import { applyCustomExpiry } from './new-order-policy';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -309,26 +310,47 @@ export async function runSweep(): Promise<SweepResult> {
           // ONLY the fresh row's state.
           const fresh = await tx.order.findUnique({
             where: { id: o.id },
-            select: { status: true, activatedAt: true, expiresAt: true, credentialsSentAt: true },
+            select: { status: true, activatedAt: true, expiresAt: true, credentialsSentAt: true, customExpiresAt: true },
           });
           if (!fresh || (fresh.status !== 'ACTIVE' && fresh.status !== 'PROVISIONING')) return null;
           const r = await backfillOrderProxies(tx, { id: o.id, qty: o.qty, region: o.region, plan: o.plan }, 'SYSTEM', nowD);
           // A PROVISIONING order that just reached full quota ACTIVATES — same
           // contract as manual Assign: term clock starts now, not at pay time.
+          // A pending admin custom expiry (recreation flow) is consumed here;
+          // if it passed while the order waited, fall back to the full term
+          // and log (an unattended sweep must not park or kill a paid order).
           const activating = fresh.status === 'PROVISIONING' && r.fully;
           if (activating) {
-            await tx.order.update({
-              where: { id: o.id },
+            const custom = applyCustomExpiry(fresh.customExpiresAt, o.plan.durationDays, nowD);
+            // Status-guarded like the expiry step: a concurrent cancel/settle
+            // between the fresh read and here must not be overwritten (R1).
+            // Count checked (R2): a lost race must ROLL BACK the whole tx —
+            // otherwise the just-created assignments stick to a cancelled
+            // order and the client gets a false "activated" notify below.
+            const flip = await tx.order.updateMany({
+              where: { id: o.id, status: 'PROVISIONING' },
               data: {
                 status: 'ACTIVE',
                 activatedAt: fresh.activatedAt ?? nowD,
-                expiresAt: fresh.expiresAt ?? new Date(nowD.getTime() + o.plan.durationDays * 86_400_000),
+                expiresAt: fresh.expiresAt ?? custom.expiresAt,
+                customExpiresAt: null,
                 credentialsSentAt: fresh.credentialsSentAt ?? nowD,
               },
             });
+            if (flip.count === 0) throw new Error('BACKFILL_RACE_LOST');
+            if (custom.stale && fresh.expiresAt === null) {
+              await tx.log.create({
+                data: { actorId: 'ADM-SYS', action: 'ORDER.UPDATE', objectType: 'ORDER', objectId: o.id, detail: 'Custom expiry passed before backfill activation — full plan term applied' },
+              });
+            }
           }
           await refreshProvisionException(tx, o.id);
           return { ...r, activated: activating, firstFill: fresh.status === 'PROVISIONING' };
+        }).catch((e: unknown) => {
+          // Race-lost activation: tx rolled back (assignments included) — the
+          // next tick re-reads the true state. Anything else still throws.
+          if (e instanceof Error && e.message === 'BACKFILL_RACE_LOST') return null;
+          throw e;
         });
         if (outcome && outcome.added > 0) {
           backfilled += outcome.added;

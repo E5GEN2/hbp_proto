@@ -13,7 +13,8 @@ import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } f
 import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
 import { isResurrectable, RESURRECTABLE_STATUSES } from './crypto-window';
-import { renewalBase } from './renewal';
+import { renewalBase, consumeRenewalDiscountCycle } from './renewal';
+import { applyCustomExpiry } from './new-order-policy';
 
 export type SettleResult =
   | { ok: true; already: true }
@@ -189,6 +190,11 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
         reproShort = !repro.fullyAssigned;
         newExpiry = repro.fullyAssigned ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
         await tx.order.update({ where: { id: order.id }, data: repro.data });
+        // Consume one discount cycle ONLY when the CHARGE was priced with the
+        // per-order discount — the payment row's charge-time snapshot, never
+        // the order's current fields (a grant made while this charge was in
+        // flight must not be eaten by its settle; review R1).
+        if (payment.renewalDiscountApplied) await consumeRenewalDiscountCycle(tx, order.id);
         await tx.log.create({
           data: {
             actorId: order.clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id,
@@ -225,6 +231,7 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
           exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
         },
       });
+      if (payment.renewalDiscountApplied) await consumeRenewalDiscountCycle(tx, order.id);
       await tx.log.create({
         data: {
           actorId: order.clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id,
@@ -295,7 +302,10 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
     finalActive = finalStatus === 'ACTIVE';
     finalAssigned = assignedCount;
     const finalActivated = finalStatus === 'ACTIVE' ? now : null;
-    const finalExpires = finalStatus === 'ACTIVE' ? new Date(now.getTime() + order.plan.durationDays * 86_400_000) : null;
+    // Consume a persisted admin custom expiry on activation (stale → full plan
+    // term; money just landed, never park or kill a paid order).
+    const custom = applyCustomExpiry(order.customExpiresAt, order.plan.durationDays, now);
+    const finalExpires = finalStatus === 'ACTIVE' ? custom.expiresAt : null;
     const finalException = wantsAutoProvision && !fullyAssigned ? 'PAID_NOT_PROVISIONED' as const : null;
 
     // Status-guarded like every other writer here: sweep 3b (or a client
@@ -311,6 +321,7 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
         status: finalStatus,
         activatedAt: finalActivated,
         expiresAt: finalExpires,
+        ...(finalStatus === 'ACTIVE' ? { customExpiresAt: null } : {}),
         credentialsSentAt: finalActivated,
         credentialsChannel: null,
         exception: finalException,
@@ -318,6 +329,11 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
       },
     });
     if (ordUpd.count === 0) throw new AlreadySettled();
+    if (finalStatus === 'ACTIVE' && custom.stale) {
+      await tx.log.create({
+        data: { actorId: 'ADM-SYS', action: 'ORDER.UPDATE', objectType: 'ORDER', objectId: order.id, detail: 'Custom expiry passed before activation — full plan term applied' },
+      });
+    }
 
     await tx.log.create({
       data: {

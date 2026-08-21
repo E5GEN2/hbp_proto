@@ -24,7 +24,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscountPct = 0, allSoldOut = false,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscount = null, allSoldOut = false,
 }: {
   duration: number;
   qty: number;
@@ -36,7 +36,11 @@ export function CheckoutFlow({
   allowCard?: boolean;
   allowCrypto?: boolean; // admin Payment Providers toggle (crypto)
   renewOf?: string; // renewal mode: paying extends this order — location/qty locked
-  renewalDiscountPct?: number; // >0 in renewal mode when the plan grants a discount (price already discounted)
+  // Renewal-mode pricing computed server-side by renewalPricing (the ONE
+  // pricing source): `total` is exactly what the charge paths will take, and
+  // `label` ('-15%' / '-$5.00', '' when none) feeds the discount line. A flat
+  // $ discount makes unit*qty drift from total by cents — total wins.
+  renewalDiscount?: { label: string; total: number } | null;
   allSoldOut?: boolean; // every location at capacity → sold-out → Telegram dialog on arrival
 }) {
   const router = useRouter();
@@ -69,7 +73,7 @@ export function CheckoutFlow({
   const directCrypto = (coinList.coins?.length ?? 0) > 0;
 
   const plan = useMemo(() => plans.find(p => p.region === location) ?? plans[0], [plans, location]);
-  const total = plan.price * qty;
+  const total = renewOf && renewalDiscount ? renewalDiscount.total : plan.price * qty;
   const balanceOk = balance >= total;
   // Flat crypto floor ($10): NOWPayments' real create minimum is ~$7–9 and its
   // per-coin min endpoint is unreliable, so block a sub-$10 crypto order up
@@ -285,8 +289,8 @@ export function CheckoutFlow({
                       <div className="kv-row"><span className="kv-label">Order</span><span className="kv-val">{renewOf}</span></div>
                       <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
                       <div className="kv-row"><span className="kv-label">Proxies</span><span className="kv-val">{qty}</span></div>
-                      {renewalDiscountPct > 0 && (
-                        <div className="kv-row"><span className="kv-label">Renewal discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>−{renewalDiscountPct}% applied</span></div>
+                      {renewalDiscount && renewalDiscount.label !== '' && (
+                        <div className="kv-row"><span className="kv-label">Renewal discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>{renewalDiscount.label} applied</span></div>
                       )}
                       <div className="help-text" style={{ marginTop: 10 }}>
                         Same proxies and location — the new {label} term starts when the current one ends.

@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { nextPaymentId } from '@/lib/id';
 import { enabledProviders } from '@/lib/runtime-flags';
 import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPayment } from '@/lib/nowpayments';
-import { renewalUnitPrice } from '@/lib/renewal';
+import { renewalPricing } from '@/lib/renewal';
 import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 import { money } from '@/lib/money';
 
@@ -143,6 +143,14 @@ export async function POST(req: Request) {
   if (!isNewOrder && !order.plan.renewalAllowed) {
     return NextResponse.json({ error: 'Renewals are not available for this plan.' }, { status: 400 });
   }
+  // Same guard as handleRenewal / clientRenewOrder (R2 — this route was the
+  // missed third originator): a paid-but-never-activated order (PROVISIONING,
+  // expiresAt null) has no term to extend. Without this, the "fresh address"
+  // button on such an order would ORIGINATE a renewal charge whose settle
+  // stamps expiresAt on a PROVISIONING row — an unexpirable zombie term.
+  if (!isNewOrder && (!order.activatedAt || !order.expiresAt)) {
+    return NextResponse.json({ error: 'This order has no active term to extend — renewal opens once its proxies are delivered.' }, { status: 400 });
+  }
   // Repay re-issues a lapsed direct charge; for a RENEWAL charge it must honour
   // the same past-grace policy as place/clientRenewOrder, or it becomes a
   // bypass — re-issuing a renewal charge (at the discounted price) that
@@ -191,9 +199,8 @@ export async function POST(req: Request) {
 
   // NEW order → the original amount; renewal → the same discounted price the
   // renewal charge paths use (never client-supplied).
-  const total = isNewOrder
-    ? Number(order.amount)
-    : renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  const repayPricing = isNewOrder ? null : renewalPricing(order.plan, order);
+  const total = isNewOrder ? Number(order.amount) : repayPricing!.total;
   // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
   if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });
 
@@ -246,6 +253,9 @@ export async function POST(req: Request) {
           payAddress: npPay.payAddress,
           payinExtraId: npPay.payinExtraId,
           payExpiresAt: npPay.expiresAt,
+          // Renewal charge-time snapshot: cycle consumed at settle only when
+          // the per-order discount priced THIS re-issued charge (review R1).
+          renewalDiscountApplied: isNewOrder ? null : repayPricing!.source === 'order',
         },
       });
       if (isNewOrder) {

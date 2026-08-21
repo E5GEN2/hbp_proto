@@ -9,12 +9,11 @@
 
 import { prisma } from './prisma';
 import { nextPaymentId, nextInvoiceId } from './id';
-import { renewalUnitPrice } from './renewal';
 import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
 import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
-import { renewalBase } from './renewal';
+import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from './renewal';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
@@ -36,12 +35,19 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   // confirmation) must not be stacked with an automatic charge — nor may one
   // whose funds arrived and are under verification (MANUAL_REVIEW), which
   // would charge the client twice for the same term (re-review C2).
+  // AWAITING is scoped to STAMPED (renewal-originated) charges (R3, matches
+  // clientRenewOrder): an AWAITING PURCHASE charge under manual-fulfillment
+  // override is not a renewal in flight — the broad check auto-renew-starved
+  // such orders every tick with a mislabelled reason.
   const pending = await prisma.payment.findFirst({
-    where: { orderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } },
+    where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
   });
-  if (pending) return { renewed: false, reason: `renewal payment ${pending.id} already awaiting confirmation` };
+  if (pending) return { renewed: false, reason: `payment ${pending.id} for this order is already ${pending.status === 'AWAITING' ? 'awaiting confirmation' : 'under verification'}` };
 
-  const price = renewalUnitPrice(Number(order.plan.price), order.plan.renewalDiscountPct) * order.qty;
+  // Per-order renewal discount (admin grant) replaces the plan discount while
+  // active; renewalPricing is the single source for both (audit B-6 parity).
+  const pricing = renewalPricing(order.plan, order);
+  const price = pricing.total;
   const paymentId = await nextPaymentId();
   const now = new Date();
   let newExpiry = now; // real value assigned in-tx from the FRESH expiry base
@@ -54,6 +60,15 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       // from the stale base would swallow the period they just paid for. The
       // status guard mirrors the sweep's expiry-step TOCTOU re-read: never
       // charge an order that stopped being ACTIVE since the snapshot.
+      // Serialize with the other renewal writers (R3) BEFORE reading state —
+      // see clientRenewOrder: an uncommitted concurrent renewal is invisible
+      // to plain reads; the row lock makes the loser wait and see it.
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+      const parkedNow = await tx.payment.findFirst({
+        where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+        select: { id: true },
+      });
+      if (parkedNow) throw new AutoRenewFail(`renewal payment ${parkedNow.id} appeared concurrently — no charge attempted`);
       const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
       if (!freshOrd || freshOrd.status !== 'ACTIVE') {
         throw new AutoRenewFail(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);
@@ -110,6 +125,8 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           status: 'CONFIRMED',
           confirmedAt: now,
           source: 'auto-renew',
+          // Charge-time snapshot: did the per-order discount price this charge?
+          renewalDiscountApplied: pricing.source === 'order',
         },
       });
 
@@ -147,6 +164,10 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
           exception: freshOrd.exception === 'RENEWAL_NOT_EXTENDED' ? null : freshOrd.exception,
         },
       });
+      // Consume one discount cycle ONLY when the discount priced this charge
+      // (atomic guarded decrement — never below 0, never eats a concurrent
+      // re-grant; indefinite/exhausted are excluded by the SQL guard).
+      if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, order.id);
 
       await tx.log.create({
         data: {

@@ -161,6 +161,31 @@ export function orderPaidEmail(orderId: string, active: boolean) {
   };
 }
 
+// The delivery notice — the promise orderPaidEmail makes ("we'll notify you
+// the moment they're live") and resumeOrder repeats ("we'll notify you when
+// they're ready"). Until now that moment only ever produced an in-app bell, so
+// a client whose order is fulfilled by hand — the normal case — had to be
+// watching the portal to find out. Two variants, mirroring the sweep's own
+// backfill wording: the first fill ACTIVATES the order, a later one RESTORES a
+// deficit. See the gating note at the call site (transitions.assignProxyManually).
+export function proxiesReadyEmail(orderId: string, qty: number, restored: boolean) {
+  const count = `${qty} mobile ${qty === 1 ? 'proxy' : 'proxies'}`;
+  return {
+    subject: restored ? `Proxies restored — order ${orderId}` : `Your proxies are ready — order ${orderId}`,
+    html: shell(
+      restored ? 'Proxies restored' : 'Your proxies are ready',
+      p(restored
+        ? `Order <strong>${orderId}</strong> is back to its full ${count} — the replacement is attached and live.`
+        : `${count} ${qty === 1 ? 'is' : 'are'} now live on order <strong>${orderId}</strong>.`) +
+      p('Your credentials — host, port, login, password and the rotation link — are under Assigned Proxies on the order page.') +
+      cta('View order', appUrl(`/orders/${orderId}`)),
+    ),
+    text: restored
+      ? `Order ${orderId} is back to its full ${count}. Credentials: ${appUrl(`/orders/${orderId}`)}`
+      : `${count} ${qty === 1 ? 'is' : 'are'} live on order ${orderId}. Credentials: ${appUrl(`/orders/${orderId}`)}`,
+  };
+}
+
 export function orderRenewedEmail(orderId: string, newExpiry: string) {
   return {
     subject: `Order ${orderId} renewed`,

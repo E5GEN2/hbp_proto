@@ -30,19 +30,20 @@ function parseUtcInput(s: string): Date | null {
 }
 
 export function NewOrderModal({
-  open, onClose, clients, plans, mockPayments,
-}: { open: boolean; onClose: () => void; clients: ClientOpt[]; plans: PlanOpt[]; mockPayments: boolean }) {
+  open, onClose, clients, plans,
+}: { open: boolean; onClose: () => void; clients: ClientOpt[]; plans: PlanOpt[] }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
-  const defaultMethod = mockPayments ? 'stripe' : 'invoice';
   const [clientId, setClientId] = useState('');
   const [planId, setPlanId] = useState('');
   const [qty, setQty] = useState(1);
   // One discount, two units: % of the unit price, or a flat $ off the total.
   const [discount, setDiscount] = useState(0);
   const [discountUnit, setDiscountUnit] = useState<'pct' | 'usd'>('pct');
-  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'invoice' | 'crypto' | 'comp'>(defaultMethod);
+  // Owner decision 2026-08-22: admin-created orders are Crypto (client paid
+  // off-site, admin confirms via Mark paid) or Comp — Stripe/bank removed.
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'comp'>('crypto');
   const [expiresAt, setExpiresAt] = useState(''); // UTC 'YYYY-MM-DDTHH:mm'; '' = plan term
   // null = follow the method default: ON for paid methods, OFF for comp (a
   // comped client never consented to a payment relationship). An explicit
@@ -55,20 +56,23 @@ export function NewOrderModal({
   useEffect(() => {
     if (!open) {
       setClientId(''); setPlanId(''); setQty(1); setDiscount(0); setDiscountUnit('pct');
-      setPaymentMethod(defaultMethod); setExpiresAt('');
+      setPaymentMethod('crypto'); setExpiresAt('');
       setAutoRenewChoice(null); setAutoAssign(true); setErr(null);
     }
-  }, [open, defaultMethod]);
+  }, [open]);
 
   const plan = plans.find(p => p.id === planId);
   const isComp = paymentMethod === 'comp';
   const autoRenew = autoRenewChoice ?? !isComp;
-  const isInstant = paymentMethod === 'stripe' || isComp;
+  const isInstant = isComp;
   const subtotal = plan ? round2(plan.price * qty) : 0;
-  // Mirrors newOrderMoney: % applies per unit; $ comes off the TOTAL.
-  const total = !plan || isComp ? 0
+  // Mirrors newOrderMoney: % applies per unit; $ comes off the TOTAL. The
+  // discount is recorded for EVERY method (owner 2026-08-22 — a recreated
+  // paid order keeps its real terms); Comp then covers whatever is left.
+  const discounted = !plan ? 0
     : discountUnit === 'usd' ? Math.max(0, round2(subtotal - discount))
     : round2(round2(plan.price * (1 - discount / 100)) * qty);
+  const total = isComp ? 0 : discounted;
   const maxQty = plan ? Math.min(plan.available, 20) : 1;
 
   // Custom expiry bounds: strictly after now, strictly inside the plan term.
@@ -86,9 +90,8 @@ export function NewOrderModal({
   // default above, autoAssign by the server ignoring the flag for non-instant
   // methods. Forcing either state here made a method round-trip silently wipe
   // a deliberate choice (review find).
-  function setMethod(v: 'stripe' | 'invoice' | 'crypto' | 'comp') {
+  function setMethod(v: 'crypto' | 'comp') {
     setPaymentMethod(v);
-    if (v === 'comp') setDiscount(0); // comp is $0 — a discount is meaningless
   }
 
   function setAutoAssignChecked(next: boolean) {
@@ -100,7 +103,7 @@ export function NewOrderModal({
     if (!clientId) return setErr('Pick a client');
     if (!planId || !plan) return setErr('Pick a plan');
     if (!isComp && !(total > 0)) return setErr('Total must be greater than $0 — use Comp for a free order');
-    if (!isComp && discountUnit === 'usd' && discount > subtotal) {
+    if (discountUnit === 'usd' && discount > subtotal) {
       return setErr('Discount amount cannot exceed the order total');
     }
     let expiresIso: string | null = null;
@@ -182,7 +185,7 @@ export function NewOrderModal({
             <input
               id="no-discount" className="form-input"
               type="number" min={0} max={discountUnit === 'pct' ? 100 : undefined} step={discountUnit === 'pct' ? 1 : 0.01}
-              value={discount} disabled={isComp}
+              value={discount}
               onChange={e => {
                 if (discountUnit === 'pct') setDiscount(Math.max(0, Math.min(100, parseInt(e.target.value || '0', 10) || 0)));
                 else setDiscount(Math.max(0, round2(parseFloat(e.target.value || '0') || 0)));
@@ -207,10 +210,6 @@ export function NewOrderModal({
             placeholder={null}
             ariaLabelledby="no-method-label"
             options={[
-              mockPayments
-                ? { value: 'stripe', label: 'Stripe — confirmed immediately (mock)' }
-                : { value: 'stripe', label: 'Stripe — disabled (mock payments off)', disabled: true },
-              { value: 'invoice', label: 'Bank transfer — awaiting (Mark paid)' },
               { value: 'crypto', label: 'Crypto — manual confirm (Mark paid)' },
               { value: 'comp', label: 'Comp — free' },
             ]}
@@ -273,16 +272,16 @@ export function NewOrderModal({
             <span style={{ color: 'var(--muted)' }}>Subtotal</span>
             <span className="mono">{plan ? money(round2(plan.price * qty)) : '—'}</span>
           </div>
+          {discount > 0 && plan && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+              <span style={{ color: 'var(--muted)' }}>Discount ({discountUnit === 'pct' ? `${discount}%` : money(discount)})</span>
+              <span className="mono" style={{ color: 'var(--success)' }}>−{money(round2(subtotal - discounted))}</span>
+            </div>
+          )}
           {isComp && plan && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
               <span style={{ color: 'var(--muted)' }}>Comp — free</span>
-              <span className="mono" style={{ color: 'var(--success)' }}>−{money(round2(plan.price * qty))}</span>
-            </div>
-          )}
-          {!isComp && discount > 0 && plan && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-              <span style={{ color: 'var(--muted)' }}>Discount ({discountUnit === 'pct' ? `${discount}%` : money(discount)})</span>
-              <span className="mono" style={{ color: 'var(--success)' }}>−{money(round2(subtotal - total))}</span>
+              <span className="mono" style={{ color: 'var(--success)' }}>−{money(discounted)}</span>
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>

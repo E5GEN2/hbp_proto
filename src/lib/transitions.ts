@@ -17,7 +17,6 @@ import { sendTelegram, sendAdminTelegram, adminNewOrderAlert, flushTelegram, typ
 import { sendEmail, incidentEmail, proxiesReadyEmail, escapeHtml } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
-import { mockPaymentsAllowed } from './runtime-flags';
 import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney, applyCustomExpiry } from './new-order-policy';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import { loadTierGraceHours, renewalClosed } from './grace';
@@ -1782,11 +1781,12 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
     const isInstant = isInstantMethod(input.paymentMethod);
     const now = new Date();
 
-    // The admin "Stripe" method self-confirms without a processor (mock).
-    // Gate it exactly like the client card path — with mock payments off in
-    // production it would mint a fully-PAID order backed by no real charge.
-    if (input.paymentMethod === 'stripe' && !mockPaymentsAllowed()) {
-      throw new Error('Card (mock) payments are disabled on this deployment — use Bank transfer or Crypto with Mark paid, or Comp');
+    // Owner decision 2026-08-22: admin-created orders are Crypto (off-site
+    // transfer confirmed via Mark paid) or Comp only — Stripe (mock) and bank
+    // transfer removed from the product. The action is callable directly, so
+    // refuse here too, not just in the modal.
+    if (input.paymentMethod === 'stripe' || input.paymentMethod === 'invoice') {
+      throw new Error('Admin-created orders can only be Crypto (confirm via Mark paid) or Comp');
     }
 
     const customExpires = resolveCustomExpiry(input.expiresAt, input.paymentMethod, plan.durationDays, now);
@@ -1879,8 +1879,10 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         qty: input.qty,
         unitPrice,
         amount: total,
-        discountPct: isComp ? 0 : discount, // discount is meaningless on a $0 comp order
-        discountAmount: isComp || discountUsd <= 0 ? null : discountUsd,
+        // Recorded for every method incl. Comp (owner 2026-08-22): a recreated
+        // paid order keeps its real terms on record; comp money stays $0.
+        discountPct: discount,
+        discountAmount: discountUsd > 0 ? discountUsd : null,
         region: plan.region,
         customExpiresAt: pendingCustomExpires,
         paymentStatus: input.paymentMethod === 'comp' ? 'FREE' : (isInstant ? 'PAID' : (input.paymentMethod === 'crypto' ? 'AWAITING' : 'PENDING')),
@@ -1905,8 +1907,8 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         // Admin crypto = off-site transfer confirmed by Mark paid: no processor
         // intent (no externalRef/address), so neither the legacy CoinPayments
         // label nor NOWPayments is true — and np-reconcile must not see it.
-        provider: input.paymentMethod === 'stripe' ? 'Stripe' : input.paymentMethod === 'crypto' ? 'Crypto' : input.paymentMethod === 'invoice' ? 'Bank transfer' : 'Comp',
-        method: input.paymentMethod === 'stripe' ? 'Visa •• 4242' : input.paymentMethod === 'crypto' ? 'Manual transfer' : input.paymentMethod === 'invoice' ? 'Bank wire' : 'Comp',
+        provider: input.paymentMethod === 'crypto' ? 'Crypto' : 'Comp',
+        method: input.paymentMethod === 'crypto' ? 'Manual transfer' : 'Comp',
         gross: total,
         fees,
         net,

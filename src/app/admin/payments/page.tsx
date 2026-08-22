@@ -85,7 +85,8 @@ export default async function AdminPaymentsPage({ searchParams }: { searchParams
             { kind: 'select', name: 'provider', label: 'Provider: all', size: 'sm', options: [
               { value: 'Stripe', label: 'Stripe' },
               { value: 'NOWPayments', label: 'NOWPayments' },
-              { value: 'CoinPayments', label: 'CoinPayments' },
+              { value: 'Crypto', label: 'Crypto (manual)' },
+              { value: 'CoinPayments', label: 'CoinPayments (legacy)' },
               { value: 'Balance', label: 'Balance' },
               { value: 'Bank transfer', label: 'Bank transfer' },
               { value: 'Comp', label: 'Comp' },

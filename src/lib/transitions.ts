@@ -1902,8 +1902,11 @@ export async function createOrderByAdmin({ input, actor }: { input: NewOrderInpu
         id: payId,
         orderId,
         clientId: input.clientId,
-        provider: input.paymentMethod === 'stripe' ? 'Stripe' : input.paymentMethod === 'crypto' ? 'CoinPayments' : input.paymentMethod === 'invoice' ? 'Bank transfer' : 'Comp',
-        method: input.paymentMethod === 'stripe' ? 'Visa •• 4242' : input.paymentMethod === 'crypto' ? 'USDT-TRC20' : input.paymentMethod === 'invoice' ? 'Bank wire' : 'Comp',
+        // Admin crypto = off-site transfer confirmed by Mark paid: no processor
+        // intent (no externalRef/address), so neither the legacy CoinPayments
+        // label nor NOWPayments is true — and np-reconcile must not see it.
+        provider: input.paymentMethod === 'stripe' ? 'Stripe' : input.paymentMethod === 'crypto' ? 'Crypto' : input.paymentMethod === 'invoice' ? 'Bank transfer' : 'Comp',
+        method: input.paymentMethod === 'stripe' ? 'Visa •• 4242' : input.paymentMethod === 'crypto' ? 'Manual transfer' : input.paymentMethod === 'invoice' ? 'Bank wire' : 'Comp',
         gross: total,
         fees,
         net,

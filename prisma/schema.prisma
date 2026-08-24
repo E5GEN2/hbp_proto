@@ -69,7 +69,7 @@ model User {
   emailIncidents           Boolean      @default(true)
   emailMarketing           Boolean      @default(false)
   telegramAll              Boolean      @default(true)
-  preRenewalReminderHours  Int          @default(72)
+  preRenewalReminderHours  Int? // null = inherit plan → global (reminder cascade 2026-08-22)
   // Per-client grace override (hours). NULL = use the tier default (Settings →
   // Grace / lib/grace.ts). Grace = the window after expiry when proxies keep
   // working and the order can still be renewed. Owner decision 2026-08-12.
@@ -193,7 +193,7 @@ model Plan {
   autoProvision            Boolean         @default(true)
   autoRenewDefault         Boolean         @default(true)
   renewalAllowed           Boolean         @default(true)
-  preRenewalReminderHours  Int             @default(72)
+  preRenewalReminderHours  Int? // null = inherit the global Settings default (reminder cascade)
   // gracePeriodHours removed 2026-08-12 — grace is now a CLIENT attribute
   // (tier default + per-client override; see lib/grace.ts).
 

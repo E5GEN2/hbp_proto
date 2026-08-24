@@ -46,9 +46,11 @@ export function GraceRulesForm({ initial }: { initial: Grace }) {
           uses its own fixed windows — these knobs aren't consulted yet (Phase 2). */}
       <div className="form-field full"><div className="subsection-title">Global defaults <span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not wired — Phase 2</span></div></div>
       <div className="form-field"><div className="form-label">Default grace period (hours) <span className="req">*</span><span className="help-tip" data-tip="Legacy global default — not consumed at runtime (Phase 2). Grace is driven by the per-tier values below plus per-client overrides on the client card.">i</span></div>{num('defaultGraceHours')}</div>
-      <div className="form-field"><div className="form-label">Pre-renewal reminder (hours before expiry) <span className="req">*</span></div>{num('preRenewalReminderHours')}</div>
-      <div className="form-field"><div className="form-label">Second reminder</div>{num('secondReminderHours')}</div>
-      <div className="form-field"><div className="form-label">Third reminder (at expiry)</div>{num('thirdReminderHours')}</div>
+      {/* Global default of the reminder cascade (2026-08-22): client override
+          → plan value → THIS. Live — the sweep reads it. */}
+      <div className="form-field"><div className="form-label">Pre-renewal reminder (hours before expiry) <span className="req">*</span><span className="help-tip" data-tip="Global default. A plan value overrides it; a per-client override on the client card wins over both. 0 = reminders off by default.">i</span></div>{num('preRenewalReminderHours')}</div>
+      <div className="form-field"><div className="form-label">Second reminder <span className="chip muted" style={{ marginLeft: 6, textTransform: 'none', letterSpacing: 'normal' }}>Not wired — Phase 2</span></div>{num('secondReminderHours')}</div>
+      <div className="form-field"><div className="form-label">Third reminder (at expiry) <span className="chip muted" style={{ marginLeft: 6, textTransform: 'none', letterSpacing: 'normal' }}>Not wired — Phase 2</span></div>{num('thirdReminderHours')}</div>
 
       <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.autoRenew24hBeforeExpiry ? 'on' : ''}`} onClick={() => setG({ ...g, autoRenew24hBeforeExpiry: !g.autoRenew24hBeforeExpiry })} /> Auto-renew: charge 24h before expiry if card on file</label></div>
       <div className="form-field full"><label className="hstack"><span className={`toggle-v2 ${g.keepProxyDuringGrace ? 'on' : ''}`} onClick={() => setG({ ...g, keepProxyDuringGrace: !g.keepProxyDuringGrace })} /> Keep proxy assigned during grace (client can still use)<span className="help-tip" data-tip="If ON, service continues during grace. If OFF, proxy becomes read-only at expiry. Most businesses keep this ON.">i</span></label></div>

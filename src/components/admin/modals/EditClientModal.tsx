@@ -17,7 +17,7 @@ export type EditClientInitial = {
   emailIncidents: boolean;
   emailMarketing: boolean;
   telegramAll: boolean;
-  preRenewalReminderHours: number;
+  preRenewalReminderHours: number | null; // null = inherit plan → global (reminder cascade)
   graceHoursOverride: number | null;
 };
 
@@ -51,7 +51,7 @@ export function EditClientModal({
           emailIncidents: form.emailIncidents,
           emailMarketing: form.emailMarketing,
           telegramAll: form.telegramAll,
-          preRenewalReminderHours: Number(form.preRenewalReminderHours),
+          preRenewalReminderHours: form.preRenewalReminderHours, // number | null (null = inherit)
           graceHoursOverride: form.graceHoursOverride,
         });
         toast('Client saved', clientId, 'success');
@@ -91,8 +91,8 @@ export function EditClientModal({
         <Field label="Preferred region">
           <FormSelect value={form.preferredRegion ?? ''} onChange={v => setForm({ ...form, preferredRegion: v || null })} placeholder={null} options={[{ value: '', label: '— None —' }, ...regions.map(r => ({ value: r }))]} />
         </Field>
-        <Field label="Pre-renewal reminder (hours)" tip="Hours before expiry to send the renewal reminder. Default inherited from the global Settings → Notifications value.">
-          <input className="form-input" type="number" min={0} max={720} value={form.preRenewalReminderHours} onChange={e => setForm({ ...form, preRenewalReminderHours: parseInt(e.target.value || '0', 10) })} />
+        <Field label="Pre-renewal reminder (hours)" tip="Per-client override — wins over the plan value and the global default (Settings → Grace Rules). Blank = inherit. 0 = reminders off for this client.">
+          <input className="form-input" type="number" min={0} max={720} placeholder="plan / global default" value={form.preRenewalReminderHours ?? ''} onChange={e => setForm({ ...form, preRenewalReminderHours: e.target.value === '' ? null : parseInt(e.target.value, 10) })} />
         </Field>
         <Field label="Grace override (hours)" tip="Grace after expiry for THIS client, in hours — proxies keep working and the order stays renewable during it. Blank = tier default (VIP / Pro / Standard, set in Settings → Grace).">
           <input className="form-input" type="number" min={0} max={720} placeholder="tier default" value={form.graceHoursOverride ?? ''} onChange={e => setForm({ ...form, graceHoursOverride: e.target.value === '' ? null : parseInt(e.target.value, 10) })} />

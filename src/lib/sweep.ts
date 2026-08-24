@@ -16,7 +16,7 @@ import type { RenewalBucket } from '@prisma/client';
  * frequency; every step re-checks state and only writes on change.
  *
  *   1. ACTIVE orders past `expiresAt`: auto-renew orders get a charge attempt
- *      first (balance → card waterfall, see auto-renew.ts; retried every 24h
+ *      first (portal balance only — no card leg, see auto-renew.ts; retried every 24h
  *      inside the plan's grace window, during which the order STAYS ACTIVE) —
  *      only then EXPIRED. Non-auto-renew orders expire immediately as before.
  *      Assignments are PRESERVED through the grace window — the client keeps
@@ -44,7 +44,8 @@ import type { RenewalBucket } from '@prisma/client';
  *      their still-NEW orders are cancelled too. Owner crypto-deposit-expiry
  *      policy 2026-08-07 (scope: deposits).
  *
- * Auto-renew execution signed off by the owner 2026-07-06 (balance → card →
+ * Auto-renew execution signed off by the owner 2026-07-06; balance-only per
+ * owner decision 2026-08-22 (balance →
  * grace/expire waterfall + email on every outcome).
  */
 

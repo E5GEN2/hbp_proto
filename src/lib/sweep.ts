@@ -7,7 +7,7 @@ import { autoBackfillEnabled } from './runtime-flags';
 import { backfillOrderProxies, refreshProvisionException } from './transitions';
 import { failAwaitingPayment } from './settle-payment';
 import { reconcileCryptoPayments } from './np-reconcile';
-import { loadTierGraceHours, effectiveGraceHours } from './grace';
+import { loadTierGraceHours, effectiveGraceHours, loadReminderDefaultHours, effectiveReminderHours } from './grace';
 import { applyCustomExpiry } from './new-order-policy';
 import type { RenewalBucket } from '@prisma/client';
 
@@ -29,8 +29,9 @@ import type { RenewalBucket } from '@prisma/client';
  *      renewal is a plain term extension. Client grace = 0 → release on
  *      the tick after expiry. Kill-switch: autoReleaseAfterGrace flag.
  *   1c. Pre-renewal reminders: non-auto-renew ACTIVE orders inside their
- *      plan's preRenewalReminderHours window get ONE bell notification +
- *      email per term (lastReminderAt gates; renewals reset it).
+ *      effective reminder window (client override → plan → global default,
+ *      lib/grace.ts) get ONE bell notification + email per term
+ *      (lastReminderAt gates; renewals reset it).
  *   2. renewalBucket classifier — drives admin Renewals tabs + dashboard
  *      Expiring-soon: H24 / D3 / D7 for approaching expiry, GRACE while inside
  *      the plan's grace window after expiry, EXPIRED past it. RENEWED is sticky
@@ -257,13 +258,15 @@ export async function runSweep(): Promise<SweepResult> {
     //   automatically; their failures get dedicated grace emails).
     //   lastReminderAt gates repeats; every renewal path resets it to null,
     //   so each new term reminds once.
+    const reminderDefault = await loadReminderDefaultHours();
     const reminderDue = await prisma.order.findMany({
       where: { status: 'ACTIVE', autoRenew: false, lastReminderAt: null, expiresAt: { gt: new Date(now) } },
-      include: { plan: { select: { preRenewalReminderHours: true } }, client: { select: { email: true, emailRenewal: true } } },
+      include: { plan: { select: { preRenewalReminderHours: true } }, client: { select: { email: true, emailRenewal: true, preRenewalReminderHours: true } } },
     });
     for (const o of reminderDue) {
-      const hours = o.plan.preRenewalReminderHours;
-      if (hours <= 0) continue; // plan opted out of reminders
+      // Cascade (2026-08-22): client override → plan → global Settings default.
+      const hours = effectiveReminderHours(o.client.preRenewalReminderHours, o.plan.preRenewalReminderHours, reminderDefault);
+      if (hours <= 0) continue; // reminders explicitly off at the winning level
       if (o.expiresAt!.getTime() - now > hours * 3_600_000) continue; // not in the window yet
       await prisma.order.update({ where: { id: o.id }, data: { lastReminderAt: new Date(now) } });
       reminders++;

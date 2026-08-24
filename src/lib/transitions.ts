@@ -1442,7 +1442,7 @@ export type PlanInput = {
   autoProvision: boolean;
   autoRenewDefault: boolean;
   renewalAllowed: boolean;
-  preRenewalReminderHours: number;
+  preRenewalReminderHours: number | null; // null = inherit the global Settings default
   renewalDiscountPct: number;
   lowCapacityThresholdPct?: number | null;
 };
@@ -1465,6 +1465,9 @@ export async function createPlan({ input, actor }: { input: PlanInput; actor: Ac
     if (input.price < 0 || input.price > 99999) throw new Error('Price must be between 0 and 99999');
     if (input.availableQuota < 0 || input.availableQuota > 9999) throw new Error('Quota must be between 0 and 9999');
     if (input.durationDays <= 0) throw new Error('Duration must be > 0');
+    if (input.preRenewalReminderHours != null && (!Number.isInteger(input.preRenewalReminderHours) || input.preRenewalReminderHours < 0 || input.preRenewalReminderHours > 720)) {
+      throw new Error('Pre-renewal reminder must be an integer 0..720 hours, or blank to inherit the global default');
+    }
     if (input.active && input.visibility === 'PUBLIC') {
       await assertActivePublicCapAvailable(tx, null, input.durationDays);
       await assertDurationRegionUnique(tx, input.durationDays, input.region, null);
@@ -1707,7 +1710,7 @@ export type UpdateClientInput = {
   emailIncidents?: boolean;
   emailMarketing?: boolean;
   telegramAll?: boolean;
-  preRenewalReminderHours?: number;
+  preRenewalReminderHours?: number | null; // null = inherit plan → global (reminder cascade)
   graceHoursOverride?: number | null; // null = tier default (lib/grace.ts)
 };
 

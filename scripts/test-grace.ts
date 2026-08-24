@@ -7,6 +7,7 @@ import {
   isPastGrace,
   renewalClosed,
   type TierGraceHours,
+ effectiveReminderHours,
 } from '../src/lib/grace';
 import { renewalBase } from '../src/lib/renewal';
 
@@ -98,6 +99,13 @@ for (const [label, exp, dur, nowMs] of [
   const nb = renewalBase(exp, dur, new Date(nowMs)).getTime() + dur * DAYMS;
   eq(`base: newExpiry strictly future (${label})`, nb > nowMs, true);
 }
+
+// ---------- effectiveReminderHours (cascade 2026-08-22) ----------
+eq('reminder: client override wins', effectiveReminderHours(24, 48, 72), 24);
+eq('reminder: client 0 = explicitly off', effectiveReminderHours(0, 48, 72), 0);
+eq('reminder: no client -> plan', effectiveReminderHours(null, 48, 72), 48);
+eq('reminder: plan 0 = off, not fall-through', effectiveReminderHours(null, 0, 72), 0);
+eq('reminder: no client, no plan -> global', effectiveReminderHours(null, null, 72), 72);
 
 console.log(`\ngrace policy: ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

@@ -84,3 +84,25 @@ export function renewalClosed(
 ): boolean {
   return liveAssignments === 0 && isPastGrace(expiresAt, client, tierGrace, nowMs);
 }
+
+// ── Pre-renewal reminder cascade (owner decision 2026-08-22) ────────────────
+// Effective hours = client override → plan value → global default — same shape
+// as the grace cascade above. 0 at the winning level = reminders explicitly
+// off; null = fall through to the next level.
+export const REMINDER_DEFAULT_HOURS = 72;
+
+export async function loadReminderDefaultHours(): Promise<number> {
+  const row = await prisma.systemSetting.findUnique({ where: { key: 'grace' } });
+  const v = row && typeof row.value === 'object' && row.value !== null
+    ? Number((row.value as Record<string, unknown>).preRenewalReminderHours)
+    : NaN;
+  return Number.isFinite(v) ? v : REMINDER_DEFAULT_HOURS;
+}
+
+export function effectiveReminderHours(
+  clientOverride: number | null,
+  planHours: number | null,
+  globalDefault: number,
+): number {
+  return clientOverride ?? planHours ?? globalDefault;
+}

@@ -198,7 +198,7 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
                 <div className="preference-row"><span className="pref-label">Incident emails</span><span className="pref-control"><span className={`toggle-v2${c.emailIncidents ? ' on' : ''}`} /></span></div>
                 <div className="preference-row"><span className="pref-label">Marketing emails</span><span className="pref-control"><span className={`toggle-v2${c.emailMarketing ? ' on' : ''}`} /></span></div>
                 <div className="preference-row"><span className="pref-label">Telegram alerts</span><span className="pref-control"><span className={`toggle-v2${c.telegramAll ? ' on' : ''}`} /></span></div>
-                <div className="preference-row"><span className="pref-label">Pre-renewal reminder</span><span className="pref-control">{c.preRenewalReminderHours}h</span></div>
+                <div className="preference-row"><span className="pref-label">Pre-renewal reminder</span><span className="pref-control">{c.preRenewalReminderHours != null ? `${c.preRenewalReminderHours}h (override)` : 'Inherit (plan / global)'}</span></div>
                 <div className="preference-row"><span className="pref-label">Grace period</span><span className="pref-control">{effGrace}h {graceIsOverride ? <span style={{ color: 'var(--muted)' }}>· custom</span> : <span style={{ color: 'var(--muted)' }}>· {c.tier === 'VIP' ? 'VIP' : cap(c.tier)} default</span>}</span></div>
               </div>
             </div>

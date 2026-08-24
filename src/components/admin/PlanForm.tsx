@@ -36,7 +36,7 @@ const DEFAULTS: PlanInput = {
   name: '', description: '', visibility: 'PUBLIC', carrier: 'Verizon', region: 'US East',
   pool: 'Verizon-East-A', durationDays: 30, price: 129, currency: 'USD', availableQuota: 50,
   protocols: 'HTTP, SOCKS5', rotation: 'Sticky', traffic: 'Unlimited', active: true,
-  autoProvision: true, autoRenewDefault: true, renewalAllowed: true, preRenewalReminderHours: 72,
+  autoProvision: true, autoRenewDefault: true, renewalAllowed: true, preRenewalReminderHours: null,
   renewalDiscountPct: 0, lowCapacityThresholdPct: null,
 };
 
@@ -92,7 +92,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
       durationDays: num(form.durationDays),
       price: num(form.price),
       availableQuota: num(form.availableQuota),
-      preRenewalReminderHours: num(form.preRenewalReminderHours, 72),
+      preRenewalReminderHours: form.preRenewalReminderHours === '' || form.preRenewalReminderHours == null ? null : num(form.preRenewalReminderHours),
       renewalDiscountPct: num(form.renewalDiscountPct, 0),
       lowCapacityThresholdPct:
         form.lowCapacityThresholdPct === '' || form.lowCapacityThresholdPct == null ? null : Number(form.lowCapacityThresholdPct),
@@ -251,8 +251,8 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           <div className="lifecycle-col">
             <div className="lifecycle-fields">
               <div className="form-field">
-                <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="When to send the first renewal reminder, in hours before expiry. Additional reminders are scheduled in Settings → Grace Rules.">i</span></div>
-                <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => setNum('preRenewalReminderHours', e.target.value)} placeholder="e.g. 72" />
+                <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="Hours before expiry for the renewal reminder. Blank = inherit the global default (Settings → Grace Rules). A per-client override on the client card wins over both. 0 = reminders off for this plan.">i</span></div>
+                <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours ?? ''} onChange={e => setNum('preRenewalReminderHours', e.target.value)} placeholder="Inherit global" />
               </div>
             </div>
           </div>

@@ -1,15 +1,15 @@
-// Auto-renew charge execution (Phase 3, user sign-off 2026-07-06).
+// Auto-renew charge execution (Phase 3, 2026-07-06; balance-only per owner
+// decision 2026-08-22).
 //
-// Waterfall per product spec: client balance first; any remainder goes to the
-// card on file. No real card processor is integrated yet — the card leg is
-// chargeable only while ALLOW_MOCK_PAYMENTS permits (same rule as the manual
-// card checkout); once Stripe lands, this is the slot it plugs into. If
-// neither source covers the price, the sweep moves the order into the plan's
-// grace window (or expires it) — see sweep.ts.
+// The charge comes from the client's PORTAL BALANCE, full price or nothing —
+// cards are not implemented, so there is no card leg and no partial charge.
+// Insufficient balance → the attempt fails cleanly and the sweep moves the
+// order into the client's grace window (retrying every 24h) or expires it —
+// see sweep.ts. When a real card processor lands, its slot is the
+// InsufficientBalance branch below.
 
 import { prisma } from './prisma';
 import { nextPaymentId, nextInvoiceId } from './id';
-import { mockPaymentsAllowed } from './runtime-flags';
 import { fmtDate } from './date';
 import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
@@ -88,40 +88,24 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       const me = await tx.user.findUnique({ where: { id: order.clientId } });
       if (!me) throw new AutoRenewFail('client account not found');
 
+      // Balance-only (owner decision 2026-08-22): full price from the portal
+      // balance or no charge at all — cards are not implemented, so there is
+      // no card leg and never a partial debit.
       const balance = Number(me.balance);
-      const balancePart = Math.round(Math.min(balance, price) * 100) / 100;
-      const cardPart = Math.round((price - balancePart) * 100) / 100;
-
-      let cardLabel: string | null = null;
-      if (cardPart > 0) {
-        const card = await tx.paymentMethod.findFirst({
-          where: { userId: order.clientId, kind: 'CARD' },
-          orderBy: [{ isDefault: 'desc' }, { addedAt: 'desc' }],
-        });
-        if (!card) {
-          throw new AutoRenewFail(`insufficient balance (${money(balance)} of ${money(price)}) and no card on file`);
-        }
-        if (!mockPaymentsAllowed()) {
-          throw new AutoRenewFail(`insufficient balance (${money(balance)} of ${money(price)}) — card charging is not available yet`);
-        }
-        cardLabel = `card •• ${card.last4 ?? '????'}`;
+      if (balance < price) {
+        throw new AutoRenewFail(`insufficient balance (${money(balance)} of ${money(price)}) — top up to renew`);
       }
 
-      via = cardPart > 0
-        ? (balancePart > 0 ? `balance ${money(balancePart)} + ${cardLabel} ${money(cardPart)}` : `${cardLabel}`)
-        : 'balance';
-
-      const fees = cardPart > 0 ? Math.round(cardPart * 3) / 100 : 0;
       await tx.payment.create({
         data: {
           id: paymentId,
           orderId: order.id,
           clientId: order.clientId,
-          provider: cardPart > 0 ? 'Stripe' : 'Balance',
-          method: `Auto-renew · ${via}`,
+          provider: 'Balance',
+          method: 'Auto-renew · balance',
           gross: price,
-          fees,
-          net: price - fees,
+          fees: 0,
+          net: price,
           status: 'CONFIRMED',
           confirmedAt: now,
           source: 'auto-renew',
@@ -130,19 +114,20 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
         },
       });
 
-      if (balancePart > 0) {
-        // Guarded in-tx debit (P1-1): balancePart came from the read above —
-        // if a concurrent spend drained the account in between, fail the
-        // attempt cleanly and let the next sweep tick retry.
+      {
+        // Guarded in-tx debit (P1-1): `balance` came from the read above — if
+        // a concurrent spend drained the account in between, fail the attempt
+        // cleanly (tx rolls back, payment row included) and let the next
+        // sweep tick retry.
         let newBal: number;
-        try { newBal = await debitBalance(tx, order.clientId, balancePart); }
+        try { newBal = await debitBalance(tx, order.clientId, price); }
         catch (e) {
           if (e instanceof InsufficientBalance) throw new AutoRenewFail('balance changed during charge');
           throw e;
         }
         await tx.balanceLedgerEntry.create({
           data: {
-            userId: order.clientId, op: 'ORDER_DEBIT', amount: -balancePart, balanceAfter: newBal,
+            userId: order.clientId, op: 'ORDER_DEBIT', amount: -price, balanceAfter: newBal,
             refOrderId: order.id, refPaymentId: paymentId, note: `Auto-renew of ${order.id}`,
           },
         });

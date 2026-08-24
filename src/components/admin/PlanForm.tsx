@@ -150,7 +150,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
   );
 
   const AUTO_PROVISION_TIP = 'Controls fulfilment automation AFTER payment confirmation. If ON, the system may assign a proxy from the pool and publish credentials to the portal automatically. If OFF, an admin assigns the proxy, delivers credentials manually, and marks the order delivered. Does NOT control whether payment itself is automatic — payment confirmation may be manual (invoice / crypto) or automatic (Stripe webhook) regardless of this setting.';
-  const AUTO_RENEW_TIP = 'Default state on new orders. Activation requires a saved card or sufficient portal balance.';
+  const AUTO_RENEW_TIP = 'Default state on new orders. The charge comes from the client\u2019s portal balance (cards are not implemented).';
   const RENEWAL_ALLOWED_TIP = 'If OFF, the plan can still be sold but cannot be renewed. Used when retiring a plan while honoring existing orders.';
 
   // Canon: the same 3 switches on create AND edit. Active is not a form

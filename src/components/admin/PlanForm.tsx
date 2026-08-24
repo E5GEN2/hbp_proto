@@ -6,6 +6,7 @@ import Link from 'next/link';
 import * as A from '@/lib/ui-actions/admin-actions';
 import type { PlanInput } from '@/lib/transitions';
 import { FormSelect, type FormSelectOption } from '@/components/ui/FormSelect';
+import { TogglePlanButton } from '@/components/admin/ActionButtons';
 
 type CatalogOption = { value: string };
 
@@ -80,8 +81,14 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
     }
 
     const num = (v: unknown, fallback = 0) => (v === '' || v == null ? fallback : Number(v));
+    // `active` is NOT part of the edit form (parity 2026-08-22): the plan's
+    // status is owned by the header Disable/Enable flow (reason + log). Writing
+    // the mounted form value back would silently re-enable a plan the admin
+    // just disabled and then saved. Create keeps active:true (published).
+    const { active: formActive, ...rest } = form as PlanInput;
     const payload: PlanInput = {
-      ...(form as PlanInput),
+      ...(rest as PlanInput),
+      active: isCreate ? formActive : (initial.active ?? true),
       durationDays: num(form.durationDays),
       price: num(form.price),
       availableQuota: num(form.availableQuota),
@@ -146,20 +153,14 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
   const AUTO_RENEW_TIP = 'Default state on new orders. Activation requires a saved card or sufficient portal balance.';
   const RENEWAL_ALLOWED_TIP = 'If OFF, the plan can still be sold but cannot be renewed. Used when retiring a plan while honoring existing orders.';
 
-  // Canon plan-create shows 3 switches (a fresh plan is published/active by
-  // default, so no Active toggle). Edit keeps the Active switch.
-  const toggles = isCreate
-    ? [
-        Toggle('autoRenewDefault', 'Auto-renew default', AUTO_RENEW_TIP),
-        Toggle('autoProvision', 'Auto-provision on payment confirm', AUTO_PROVISION_TIP),
-        Toggle('renewalAllowed', 'Renewal allowed', RENEWAL_ALLOWED_TIP),
-      ]
-    : [
-        Toggle('active', 'Active (sellable in client catalog)'),
-        Toggle('autoProvision', 'Auto-provision on payment confirm', AUTO_PROVISION_TIP),
-        Toggle('autoRenewDefault', 'Auto-renew default', AUTO_RENEW_TIP),
-        Toggle('renewalAllowed', 'Renewal allowed', RENEWAL_ALLOWED_TIP),
-      ];
+  // Canon: the same 3 switches on create AND edit. Active is not a form
+  // toggle — the status lives in the edit header chip and is changed through
+  // the Disable/Enable action (requires a reason, logged), never via Save.
+  const toggles = [
+    Toggle('autoRenewDefault', 'Auto-renew default', AUTO_RENEW_TIP),
+    Toggle('autoProvision', 'Auto-provision on payment confirm', AUTO_PROVISION_TIP),
+    Toggle('renewalAllowed', 'Renewal allowed', RENEWAL_ALLOWED_TIP),
+  ];
 
   const formPanel = (
     <div className="panel">
@@ -172,17 +173,11 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           <div className="identity-col">
             <div className="form-field">
               <div className="form-label">Plan name <span className="req">*</span></div>
-              <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} />
+              <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} placeholder="e.g. Verizon 1m NY" />
             </div>
-            {/* Internal SKU dropped from create (product ask 2026-07-07):
-                it's auto-generated on save, nothing to input. Edit keeps it
-                as a read-only reference. */}
-            {!isCreate && (
-              <div className="form-field">
-                <div className="form-label">Internal SKU<span className="help-tip" data-tip="Auto-generated using the SKU rule configured in Settings. Default rule includes Duration; optional components may include Carrier and Region. Never shown to clients.">i</span></div>
-                <input className="form-input" value={sku ?? '—'} disabled />
-              </div>
-            )}
+            {/* Internal SKU: auto-generated on save, nothing to input (product
+                ask 2026-07-07). On edit it is shown as the header chip — the
+                form body is identical on both pages (parity 2026-08-22). */}
             <div className="form-field">
               <div className="form-label">Visibility <span className="req">*</span><span className="help-tip" data-tip="Public appears in client checkout. Internal is admin-only and not shown to clients.">i</span></div>
               <FormSelect
@@ -206,29 +201,25 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           {Sel('durationDays', 'Duration', catalog.durations, true)}
           <div className="form-field">
             <div className="form-label">Price <span className="req">*</span><span className="help-tip" data-tip="Per-plan price in the selected Currency. Each plan carries its own price — there is no flat fallback.">i</span></div>
-            <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} onChange={e => setNum('price', e.target.value)} />
+            <input className="form-input" type="number" min={0} max={99999} step={0.01} value={form.price} onChange={e => setNum('price', e.target.value)} placeholder="e.g. 50" />
           </div>
           {/* Hardlocked trio, default USD — no blank placeholder needed; Sel's
               stale-value guard still covers a legacy plan on another currency. */}
           {Sel('currency', 'Currency', CURRENCIES, true, undefined, false)}
-          {/* Canon create-plan carries the capacity pair INSIDE Commercial
-              Setup (prototype.html plan-create); the edit page moves them to
-              the Selling Capacity aside, so render here for create only. */}
-          {isCreate && (
-            <>
-              <div className="form-field">
-                <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales — sales stop at the cap.">i</span></div>
-                <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => setNum('availableQuota', e.target.value)} />
-              </div>
-              <div className="form-field">
-                <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override of the global default in Settings → Notifications. Leave blank to inherit the global value (85%).">i</span></div>
-                <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
-              </div>
-            </>
-          )}
+          {/* Capacity pair lives INSIDE Commercial Setup on BOTH pages (canon
+              plan-create; parity 2026-08-22). The edit aside shows only the
+              computed readouts — one place to edit, one place to read. */}
+          <div className="form-field">
+            <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales — sales stop at the cap.">i</span></div>
+            <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => setNum('availableQuota', e.target.value)} placeholder="e.g. 50" />
+          </div>
+          <div className="form-field">
+            <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override of the global default in Settings → Notifications. Leave blank to inherit the global value (85%).">i</span></div>
+            <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} placeholder="Inherit global" />
+          </div>
           <div className="form-field">
             <div className="form-label">Renewal discount<span className="help-tip" data-tip="Applied to every renewal payment for this plan. 0% = full price.">i</span></div>
-            <input className="form-input" type="number" min={0} max={100} step={1} value={form.renewalDiscountPct} onChange={e => setNum('renewalDiscountPct', e.target.value)} />
+            <input className="form-input" type="number" min={0} max={100} step={1} value={form.renewalDiscountPct} onChange={e => setNum('renewalDiscountPct', e.target.value)} placeholder="0%" />
           </div>
         </div>
       </div>
@@ -239,11 +230,10 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           {Sel('carrier', 'Carrier', catalog.carriers, true)}
           {Sel('region', 'Location', catalog.regions, true, 'Country, region, state, or city — whichever level the plan targets. Drives which Proxy pools are eligible.')}
           {Sel('pool', 'Proxy pool', catalog.pools, true, 'Named pool this plan draws from when auto-assigning. Pool format: {carrier} | {region}[ | {city}].')}
-          {/* Protocols / Rotation / Traffic dropped from create (product ask
-              2026-07-07) — optional policies, set later on the edit page. */}
-          {!isCreate && Sel('protocols', 'Protocols', catalog.protocols, false, 'Wire protocols the proxy will accept.')}
-          {!isCreate && Sel('rotation', 'Rotation policy', catalog.rotations, false, 'Whether the IP stays sticky for the full order duration or rotates per request / on a schedule.')}
-          {!isCreate && Sel('traffic', 'Traffic policy', catalog.traffic, false, 'Bandwidth cap. Unlimited = no accounting. A cap throttles or blocks once threshold is hit.')}
+          {/* Protocols / Rotation / Traffic: dropped from create (product ask
+              2026-07-07) and from edit (parity 2026-08-22) — nothing in the
+              product reads them (not shown to clients, not used by
+              provisioning). Stored values are preserved untouched. */}
         </div>
       </div>
 
@@ -253,26 +243,26 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
           <div className="lifecycle-col">
             {toggles}
           </div>
-          {/* Reminder timing is edit-only (product ask 2026-07-07); a fresh
-              plan takes the default. Grace moved OFF the plan 2026-08-12 — it's
-              a client attribute now (tier default + per-client override on the
-              client card; global tiers under Settings → Grace). */}
-          {!isCreate && (
-            <div className="lifecycle-col">
-              <div className="lifecycle-fields">
-                <div className="form-field">
-                  <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="When to send the first renewal reminder, in hours before expiry. Additional reminders are scheduled in Settings → Grace Rules.">i</span></div>
-                  <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => setNum('preRenewalReminderHours', e.target.value)} />
-                </div>
+          {/* Reminder timing on BOTH pages (canon; parity 2026-08-22) — the
+              sweep reads plan.preRenewalReminderHours. Blank on create = the
+              72h default. Grace moved OFF the plan 2026-08-12 — it's a client
+              attribute now (tier default + per-client override on the client
+              card; global tiers under Settings → Grace). */}
+          <div className="lifecycle-col">
+            <div className="lifecycle-fields">
+              <div className="form-field">
+                <div className="form-label">Pre-renewal reminder (hours)<span className="help-tip" data-tip="When to send the first renewal reminder, in hours before expiry. Additional reminders are scheduled in Settings → Grace Rules.">i</span></div>
+                <input className="form-input" type="number" min={0} max={720} step={1} value={form.preRenewalReminderHours} onChange={e => setNum('preRenewalReminderHours', e.target.value)} placeholder="e.g. 72" />
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
   );
 
   const capState = capacity?.state ?? 'available';
+  const isActive = initial.active ?? true;
 
   // ── Create: single-column page-shell + compact status header (canon). The
   //    "New plan" title is kept per product ask, rendered in the sans
@@ -302,12 +292,15 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
         <div className="detail-header-left">
           <div className="detail-id">{form.name}</div>
           <div className="detail-chips">
-            <span className={`chip ${form.active ? 'active' : 'expired'}`}>{form.active ? 'Active' : 'Disabled'}</span>
+            {/* Server truth (initial), not form state: the Disable/Enable
+                action refreshes the page — the chip must follow it. */}
+            <span className={`chip ${isActive ? 'active' : 'expired'}`}>{isActive ? 'Active' : 'Disabled'}</span>
             <span className="badge-soft">{sku ?? planId}</span>
           </div>
         </div>
         <div className="detail-header-actions">
           <Link href="/admin/plans" className="btn">Cancel</Link>
+          {planId && <TogglePlanButton planId={planId} active={isActive} />}
           {canDelete && <button type="button" className="btn danger" onClick={onDelete} disabled={pending}>Delete</button>}
           <button type="button" className="btn primary" onClick={onSubmit} disabled={pending}>{pending ? 'Saving…' : 'Save changes'}</button>
         </div>
@@ -322,19 +315,7 @@ export function PlanForm({ mode, planId, sku, initial, catalog, capacity, canDel
         </div>
         <aside className="form-aside">
           <div className="panel">
-            <div className="panel-header"><span className="panel-title">Selling Capacity<span className="help-tip" data-tip="What the client portal is allowed to sell for this plan. Set manually — independent of the physical pool size. The Capacity State below is a derived condition, separate from the plan's primary Status.">i</span></span></div>
-            <div className="panel-section">
-              <div className="form-grid">
-                <div className="form-field">
-                  <div className="form-label">Available quota <span className="req">*</span><span className="help-tip" data-tip="Total concurrent orders this plan can have live at once. The hard ceiling for sales.">i</span></div>
-                  <input className="form-input" type="number" min={0} max={9999} step={1} value={form.availableQuota} onChange={e => setNum('availableQuota', e.target.value)} />
-                </div>
-                <div className="form-field">
-                  <div className="form-label">Low-capacity threshold (%)<span className="help-tip" data-tip="Per-plan override for the global default in Settings → Notifications → 'Plan capacity > X% full'. Leave blank to inherit (85%).">i</span></div>
-                  <input className="form-input" type="number" min={0} max={100} step={1} value={form.lowCapacityThresholdPct ?? ''} onChange={e => set('lowCapacityThresholdPct', e.target.value === '' ? null : parseInt(e.target.value, 10))} />
-                </div>
-              </div>
-            </div>
+            <div className="panel-header"><span className="panel-title">Selling Capacity<span className="help-tip" data-tip="Computed from the quota set in Commercial Setup — independent of the physical pool size. The Capacity State is a derived condition, separate from the plan's primary Status.">i</span></span></div>
             <div className="panel-section">
               <div className="kv">
                 <div className="kv-row"><span className="kv-key">Allocated</span><span className="kv-val">{capacity?.allocated ?? 0}</span></div>

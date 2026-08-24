@@ -27,6 +27,12 @@ const Schema = z.object({
   // backstop below (owner ask 2026-07-31).
   confirmDuplicate: z.boolean().optional(),
   renewOf: z.string().optional(),
+  // The total the checkout page DISPLAYED when the client clicked Buy now.
+  // Guard only, never a pricing input: the server recomputes the authoritative
+  // total from the DB and refuses (409) when the two disagree — an admin
+  // editing the client discount / plan price mid-checkout must not lead to
+  // silently debiting a different amount than the one shown (audit B-6).
+  expectedTotal: z.number().optional(),
 });
 
 // What the client pay panel renders — every field comes from OUR stored
@@ -50,7 +56,7 @@ export async function POST(req: Request) {
 
   const parse = Schema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Bad input' }, { status: 400 });
-  const { planId, qty, autoExtend, paymentMethod, renewOf } = parse.data;
+  const { planId, qty, autoExtend, paymentMethod, renewOf, expectedTotal } = parse.data;
 
   // Whitelist-validate the coin up front (both the new-order and the renewal
   // branch create the NP charge with it).
@@ -84,7 +90,7 @@ export async function POST(req: Request) {
   //    proxies (audit B-2 / LIFECYCLE_CONTRACT l.82). Terms come from the
   //    original order server-side; freeze applies to NEW orders only.
   if (renewOf) {
-    return handleRenewal({ renewOf, userId, userBalance: Number(user.balance), paymentMethod, coin });
+    return handleRenewal({ renewOf, userId, userBalance: Number(user.balance), paymentMethod, coin, expectedTotal });
   }
 
   if (await newOrdersFrozen()) {
@@ -140,6 +146,25 @@ export async function POST(req: Request) {
   // the displayed price always equals the charged one (audit B-6 rule).
   const unitPrice = purchaseUnitPrice(Number(plan.price), user.clientDiscountPct);
   const total = Math.round(unitPrice * qty * 100) / 100;
+
+  // Only Comp may be $0 (mirrors createOrderByAdmin's guard): a 100% client
+  // discount on a paid method must not let the client self-serve mint a $0
+  // "paid" order that bypasses Comp semantics and the Provider=Comp filters.
+  // Renewals are exempt — a 100% per-order grant deliberately prices $0
+  // renewals (handleRenewal below never runs this).
+  if (total <= 0) {
+    return NextResponse.json({ error: 'This order cannot be priced at $0 — contact support to arrange it.' }, { status: 400 });
+  }
+  // Shown price must equal the charged price (audit B-6): if the price moved
+  // since the page rendered (admin edited the client discount or the plan),
+  // refuse rather than silently debit a different amount. Guard only — never
+  // prices anything; cent-compare to dodge float noise.
+  if (expectedTotal !== undefined && Math.round(expectedTotal * 100) !== Math.round(total * 100)) {
+    return NextResponse.json({
+      error: `The order total is now ${money(total)} — pricing changed while you were checking out. Review the updated total and try again.`,
+      priceChanged: true,
+    }, { status: 409 });
+  }
 
   // Check capacity
   const alloc = await prisma.order.aggregate({
@@ -382,12 +407,13 @@ export async function POST(req: Request) {
 // Renewal branch. Instant methods (balance/card) extend immediately; crypto
 // creates an AWAITING payment on the original order and the extension happens
 // in /api/checkout/confirm-crypto once the client confirms.
-async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin }: {
+async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin, expectedTotal }: {
   renewOf: string;
   userId: string;
   userBalance: number;
   paymentMethod: 'balance' | 'crypto' | 'card';
   coin: ReturnType<typeof npCoin>; // whitelist-validated by the caller (non-null when crypto+npEnabled)
+  expectedTotal?: number; // displayed-total guard, see Schema — never a pricing input
 }) {
   const order = await prisma.order.findUnique({
     where: { id: renewOf },
@@ -451,6 +477,15 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   // surfaces agree to the cent.
   const pricing = renewalPricing(order.plan, order, order.client);
   const total = pricing.total;
+  // Same displayed-total guard as new purchases: an admin editing the client /
+  // plan / per-order discounts mid-checkout must not lead to charging an
+  // amount the client never saw (audit B-6). Cent-compare; abort-only.
+  if (expectedTotal !== undefined && Math.round(expectedTotal * 100) !== Math.round(total * 100)) {
+    return NextResponse.json({
+      error: `The renewal total is now ${money(total)} — pricing changed while you were checking out. Review the updated total and try again.`,
+      priceChanged: true,
+    }, { status: 409 });
+  }
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });

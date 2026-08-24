@@ -2,6 +2,7 @@
 // custom-expiry rule, and the money math. Extracted from transitions.ts for
 // standalone assertion tests, same pattern as crypto-window.ts / grace.ts.
 import { roundCents } from './balance';
+import { purchaseUnitPrice } from './renewal';
 import { fmtDate } from './date';
 
 export type NewOrderMethod = 'stripe' | 'invoice' | 'crypto' | 'comp';
@@ -101,7 +102,12 @@ export function newOrderMoney(
     total = Math.max(0, roundCents(planPrice * qty - discountUsd));
     unitPrice = roundCents(total / qty);
   } else {
-    unitPrice = roundCents(planPrice * (1 - discountPct / 100));
+    // Same exact-cent family as the client self-serve paths (renewal.ts):
+    // roundCents(price*(1-pct/100)) drifts one cent from it on half-cent
+    // boundaries via float noise (e.g. $1.90 @ 25% → 1.42 vs 1.43), so an
+    // admin-created order at the prefilled client pct would charge a different
+    // cent than the same client pays self-serve.
+    unitPrice = purchaseUnitPrice(planPrice, discountPct);
     total = roundCents(unitPrice * qty);
   }
   const fees = method === 'stripe' ? roundCents(total * 0.03) : 0;

@@ -121,6 +121,10 @@ export function CheckoutFlow({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           planId: plan.id, qty, autoExtend, paymentMethod: method,
+          // Displayed-total echo (guard only): the server recomputes the real
+          // total and 409s if pricing moved since this page rendered, instead
+          // of silently charging an amount the buyer never saw (audit B-6).
+          expectedTotal: total,
           ...(method === 'crypto' && payCoin ? { payCoin } : {}),
           ...(opts?.confirmDuplicate ? { confirmDuplicate: true } : {}),
           ...(renewOf ? { renewOf } : {}),
@@ -133,6 +137,15 @@ export function CheckoutFlow({
       // before charging again (accidental double-charge backstop); (b) an
       // UNPAID order for this plan exists → resolve it in the wizard rather than
       // silently teleporting to a back-less resume page (trace find #10).
+      // Pricing moved under the open page (admin edited the client discount /
+      // plan). Surface the server's honest message and refresh the RSC props —
+      // plans[].price / renewalDiscount re-arrive current, so the summary the
+      // buyer retries from shows the price that will actually be charged.
+      if (r.status === 409 && j.priceChanged) {
+        setErr(j.error);
+        router.refresh();
+        return;
+      }
       if (r.status === 409 && j.needsConfirm && j.recentOrderId) {
         setDupPaidId(j.recentOrderId);
         return;

@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { createOrderAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
-import { renewalUnitPrice, effectiveRenewalPct } from '@/lib/renewal';
+import { renewalUnitPrice, effectiveRenewalPct, purchaseUnitPrice } from '@/lib/renewal';
 
 type ClientOpt = { id: string; name: string; email: string; balance: number; clientDiscountPct: number | null };
 type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number; autoProvision: boolean; renewalDiscountPct: number | null };
@@ -72,7 +72,10 @@ export function NewOrderModal({
   // paid order keeps its real terms); Comp then covers whatever is left.
   const discounted = !plan ? 0
     : discountUnit === 'usd' ? Math.max(0, round2(subtotal - discount))
-    : round2(round2(plan.price * (1 - discount / 100)) * qty);
+    // Same exact-cent helper as newOrderMoney's pct branch (and the client
+    // self-serve paths) — round2(price*(1-pct/100)) drifts a cent on half-cent
+    // boundaries, making this Total disagree with the auto-renew forecast line.
+    : round2(purchaseUnitPrice(plan.price, discount) * qty);
   const total = isComp ? 0 : discounted;
   const maxQty = plan ? Math.min(plan.available, 20) : 1;
 

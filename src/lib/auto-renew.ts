@@ -44,9 +44,10 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   });
   if (pending) return { renewed: false, reason: `payment ${pending.id} for this order is already ${pending.status === 'AWAITING' ? 'awaiting confirmation' : 'under verification'}` };
 
-  // Per-order renewal discount (admin grant) replaces the plan discount while
-  // active; renewalPricing is the single source for both (audit B-6 parity).
-  const pricing = renewalPricing(order.plan, order);
+  // Per-order renewal discount (admin grant) replaces the plan and client
+  // discounts while active; otherwise max(client, plan) applies. renewalPricing
+  // is the single source for all of them (audit B-6 parity).
+  const pricing = renewalPricing(order.plan, order, order.client);
   const price = pricing.total;
   const paymentId = await nextPaymentId();
   const now = new Date();

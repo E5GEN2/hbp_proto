@@ -133,7 +133,7 @@ export async function POST(req: Request) {
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { plan: true, client: { select: { tier: true, graceHoursOverride: true } } },
+    include: { plan: true, client: { select: { tier: true, graceHoursOverride: true, clientDiscountPct: true } } },
   });
   if (!order || order.clientId !== userId) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   if (order.status === 'CANCELLED' || order.status === 'PENDING_RENEWAL') {
@@ -199,7 +199,7 @@ export async function POST(req: Request) {
 
   // NEW order → the original amount; renewal → the same discounted price the
   // renewal charge paths use (never client-supplied).
-  const repayPricing = isNewOrder ? null : renewalPricing(order.plan, order);
+  const repayPricing = isNewOrder ? null : renewalPricing(order.plan, order, order.client);
   const total = isNewOrder ? Number(order.amount) : repayPricing!.total;
   // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
   if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });

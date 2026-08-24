@@ -24,7 +24,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscount = null, allSoldOut = false,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscount = null, clientDiscount = null, allSoldOut = false,
 }: {
   duration: number;
   qty: number;
@@ -41,6 +41,11 @@ export function CheckoutFlow({
   // `label` ('-15%' / '-$5.00', '' when none) feeds the discount line. A flat
   // $ discount makes unit*qty drift from total by cents — total wins.
   renewalDiscount?: { label: string; total: number } | null;
+  // New-purchase mode only: the client-level discount already baked into every
+  // plans[].price by page.tsx (purchaseUnitPrice — the same helper the place
+  // route charges with). This label just explains WHY the price is lower than
+  // the public one; renewal mode covers it via renewalDiscount instead.
+  clientDiscount?: { label: string } | null;
   allSoldOut?: boolean; // every location at capacity → sold-out → Telegram dialog on arrival
 }) {
   const router = useRouter();
@@ -202,6 +207,9 @@ export function CheckoutFlow({
       <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
       <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
       <div className="kv-row"><span className="kv-label">Price per proxy</span><span className="kv-val">{money(plan.price)}</span></div>
+      {!renewOf && clientDiscount && (
+        <div className="kv-row"><span className="kv-label">Client discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>{clientDiscount.label} applied</span></div>
+      )}
       <div className="kv-row total"><span className="kv-label">Total Price</span><span className="kv-val">{money(total)}</span></div>
     </div>
   );

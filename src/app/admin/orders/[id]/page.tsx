@@ -433,6 +433,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
               orderId={order.id}
               active={order.status !== 'CANCELLED'}
               planRenewalPct={order.plan.renewalDiscountPct}
+              clientDiscountPct={order.client.clientDiscountPct}
               current={order.renewalDiscountValue != null
                 ? { value: Number(order.renewalDiscountValue), isPercent: order.renewalDiscountIsPercent ?? true, cyclesLeft: order.renewalDiscountCyclesLeft }
                 : null}

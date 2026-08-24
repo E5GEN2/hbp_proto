@@ -196,6 +196,13 @@ export const updateClientAction = guarded(async function updateClientAction(user
   return r;
 });
 
+export const setClientDiscountAction = guarded(async function setClientDiscountAction(userId: string, pct: number | null) {
+  const actor = await getAdminActor();
+  const r = await T.setClientDiscount({ userId, pct, actor });
+  bust();
+  return r;
+});
+
 export const setClientRiskAction = guarded(async function setClientRiskAction(userId: string, risk: 'NONE' | 'REVIEW' | 'FLAG', note?: string) {
   const actor = await getAdminActor();
   const r = await T.setClientRisk({ userId, risk, note, actor });

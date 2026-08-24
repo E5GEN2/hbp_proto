@@ -20,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     prisma.order.count({ where: { status: 'NEW' } }),
     prisma.user.findMany({
       where: { role: 'CLIENT', status: { not: 'BLOCKED' } },
-      select: { id: true, name: true, email: true, balance: true },
+      select: { id: true, name: true, email: true, balance: true, clientDiscountPct: true },
       orderBy: { name: 'asc' }, take: 200,
     }),
     prisma.plan.findMany({ where: { active: true, deletedAt: null }, orderBy: { name: 'asc' } }),
@@ -32,7 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   ]);
 
   const allocByPlan = new Map(allocRows.map(a => [a.planId, a._sum.qty ?? 0]));
-  const clientOpts = allClients.map(c => ({ id: c.id, name: c.name, email: c.email, balance: Number(c.balance) }));
+  const clientOpts = allClients.map(c => ({ id: c.id, name: c.name, email: c.email, balance: Number(c.balance), clientDiscountPct: c.clientDiscountPct }));
   const planOpts = allPlans.map(p => ({
     id: p.id, name: p.name, price: Number(p.price), durationDays: p.durationDays,
     carrier: p.carrier, region: p.region,

@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { money } from '@/lib/money';
 import { mockPaymentsAllowed, enabledProviders } from '@/lib/runtime-flags';
-import { renewalPricing } from '@/lib/renewal';
+import { renewalPricing, purchaseUnitPrice } from '@/lib/renewal';
 import { safeReturn } from '@/lib/safe-return';
 import { npInvoiceUrl } from '@/lib/nowpayments';
 import { allocatedByPlan } from '@/lib/plan-availability';
@@ -76,7 +76,7 @@ export default async function CheckoutPage({ searchParams }: {
         where: { orderId: order.id, status: 'CONFIRMED' },
         orderBy: { confirmedAt: 'desc' }, select: { gross: true },
       });
-      total = lastPay ? Number(lastPay.gross) : renewalPricing(order.plan, order).total;
+      total = lastPay ? Number(lastPay.gross) : renewalPricing(order.plan, order, me).total;
     }
     return (
       <>
@@ -346,7 +346,7 @@ export default async function CheckoutPage({ searchParams }: {
                 ? Number(direct.gross)
                 : isNewOrder
                 ? Number(resumeOrder.amount)
-                : renewalPricing(resumeOrder.plan, resumeOrder).total}
+                : renewalPricing(resumeOrder.plan, resumeOrder, me).total}
               initial={direct ? toPanelData(direct) : null}
               expiredMode={!direct}
               renewal={!isNewOrder}
@@ -491,7 +491,7 @@ export default async function CheckoutPage({ searchParams }: {
       name: p.name,
       region: renewalOrder.region,
       carrier: p.carrier,
-      price: renewalPricing(p, renewalOrder).unit,
+      price: renewalPricing(p, renewalOrder, me).unit,
       autoProvision: p.autoProvision,
       available: renewalOrder.qty,
     }];
@@ -530,13 +530,16 @@ export default async function CheckoutPage({ searchParams }: {
 
     // Shared seat math (lib/plan-availability) — the same query the plan-card
     // sold-out marking uses, so checkout and the cards can never disagree.
+    // Price carries the client-level discount (owner decision 2026-08-22) via
+    // the same helper the place route charges with, so the summary matches the
+    // charge to the cent; the discount line itself renders in CheckoutFlow.
     const allocationByPlan = await allocatedByPlan(plans.map(p => p.id));
     planSummaries = plans.map(p => ({
       id: p.id,
       name: p.name,
       region: p.region,
       carrier: p.carrier,
-      price: Number(p.price),
+      price: purchaseUnitPrice(Number(p.price), me.clientDiscountPct),
       autoProvision: p.autoProvision,
       available: Math.max(0, p.availableQuota - (allocationByPlan.get(p.id) ?? 0)),
     }));
@@ -592,7 +595,8 @@ export default async function CheckoutPage({ searchParams }: {
           allowCard={allowCard}
           allowCrypto={allowCrypto}
           renewOf={renewalOrder?.id}
-          renewalDiscount={renewalOrder ? (() => { const rp = renewalPricing(renewalOrder.plan, renewalOrder); return { label: rp.label, total: rp.total }; })() : null}
+          renewalDiscount={renewalOrder ? (() => { const rp = renewalPricing(renewalOrder.plan, renewalOrder, me); return { label: rp.label, total: rp.total }; })() : null}
+          clientDiscount={!renewalOrder && me.clientDiscountPct ? { label: `−${me.clientDiscountPct}%` } : null}
           allSoldOut={allSoldOut}
         />
       </main>

@@ -8,6 +8,7 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { PlanShowcase } from '@/components/client/PlanShowcase';
 import { collapseLiveByDuration } from '@/lib/plan-tiers';
 import { fullySoldOutDurations } from '@/lib/plan-availability';
+import { purchaseUnitPrice } from '@/lib/renewal';
 import { money } from '@/lib/money';
 import { daysLeft, fmtAdminStamp } from '@/lib/date';
 import { byRecency, LIFECYCLE } from '@/lib/timeline';
@@ -133,7 +134,7 @@ export default async function ClientDashboard() {
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Choose your plan</span></div>
               <div className="panel-body">
-                <EmptyPlans />
+                <EmptyPlans clientDiscountPct={me?.clientDiscountPct ?? null} />
               </div>
             </div>
           ) : (
@@ -214,7 +215,7 @@ export default async function ClientDashboard() {
   );
 }
 
-async function EmptyPlans() {
+async function EmptyPlans({ clientDiscountPct }: { clientDiscountPct: number | null }) {
   const [plans, soldOutDurations] = await Promise.all([
     prisma.plan.findMany({
       where: { active: true, visibility: 'PUBLIC', deletedAt: null },
@@ -225,9 +226,10 @@ async function EmptyPlans() {
   // Same cards as the marketing site + catalog — one card per duration
   // (location variants collapse; Location is chosen inside checkout). Fully
   // sold-out durations keep their card; the CTA opens the Telegram dialog.
+  // Price carries the client-level discount, matching catalog and checkout.
   const lite = collapseLiveByDuration(plans
     .filter(p => p.capacityState !== 'SOLD_OUT')
-    .map(p => ({ durationDays: p.durationDays, price: Number(p.price) })))
+    .map(p => ({ durationDays: p.durationDays, price: purchaseUnitPrice(Number(p.price), clientDiscountPct) })))
     .map(p => (soldOutDurations.has(p.durationDays) ? { ...p, soldOut: true } : p));
   return <PlanShowcase plans={lite} hrefFor={d => `/checkout?duration=${d}`} />;
 }

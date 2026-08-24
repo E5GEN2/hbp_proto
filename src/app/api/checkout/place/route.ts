@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
-import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from '@/lib/renewal';
+import { renewalBase, renewalPricing, purchaseUnitPrice, consumeRenewalDiscountCycle } from '@/lib/renewal';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
@@ -134,8 +134,12 @@ export async function POST(req: Request) {
     }
   }
 
-  const unitPrice = Number(plan.price);
-  const total = unitPrice * qty;
+  // Client-level discount (owner decision 2026-08-22): the client's special
+  // price applies to NEW purchases too. purchaseUnitPrice rounds to exact
+  // cents; the checkout UI prices its planSummaries with the same helper, so
+  // the displayed price always equals the charged one (audit B-6 rule).
+  const unitPrice = purchaseUnitPrice(Number(plan.price), user.clientDiscountPct);
+  const total = Math.round(unitPrice * qty * 100) / 100;
 
   // Check capacity
   const alloc = await prisma.order.aggregate({
@@ -387,7 +391,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
 }) {
   const order = await prisma.order.findUnique({
     where: { id: renewOf },
-    include: { plan: true, client: { select: { tier: true, graceHoursOverride: true } } },
+    include: { plan: true, client: { select: { tier: true, graceHoursOverride: true, clientDiscountPct: true } } },
   });
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   if (order.clientId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -442,9 +446,10 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   }
 
   // Renewal discounts (audit B-6) — renewalPricing is the ONE source for every
-  // renewal charge and display (a per-order admin grant replaces the plan
-  // discount while active), so all surfaces agree to the cent.
-  const pricing = renewalPricing(order.plan, order);
+  // renewal charge and display (a per-order admin grant replaces the plan and
+  // client discounts while active; else max(client, plan) applies), so all
+  // surfaces agree to the cent.
+  const pricing = renewalPricing(order.plan, order, order.client);
   const total = pricing.total;
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {

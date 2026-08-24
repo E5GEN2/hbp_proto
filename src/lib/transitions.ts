@@ -2356,8 +2356,9 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
 
   // Renewals honour the discounts (audit B-6) — renewalPricing is the ONE
   // pricing source for every renewal charge and display: a per-order admin
-  // grant replaces the plan discount while active.
-  const pricing = renewalPricing(o.plan, o);
+  // grant replaces the plan and client discounts while active; otherwise the
+  // larger of the client-level and plan discounts applies.
+  const pricing = renewalPricing(o.plan, o, o.client);
   const price = pricing.total;
   const balance = Number(o.client.balance);
 
@@ -2509,6 +2510,27 @@ export async function setOrderRenewalDiscount({
       input
         ? `Renewal discount set · ${input.isPercent ? `${input.value}%` : money(input.value)} · ${input.cycles === null ? 'indefinite' : `${input.cycles} cycle${input.cycles === 1 ? '' : 's'}`}${orderRenewalDiscountActive(ord) ? ' (replaced previous)' : ''}`
         : 'Renewal discount cleared');
+    return { ok: true };
+  });
+}
+
+// Client-level discount (owner decision 2026-08-22): a special price for this
+// client — integer percent off ALL their orders, new purchases and renewals.
+// Never stacks with a plan renewal discount (the LARGER wins — renewalPricing);
+// an active per-order grant beats both. `null` clears. Indefinite by design.
+export async function setClientDiscount({
+  userId, pct, actor,
+}: { userId: string; pct: number | null; actor: Actor }) {
+  return prisma.$transaction(async tx => {
+    const before = await tx.user.findUnique({ where: { id: userId } });
+    if (!before || before.role !== 'CLIENT') throw new Error('Client not found');
+    if (pct !== null && (!Number.isInteger(pct) || pct < 1 || pct > 100)) {
+      throw new Error('Percent discount must be an integer 1..100');
+    }
+    await tx.user.update({ where: { id: userId }, data: { clientDiscountPct: pct } });
+    const was = before.clientDiscountPct != null ? ` (was −${before.clientDiscountPct}%)` : '';
+    await log(tx, actor.id, 'CLIENT.UPDATE', 'CLIENT', userId,
+      pct !== null ? `Client discount set · −${pct}% on all orders${was}` : `Client discount cleared${was}`);
     return { ok: true };
   });
 }

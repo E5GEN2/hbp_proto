@@ -7,7 +7,7 @@ import { NewOrderModal } from '@/components/admin/modals/NewOrderModal';
 // the New Order modal globally available without a new API route, the admin
 // layout fetches the (read-only) client/plan options once and provides them
 // here; the GlobalNewOrder button rendered inside every AdminTopbar reads them.
-type ClientOpt = { id: string; name: string; email: string; balance: number };
+type ClientOpt = { id: string; name: string; email: string; balance: number; clientDiscountPct: number | null };
 type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number; autoProvision: boolean; renewalDiscountPct: number | null };
 export type OrderOptions = { clients: ClientOpt[]; plans: PlanOpt[] };
 

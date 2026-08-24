@@ -11,11 +11,14 @@ import { money } from '@/lib/money';
 // While active it REPLACES the plan's renewalDiscountPct. Scope: one cycle /
 // N cycles / indefinite; each successful paid renewal consumes one cycle.
 export function RenewalDiscountPanel({
-  orderId, active, planRenewalPct, current,
+  orderId, active, planRenewalPct, clientDiscountPct = null, current,
 }: {
   orderId: string;
   active: boolean; // order not CANCELLED
   planRenewalPct: number;
+  // The order's client-level discount (owner decision 2026-08-22) — shown for
+  // parity: with no active order grant, renewals charge max(client, plan).
+  clientDiscountPct?: number | null;
   current: { value: number; isPercent: boolean; cyclesLeft: number | null } | null;
 }) {
   const router = useRouter();
@@ -86,13 +89,19 @@ export function RenewalDiscountPanel({
                 <span className="kv-key">Plan default</span>
                 <span className="kv-val">{planRenewalPct > 0 ? `−${planRenewalPct}%` : '—'}</span>
               </div>
+              {clientDiscountPct != null && (
+                <div className="kv-row">
+                  <span className="kv-key">Client discount</span>
+                  <span className="kv-val">−{clientDiscountPct}%</span>
+                </div>
+              )}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
               {running
-                ? 'Applies to future paid renewals instead of the plan discount; each successful renewal uses one cycle.'
+                ? 'Applies to future paid renewals instead of the plan/client discounts; each successful renewal uses one cycle.'
                 : exhausted
-                ? 'Exhausted — the plan discount applies again. Set a new one to grant more.'
-                : 'A per-order discount replaces the plan discount on future paid renewals.'}
+                ? 'Exhausted — the larger of the plan and client discounts applies again. Set a new one to grant more.'
+                : 'A per-order discount replaces the plan and client discounts on future paid renewals (otherwise the larger of the two applies).'}
             </div>
             {active && (
               <div style={{ display: 'flex', gap: 8 }}>

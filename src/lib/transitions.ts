@@ -2388,17 +2388,22 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     });
     if (parkedNow) throw new Error('A renewal payment is already awaiting confirmation — complete or cancel it first.');
     const payId = await nextPaymentIdInTx(tx);
-    // Guarded in-tx debit (P1-1): the snapshot read above ran OUTSIDE this tx —
-    // a concurrent spend could have drained the balance since.
-    let newBalance: number;
-    try { newBalance = await debitBalance(tx, clientId, price); }
-    catch (e) {
-      if (e instanceof InsufficientBalance) throw new Error('Insufficient balance — the balance changed, please retry');
-      throw e;
+    // $0 renewal (100% per-order grant or 100% client discount): nothing to
+    // debit — debitBalance treats <= 0 as invalid and would crash the renewal
+    // (adversarial review R2). The $0 CONFIRMED payment still books it.
+    if (price > 0) {
+      // Guarded in-tx debit (P1-1): the snapshot read above ran OUTSIDE this tx —
+      // a concurrent spend could have drained the balance since.
+      let newBalance: number;
+      try { newBalance = await debitBalance(tx, clientId, price); }
+      catch (e) {
+        if (e instanceof InsufficientBalance) throw new Error('Insufficient balance — the balance changed, please retry');
+        throw e;
+      }
+      await tx.balanceLedgerEntry.create({
+        data: { userId: clientId, op: 'ORDER_DEBIT', amount: -price, balanceAfter: newBalance, refOrderId: orderId, refPaymentId: payId, note: `Renewal of ${orderId}` },
+      });
     }
-    await tx.balanceLedgerEntry.create({
-      data: { userId: clientId, op: 'ORDER_DEBIT', amount: -price, balanceAfter: newBalance, refOrderId: orderId, refPaymentId: payId, note: `Renewal of ${orderId}` },
-    });
     await tx.payment.create({
       data: {
         id: payId, orderId, clientId,

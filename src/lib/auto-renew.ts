@@ -115,7 +115,12 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
         },
       });
 
-      {
+      // $0 renewal (100% per-order grant or 100% client discount): nothing to
+      // debit — debitBalance treats <= 0 as invalid, and the generic Error it
+      // throws would escape AutoRenewFail handling and wedge the whole sweep
+      // tick (adversarial review R2). The $0 CONFIRMED payment row above still
+      // books the renewal; no ledger row for money that never moved.
+      if (price > 0) {
         // Guarded in-tx debit (P1-1): `balance` came from the read above — if
         // a concurrent spend drained the account in between, fail the attempt
         // cleanly (tx rolls back, payment row included) and let the next

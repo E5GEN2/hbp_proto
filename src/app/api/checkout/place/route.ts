@@ -561,7 +561,10 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
 
     const invoiceId = await nextInvoiceId();
     await tx.invoice.create({ data: { id: invoiceId, paymentId, orderId: order.id, clientId: userId, amount: total } });
-    if (paymentMethod === 'balance') {
+    // total > 0: a $0 renewal (100% per-order grant or client discount) has
+    // nothing to debit — debitBalance treats <= 0 as invalid and would 500
+    // this route (adversarial review R2). The $0 payment/invoice still book it.
+    if (paymentMethod === 'balance' && total > 0) {
       // Guarded in-tx debit (P1-1) — userBalance was captured before this tx.
       const newBal = await debitBalance(tx, userId, total);
       await tx.balanceLedgerEntry.create({

@@ -10,7 +10,16 @@ import { renewalPricing } from '@/lib/renewal';
 import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 import { money } from '@/lib/money';
 
-const Schema = z.object({ orderId: z.string().optional(), paymentId: z.string().optional(), payCoin: z.string() })
+const Schema = z.object({
+  orderId: z.string().optional(),
+  paymentId: z.string().optional(),
+  payCoin: z.string(),
+  // The USD amount the recovery surface DISPLAYED when the client clicked
+  // regenerate ("the price stays the same" copy). Guard only, never a pricing
+  // input — mirrors place's expectedTotal: the re-issued charge must not be
+  // silently priced differently than the number on the open card (audit B-6).
+  expectedTotal: z.number().optional(),
+})
   .refine(v => Boolean(v.orderId) !== Boolean(v.paymentId), { message: 'Pass exactly one of orderId / paymentId' });
 
 // Floating-rate charges live ~7 days, so a lapsed charge is rare now — but it
@@ -201,6 +210,19 @@ export async function POST(req: Request) {
   // renewal charge paths use (never client-supplied).
   const repayPricing = isNewOrder ? null : renewalPricing(order.plan, order, order.client);
   const total = isNewOrder ? Number(order.amount) : repayPricing!.total;
+  // Displayed-total guard (mirrors place): pricing moved since the recovery
+  // card rendered (admin edited the client discount / plan / order grant) —
+  // refuse instead of re-issuing at a price the card never showed, right under
+  // its "the price stays the same" copy. Cent-compare; abort-only.
+  if (parse.data.expectedTotal !== undefined && Math.round(parse.data.expectedTotal * 100) !== Math.round(total * 100)) {
+    return NextResponse.json({
+      // `total` lets the recovery card update its displayed amount in place —
+      // the client then regenerates AT the shown (current) price, no dead end.
+      error: `The ${isNewOrder ? 'order' : 'renewal'} total is now ${money(total)} — pricing changed while this page was open. The amount shown has been updated; generate the address again to pay the current price.`,
+      priceChanged: true,
+      total,
+    }, { status: 409 });
+  }
   // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
   if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });
 

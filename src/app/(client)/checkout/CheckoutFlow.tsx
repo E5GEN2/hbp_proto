@@ -204,9 +204,22 @@ export function CheckoutFlow({
     try {
       const r = await fetch('/api/checkout/repay', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ orderId, payCoin: coinCode }),
+        // Renewal mode only: same displayed-total echo as placeOrder — the pay
+        // panel shows `total` as its USD amount, and a fresh renewal address
+        // must not be silently priced differently. New orders are exempt: repay
+        // always re-issues at the FROZEN order.amount (the price this wizard
+        // charged at placement), so a live-recomputed echo could only 409-loop.
+        body: JSON.stringify({ orderId, payCoin: coinCode, ...(renewOf ? { expectedTotal: total } : {}) }),
       });
       const j = await r.json().catch(() => ({} as any));
+      // Pricing moved since this panel rendered: surface the honest message
+      // and refresh the RSC props so `total` (renewalDiscount) re-arrives
+      // current — the next regenerate echoes the price now on screen.
+      if (r.status === 409 && j.priceChanged) {
+        toast('Price updated', j.error, 'danger');
+        router.refresh();
+        return;
+      }
       if (!r.ok) throw new Error(j.error ?? 'Could not create a new payment — please try again.');
       setPayData(j.payment);
     } catch (e: any) {

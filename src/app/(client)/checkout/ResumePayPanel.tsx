@@ -25,6 +25,10 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
   const [payData, setPayData] = useState<PayPanelData | null>(initial);
   const [payCoin, setPayCoin] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Displayed USD — state, not the prop: on a priceChanged 409 the server
+  // sends the current total and this card updates in place, so the client
+  // regenerates AT the shown price instead of looping on the stale one.
+  const [amount, setAmount] = useState(amountUsd);
   const coinList = useCoinList(expiredMode && !payData);
 
   async function repay(coinCode: string) {
@@ -32,9 +36,17 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
     try {
       const r = await fetch('/api/checkout/repay', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ orderId, payCoin: coinCode }),
+        // expectedTotal = the USD figure this card is showing. The server 409s
+        // if pricing moved since render, instead of re-issuing at an amount
+        // the "price stays the same" copy never showed (audit B-6).
+        body: JSON.stringify({ orderId, payCoin: coinCode, expectedTotal: amount }),
       });
       const j = await r.json().catch(() => ({} as any));
+      if (r.status === 409 && j.priceChanged && typeof j.total === 'number') {
+        setAmount(j.total);
+        toast('Price updated', j.error, 'danger');
+        return;
+      }
       if (!r.ok) throw new Error(j.error ?? 'Could not create a new payment — please try again.');
       setPayData(j.payment);
     } catch (e: any) {
@@ -47,7 +59,7 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
       <CryptoPayPanel
         key={payData.paymentId}
         pay={payData}
-        amountUsd={amountUsd}
+        amountUsd={amount}
         /* Settle lands on the same confirmation screen the in-flow wizard uses
            (/checkout?success=… — "payment confirmed" + View order button), NOT
            straight on the order page (owner 2026-08-10: no silent redirect
@@ -74,7 +86,7 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
           Already sent the funds? Don&rsquo;t send again — they&rsquo;re detected automatically and support is notified.
         </div>
         <div style={{ width: '100%', textAlign: 'left' }}>
-          <CoinSelect totalUsd={amountUsd} value={payCoin} onChange={setPayCoin}
+          <CoinSelect totalUsd={amount} value={payCoin} onChange={setPayCoin}
             coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
         </div>
         <div className="processing-actions">

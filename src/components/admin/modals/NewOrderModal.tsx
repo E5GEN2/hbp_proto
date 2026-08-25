@@ -6,9 +6,9 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { createOrderAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
-import { renewalUnitPrice } from '@/lib/renewal';
+import { renewalUnitPrice, effectiveRenewalPct, purchaseUnitPrice } from '@/lib/renewal';
 
-type ClientOpt = { id: string; name: string; email: string; balance: number };
+type ClientOpt = { id: string; name: string; email: string; balance: number; clientDiscountPct: number | null };
 type PlanOpt = { id: string; name: string; price: number; durationDays: number; carrier: string; region: string; available: number; autoProvision: boolean; renewalDiscountPct: number | null };
 
 // Mirror of the server's cent-rounding (roundCents in lib/balance.ts) so the
@@ -62,6 +62,7 @@ export function NewOrderModal({
   }, [open]);
 
   const plan = plans.find(p => p.id === planId);
+  const selClient = clients.find(c => c.id === clientId);
   const isComp = paymentMethod === 'comp';
   const autoRenew = autoRenewChoice ?? !isComp;
   const isInstant = isComp;
@@ -71,7 +72,10 @@ export function NewOrderModal({
   // paid order keeps its real terms); Comp then covers whatever is left.
   const discounted = !plan ? 0
     : discountUnit === 'usd' ? Math.max(0, round2(subtotal - discount))
-    : round2(round2(plan.price * (1 - discount / 100)) * qty);
+    // Same exact-cent helper as newOrderMoney's pct branch (and the client
+    // self-serve paths) — round2(price*(1-pct/100)) drifts a cent on half-cent
+    // boundaries, making this Total disagree with the auto-renew forecast line.
+    : round2(purchaseUnitPrice(plan.price, discount) * qty);
   const total = isComp ? 0 : discounted;
   const maxQty = plan ? Math.min(plan.available, 20) : 1;
 
@@ -150,10 +154,20 @@ export function NewOrderModal({
           <label className="form-label" id="no-client-label">Client *</label>
           <FormSelect
             value={clientId}
-            onChange={setClientId}
+            onChange={v => {
+              setClientId(v);
+              // Prefill the Discount with the client's standing discount (owner
+              // decision 2026-08-22) — re-derived on EVERY client change so one
+              // client's discount never leaks onto another. The admin can
+              // override after; the server stays explicit-only (what's sent is
+              // what's recorded).
+              const cd = clients.find(c => c.id === v)?.clientDiscountPct;
+              setDiscountUnit('pct');
+              setDiscount(cd ?? 0);
+            }}
             placeholder="Select a client…"
             ariaLabelledby="no-client-label"
-            options={clients.map(c => ({ value: c.id, label: `${c.id} · ${c.name} · ${c.email} · balance ${money(c.balance)}` }))}
+            options={clients.map(c => ({ value: c.id, label: `${c.id} · ${c.name} · ${c.email} · balance ${money(c.balance)}${c.clientDiscountPct ? ` · −${c.clientDiscountPct}%` : ''}` }))}
           />
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
@@ -180,7 +194,12 @@ export function NewOrderModal({
           </div>
         </div>
         <div>
-          <label className="form-label" htmlFor="no-discount">Discount</label>
+          <label className="form-label" htmlFor="no-discount">
+            Discount
+            {selClient?.clientDiscountPct != null && (
+              <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--muted)' }}>client −{selClient.clientDiscountPct}%</span>
+            )}
+          </label>
           <div style={{ display: 'flex', gap: 6 }}>
             <input
               id="no-discount" className="form-input"
@@ -260,10 +279,10 @@ export function NewOrderModal({
         </div>
         {autoRenew && plan && (isComp || expiresAt !== '') && (
           <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--warning)', marginTop: -6 }}>
-            {/* renewalUnitPrice × qty is exactly what attemptAutoRenew charges
-                (auto-renew.ts) — full plan price overstated it on plans with a
-                renewal discount (review find). */}
-            Auto-renew will charge the client the renewal price ({money(round2(renewalUnitPrice(plan.price, plan.renewalDiscountPct) * qty))}) from their balance at expiry
+            {/* renewalUnitPrice × qty at max(plan, client) pct is exactly what
+                attemptAutoRenew charges (renewalPricing with no active order
+                grant — this order doesn't exist yet, so it can't have one). */}
+            Auto-renew will charge the client the renewal price ({money(round2(renewalUnitPrice(plan.price, effectiveRenewalPct(plan.renewalDiscountPct, selClient?.clientDiscountPct)) * qty))}) from their balance at expiry
             {isComp ? ' — they never paid for this comp order' : ' — the custom date brings that charge forward'}.
           </div>
         )}

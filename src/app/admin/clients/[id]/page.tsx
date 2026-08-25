@@ -8,6 +8,7 @@ import { fmtAdminStamp } from '@/lib/date';
 import { ClientDetailActions } from '@/components/admin/toolbars/ClientDetailActions';
 import { ClientOrdersTable } from '@/components/admin/ClientOrdersTable';
 import { AdjustBalanceButton } from '@/components/admin/ActionButtons';
+import { ClientDiscountPanel } from '@/components/admin/ClientDiscountPanel';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
@@ -187,6 +188,8 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
                 <AdjustBalanceButton userId={c.id} />
               </div>
             </div>
+
+            <ClientDiscountPanel userId={c.id} current={c.clientDiscountPct} />
 
             {/* Preferences (read-only here; edited via Edit client) */}
             <div className="panel">

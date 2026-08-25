@@ -24,7 +24,7 @@ const IconQr = () => <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height
 const IconWarning = () => <svg viewBox="0 0 24 24"><path d="M12 2l11 19H1L12 2z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
 
 export function CheckoutFlow({
-  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscount = null, allSoldOut = false,
+  duration, qty: qtyInit, autoExtend: autoExtendInit, location: locationInit, step: stepInit, balance, plans, allowCard = true, allowCrypto = true, renewOf, renewalDiscount = null, clientDiscount = null, allSoldOut = false,
 }: {
   duration: number;
   qty: number;
@@ -41,6 +41,11 @@ export function CheckoutFlow({
   // `label` ('-15%' / '-$5.00', '' when none) feeds the discount line. A flat
   // $ discount makes unit*qty drift from total by cents — total wins.
   renewalDiscount?: { label: string; total: number } | null;
+  // New-purchase mode only: the client-level discount already baked into every
+  // plans[].price by page.tsx (purchaseUnitPrice — the same helper the place
+  // route charges with). This label just explains WHY the price is lower than
+  // the public one; renewal mode covers it via renewalDiscount instead.
+  clientDiscount?: { label: string } | null;
   allSoldOut?: boolean; // every location at capacity → sold-out → Telegram dialog on arrival
 }) {
   const router = useRouter();
@@ -116,6 +121,10 @@ export function CheckoutFlow({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           planId: plan.id, qty, autoExtend, paymentMethod: method,
+          // Displayed-total echo (guard only): the server recomputes the real
+          // total and 409s if pricing moved since this page rendered, instead
+          // of silently charging an amount the buyer never saw (audit B-6).
+          expectedTotal: total,
           ...(method === 'crypto' && payCoin ? { payCoin } : {}),
           ...(opts?.confirmDuplicate ? { confirmDuplicate: true } : {}),
           ...(renewOf ? { renewOf } : {}),
@@ -128,6 +137,15 @@ export function CheckoutFlow({
       // before charging again (accidental double-charge backstop); (b) an
       // UNPAID order for this plan exists → resolve it in the wizard rather than
       // silently teleporting to a back-less resume page (trace find #10).
+      // Pricing moved under the open page (admin edited the client discount /
+      // plan). Surface the server's honest message and refresh the RSC props —
+      // plans[].price / renewalDiscount re-arrive current, so the summary the
+      // buyer retries from shows the price that will actually be charged.
+      if (r.status === 409 && j.priceChanged) {
+        setErr(j.error);
+        router.refresh();
+        return;
+      }
       if (r.status === 409 && j.needsConfirm && j.recentOrderId) {
         setDupPaidId(j.recentOrderId);
         return;
@@ -186,9 +204,22 @@ export function CheckoutFlow({
     try {
       const r = await fetch('/api/checkout/repay', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ orderId, payCoin: coinCode }),
+        // Renewal mode only: same displayed-total echo as placeOrder — the pay
+        // panel shows `total` as its USD amount, and a fresh renewal address
+        // must not be silently priced differently. New orders are exempt: repay
+        // always re-issues at the FROZEN order.amount (the price this wizard
+        // charged at placement), so a live-recomputed echo could only 409-loop.
+        body: JSON.stringify({ orderId, payCoin: coinCode, ...(renewOf ? { expectedTotal: total } : {}) }),
       });
       const j = await r.json().catch(() => ({} as any));
+      // Pricing moved since this panel rendered: surface the honest message
+      // and refresh the RSC props so `total` (renewalDiscount) re-arrives
+      // current — the next regenerate echoes the price now on screen.
+      if (r.status === 409 && j.priceChanged) {
+        toast('Price updated', j.error, 'danger');
+        router.refresh();
+        return;
+      }
       if (!r.ok) throw new Error(j.error ?? 'Could not create a new payment — please try again.');
       setPayData(j.payment);
     } catch (e: any) {
@@ -202,6 +233,9 @@ export function CheckoutFlow({
       <div className="kv-row"><span className="kv-label">Location</span><span className="kv-val">{plan.region}</span></div>
       <div className="kv-row"><span className="kv-label">Quantity</span><span className="kv-val">{qty}</span></div>
       <div className="kv-row"><span className="kv-label">Price per proxy</span><span className="kv-val">{money(plan.price)}</span></div>
+      {!renewOf && clientDiscount && (
+        <div className="kv-row"><span className="kv-label">Client discount</span><span className="kv-val" style={{ color: 'var(--success)' }}>{clientDiscount.label} applied</span></div>
+      )}
       <div className="kv-row total"><span className="kv-label">Total Price</span><span className="kv-val">{money(total)}</span></div>
     </div>
   );

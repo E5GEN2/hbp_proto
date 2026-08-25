@@ -11,11 +11,30 @@ export function renewalUnitPrice(price: number, discountPct: number | null | und
   return Math.round(price * (100 - pct)) / 100;
 }
 
+// Client-level discount (owner decision 2026-08-22): a per-client percent off
+// ALL orders — new purchases and renewals ("special price for this client").
+// Discounts never stack: when a plan renewal discount also applies, the LARGER
+// of the two wins (an active per-order grant beats both — see renewalPricing).
+export function effectiveRenewalPct(
+  planPct: number | null | undefined,
+  clientPct: number | null | undefined,
+): number {
+  return Math.max(planPct ?? 0, clientPct ?? 0);
+}
+
+// Unit price of a NEW purchase for a given client. New purchases carry no plan
+// renewal discount, so the client discount is the only one that can apply —
+// no max() needed here. Same exact-cent rounding as renewalUnitPrice.
+export function purchaseUnitPrice(price: number, clientDiscountPct: number | null | undefined): number {
+  return renewalUnitPrice(price, clientDiscountPct);
+}
+
 // Per-order renewal discount (owner decision 2026-08-21): an admin can grant a
 // discount on a specific order's future PAID renewals — percent of the unit
 // price or a flat $ off the total — limited to N cycles or indefinite.
-// While ACTIVE it REPLACES the plan's renewalDiscountPct (never stacks);
-// exhausted (cyclesLeft === 0) or absent → the plan discount applies as before.
+// While ACTIVE it REPLACES the plan-level AND client-level discounts (never
+// stacks — the most specific grant wins); exhausted (cyclesLeft === 0) or
+// absent → max(client, plan) applies as before.
 // This is the ONE pricing function for every renewal charge and display —
 // audit B-6 rule: the shown price must always equal the charged one.
 export type OrderRenewalDiscountFields = {
@@ -35,9 +54,13 @@ export function orderRenewalDiscountActive(o: {
 export function renewalPricing(
   plan: { price: unknown; renewalDiscountPct: number | null },
   order: OrderRenewalDiscountFields,
+  // The order's client — carrier of the client-level discount (owner decision
+  // 2026-08-22). Required so no charge path can silently forget it; pass null
+  // only where no client-level discount can exist.
+  client: { clientDiscountPct: number | null } | null,
 ): {
   unit: number; total: number;
-  source: 'order' | 'plan' | 'none';
+  source: 'order' | 'client' | 'plan' | 'none';
   // Human label for the discount line, e.g. "−15%" or "−$5.00" ('' when none)
   label: string;
 } {
@@ -54,11 +77,16 @@ export function renewalPricing(
     const total = Math.max(0, round(price * order.qty - v));
     return { unit: round(total / order.qty), total, source: 'order', label: `−$${v.toFixed(2)}` };
   }
-  const pct = plan.renewalDiscountPct ?? 0;
+  // No active per-order grant → the LARGER of client-level and plan discounts
+  // (never their sum — owner decision). Tie goes to 'plan' (same money either
+  // way; only the label's source differs).
+  const planPct = plan.renewalDiscountPct ?? 0;
+  const clientPct = client?.clientDiscountPct ?? 0;
+  const pct = effectiveRenewalPct(planPct, clientPct);
   const unit = renewalUnitPrice(price, pct);
   return {
     unit, total: round(unit * order.qty),
-    source: pct > 0 ? 'plan' : 'none',
+    source: pct <= 0 ? 'none' : clientPct > planPct ? 'client' : 'plan',
     label: pct > 0 ? `−${pct}%` : '',
   };
 }

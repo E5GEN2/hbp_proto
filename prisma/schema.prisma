@@ -64,6 +64,12 @@ model User {
   // Wallet
   balance                  Decimal      @default(0) @db.Decimal(12, 2)
 
+  // Client-level special price (owner decision 2026-08-22): percent off ALL
+  // orders — new purchases AND renewals. Never stacks with a plan's
+  // renewalDiscountPct (the LARGER of the two applies); an ACTIVE per-order
+  // renewal grant beats both. NULL = none; indefinite until an admin clears it.
+  clientDiscountPct        Int?
+
   // Notification prefs
   emailRenewal             Boolean      @default(true)
   emailIncidents           Boolean      @default(true)

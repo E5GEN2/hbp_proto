@@ -28,6 +28,7 @@ export const deletePlanAction = unwrapAction(S.deletePlanAction);
 export const createOrderAction = unwrapAction(S.createOrderAction);
 export const createClientAction = unwrapAction(S.createClientAction);
 export const updateClientAction = unwrapAction(S.updateClientAction);
+export const setClientDiscountAction = unwrapAction(S.setClientDiscountAction);
 export const setClientRiskAction = unwrapAction(S.setClientRiskAction);
 export const registerProxiesAction = unwrapAction(S.registerProxiesAction);
 export const updateProxyCredentialsAction = unwrapAction(S.updateProxyCredentialsAction);

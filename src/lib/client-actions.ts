@@ -130,7 +130,19 @@ export const saveNotifPrefsAction = guarded(async function saveNotifPrefsAction(
   telegramAll?: boolean;
 }) {
   const clientId = await getClientUserId();
-  await prisma.user.update({ where: { id: clientId }, data: prefs });
+  // Explicit allowlist (adversarial review R2, P1): the TS shape is erased at
+  // runtime and server actions accept caller-controlled JSON, so spreading
+  // `prefs` straight into user.update let a scripted call write ANY User
+  // column onto the caller's own row — clientDiscountPct (self-granted
+  // pricing), balance, role. Only these four booleans pass; anything else,
+  // including non-boolean values for them, is dropped.
+  const data: { emailRenewal?: boolean; emailIncidents?: boolean; emailMarketing?: boolean; telegramAll?: boolean } = {};
+  for (const k of ['emailRenewal', 'emailIncidents', 'emailMarketing', 'telegramAll'] as const) {
+    if (typeof prefs?.[k] === 'boolean') data[k] = prefs[k];
+  }
+  if (Object.keys(data).length > 0) {
+    await prisma.user.update({ where: { id: clientId }, data });
+  }
   await prisma.log.create({
     data: { actorId: clientId, action: 'CLIENT.UPDATE', objectType: 'CLIENT', objectId: clientId, detail: 'Notification prefs updated by client' },
   });

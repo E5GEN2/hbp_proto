@@ -88,6 +88,12 @@ eq('crypto books no fee', newOrderMoney(55, 0, 0, 1, 'crypto'), { unitPrice: 55,
 eq('comp is $0 regardless of discount', newOrderMoney(55, 40, 0, 3, 'comp'), { unitPrice: 0, total: 0, fees: 0, net: 0 });
 eq('100% discount → $0 (not negative)', newOrderMoney(55, 100, 0, 2, 'stripe'), { unitPrice: 0, total: 0, fees: 0, net: 0 });
 eq('float dust killed: 0.1-style totals', newOrderMoney(10.35, 50, 0, 3, 'invoice'), { unitPrice: 5.18, total: 15.54, fees: 0, net: 15.54 });
+// Half-cent boundary parity with the client self-serve family (renewal.ts):
+// the old round2(price*(1-pct/100)) gave 1.42 here via float noise, one cent
+// under what purchaseUnitPrice/renewalUnitPrice charge the same client
+// self-serve. One pct → one price on every surface (adversarial review).
+eq('half-cent boundary matches purchaseUnitPrice', newOrderMoney(1.9, 25, 0, 1, 'crypto'), { unitPrice: 1.43, total: 1.43, fees: 0, net: 1.43 });
+eq('half-cent boundary qty>1', newOrderMoney(1.5, 15, 0, 2, 'invoice'), { unitPrice: 1.28, total: 2.56, fees: 0, net: 2.56 });
 // $ discount: comes off the TOTAL; unit = total/qty cent-rounded
 eq('usd discount off total', newOrderMoney(55, 0, 10, 2, 'invoice'), { unitPrice: 50, total: 100, fees: 0, net: 100 });
 eq('usd discount == total → $0 floor', newOrderMoney(55, 0, 110, 2, 'invoice'), { unitPrice: 0, total: 0, fees: 0, net: 0 });

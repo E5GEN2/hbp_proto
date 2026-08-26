@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
+import { loadTierGraceHours } from '@/lib/grace';
+import { orderTimeSignal, msToShort } from '@/lib/order-signals';
 import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton, CompleteRefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
@@ -183,6 +185,15 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const statusClass = order.status.toLowerCase().replace(/_/g, '-');
   const payChipClass = order.paymentStatus.toLowerCase().replace(/_/g, '-');
   const exc = order.exception ? EXC_LABEL[order.exception] : null;
+  // Time-horizon layer (status revision phase 1): live clock signal —
+  // expiring window / in grace / past grace — next to the lifecycle chip, the
+  // same taxonomy the Renewals board queues on. Clicking opens that view.
+  const tierGrace = await loadTierGraceHours();
+  const nowMs = Date.now();
+  const timeSignal = orderTimeSignal(order, activeAssignments, order.client, tierGrace, nowMs);
+  const timeToneVar = timeSignal
+    ? { danger: 'var(--danger)', warning: 'var(--warning)', violet: 'var(--violet)', success: 'var(--success)', muted: 'var(--muted)' }[timeSignal.tone]
+    : undefined;
 
   // ─── Header actions (canon grouping, gated to backend-supported moves) ─
   const status = order.status;
@@ -286,6 +297,15 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
             <div className="detail-id">{order.id}</div>
             <div className="detail-chips">
               <span className={`chip ${statusClass}`}>{cap(order.status.replace(/_/g, ' '))}</span>
+              {timeSignal && (
+                <Link
+                  href={timeSignal.href}
+                  className={`chip ${timeSignal.tone}`}
+                  /* A passed boundary must not read "until X" — that phrases a
+                     permanent closure as lifting at X (review find). */
+                  title={timeSignal.until ? `${timeSignal.untilPassed ? 'grace ended' : 'until'} ${fmtAdminStamp(timeSignal.until)}` : undefined}
+                >{timeSignal.label}</Link>
+              )}
               {ATTENTION_PAY.has(order.paymentStatus) && <span className={`chip ${payChipClass}`}>{cap(order.paymentStatus.replace(/_/g, ' '))}</span>}
               {exc && <span className={`exc-chip ${exc.tone}`}>{exc.short}</span>}
               {order.manualFulfillmentOverride && <span className="exc-chip">Manual fulfillment · payment {order.paymentStatus.toLowerCase()}</span>}
@@ -422,6 +442,18 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                 <div className="kv-row"><span className="kv-key">Created</span><span className="kv-val">{fmtAdminStamp(order.createdAt)}</span></div>
                 <div className="kv-row"><span className="kv-key">Activated</span><span className="kv-val">{order.activatedAt ? fmtAdminStamp(order.activatedAt) : '—'}</span></div>
                 <div className="kv-row"><span className="kv-key">Expires</span><span className="kv-val">{order.expiresAt ? fmtAdminStamp(order.expiresAt) : '—'}</span></div>
+                {/* Clock row (phase 1): the deadline the time-horizon chip is
+                    counting to — time left before expiry, or the grace window
+                    boundary once expired. Same live math as the header chip. */}
+                {timeSignal && timeSignal.until && (timeSignal.kind === 'expiring24' || timeSignal.kind === 'expiring3d' || timeSignal.kind === 'expiring7d') && (
+                  <div className="kv-row"><span className="kv-key">Time left</span><span className="kv-val" style={{ color: timeToneVar }}>{msToShort(timeSignal.until.getTime() - nowMs)}</span></div>
+                )}
+                {timeSignal && timeSignal.until && timeSignal.kind === 'grace' && (
+                  <div className="kv-row"><span className="kv-key">Grace until</span><span className="kv-val" style={{ color: timeToneVar }}>{fmtAdminStamp(timeSignal.until)} · {msToShort(timeSignal.until.getTime() - nowMs)} left</span></div>
+                )}
+                {timeSignal && timeSignal.until && (timeSignal.kind === 'renewalClosed' || timeSignal.kind === 'pastGraceHeld') && (
+                  <div className="kv-row"><span className="kv-key">Grace ended</span><span className="kv-val">{fmtAdminStamp(timeSignal.until)}</span></div>
+                )}
                 {!order.expiresAt && order.customExpiresAt && order.status !== 'CANCELLED' && (
                   <div className="kv-row"><span className="kv-key">Custom expiry</span><span className="kv-val">{fmtAdminStamp(order.customExpiresAt)} <span className="muted">· applies at activation</span></span></div>
                 )}

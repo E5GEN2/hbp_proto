@@ -13,6 +13,7 @@
 
 import type { OrderStatus, RenewalBucket, UserTier } from '@prisma/client';
 import { effectiveGraceHours, renewalClosed, type TierGraceHours } from './grace';
+import { fmtAdminStamp } from './date';
 
 export type OrderTimeSignal = {
   kind: 'expiring24' | 'expiring3d' | 'expiring7d' | 'grace' | 'pastGraceHeld' | 'renewalClosed' | 'renewed';
@@ -79,6 +80,27 @@ export function orderTimeSignal(
   // off — custom contracts): a contiguous renewal is STILL possible, and the
   // client is holding proxies past their paid window — flag it loudly.
   return { kind: 'pastGraceHeld', label: 'Past grace · proxies held', tone: 'danger', href: '/admin/renewals?view=expired', until: graceEnd, untilPassed: true };
+}
+
+// Serializable chip form (phase 2): the RSC pages compute the signal and hand
+// the client-side tables this plain object — Dates flattened into the ready
+// tooltip string, so every surface words the boundary identically ("until X"
+// for a future deadline, "grace ended X" for a passed one — see untilPassed).
+export type OrderSignalChip = {
+  label: string;
+  tone: OrderTimeSignal['tone'];
+  href: string;
+  tip: string | null;
+};
+
+export function timeSignalChip(sig: OrderTimeSignal | null): OrderSignalChip | null {
+  if (!sig) return null;
+  return {
+    label: sig.label,
+    tone: sig.tone,
+    href: sig.href,
+    tip: sig.until ? `${sig.untilPassed ? 'grace ended' : 'until'} ${fmtAdminStamp(sig.until)}` : null,
+  };
 }
 
 // Short human duration for "time left" copy: '45m', '5h', '2d 4h', '12d'.

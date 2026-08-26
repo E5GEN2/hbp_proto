@@ -6,6 +6,8 @@ import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { OrdersBulkTable } from '@/components/admin/OrdersBulkTable';
 import { underProvisionedOrders } from '@/lib/provisioning';
+import { loadTierGraceHours } from '@/lib/grace';
+import { orderTimeSignal, timeSignalChip } from '@/lib/order-signals';
 
 const PER_PAGE = 12;
 
@@ -63,15 +65,20 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
 
   const where = { ...baseWhere, ...viewWhere };
 
-  const [orders, totalForView, catalogItems] = await Promise.all([
+  const [orders, totalForView, catalogItems, tierGrace] = await Promise.all([
     prisma.order.findMany({
       where, orderBy: { createdAt: 'desc' },
-      include: { client: true, plan: true },
+      // assignments: the live-proxy count feeds the time-horizon signal
+      // (released vs still-held past grace); take 1 — the signal only needs
+      // zero-vs-nonzero, same as the renewalClosed predicate.
+      include: { client: true, plan: true, assignments: { where: { releasedAt: null }, take: 1, select: { id: true } } },
       skip: (page - 1) * PER_PAGE, take: PER_PAGE,
     }),
     prisma.order.count({ where }),
     prisma.catalogItem.findMany({ where: { kind: { in: ['CARRIER', 'REGION'] } } }),
+    loadTierGraceHours(),
   ]);
+  const nowMs = Date.now();
 
   // Tab counts (respect search/filter for accurate counts within the user's filter)
   const tabCounts = await prisma.order.groupBy({
@@ -173,6 +180,9 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
             region: o.region, amount: Number(o.amount),
             paymentStatus: o.paymentStatus, status: o.status, exception: o.exception,
             createdAt: o.createdAt, expiresAt: o.expiresAt,
+            // Time-horizon layer (status revision phase 2) — same live math as
+            // the detail page; the payment layer already has its own column.
+            signal: timeSignalChip(orderTimeSignal(o, o.assignments.length, o.client, tierGrace, nowMs)),
           }))} />
 
           <Pagination total={totalForView} page={page} perPage={PER_PAGE} basePath="/admin/orders" search={sp} />

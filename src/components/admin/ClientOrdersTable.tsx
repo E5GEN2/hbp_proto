@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
+import { SignalChip } from '@/components/admin/SignalChip';
+import type { OrderSignalChip } from '@/lib/order-signals';
 
 type Row = {
   id: string;
@@ -18,6 +20,8 @@ type Row = {
   autoRenew: boolean;
   status: string;
   exception: string | null;
+  // Time-horizon chip, computed server-side (status revision phase 2).
+  signal: OrderSignalChip | null;
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -101,7 +105,17 @@ export function ClientOrdersTable({ orders }: { orders: Row[] }) {
                     : <span className={`chip ${PAY_CHIP[o.paymentStatus] ?? ''} cell-tip chip-clip`} data-tip={PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}>{PAY_LABEL[o.paymentStatus] ?? o.paymentStatus}</span>}
                 </td>
                 <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'}`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
-                <td className="col-status"><span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span></td>
+                <td className="col-status">
+                  {/* Layered status (revision phase 2): lifecycle chip always,
+                      plus ONE secondary — exception first (it also drives the
+                      Problem-orders filter), else the time-horizon signal. */}
+                  <div className="chip-stack">
+                    <span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')}`}>{cap(o.status.replace(/_/g, ' '))}</span>
+                    {o.exception
+                      ? <span className="chip danger cell-tip chip-clip" data-tip={cap(o.exception.replace(/_/g, ' '))}>{cap(o.exception.replace(/_/g, ' '))}</span>
+                      : o.signal && <SignalChip chip={o.signal} clip />}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

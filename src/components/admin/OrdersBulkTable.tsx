@@ -7,6 +7,8 @@ import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { cancelOrderAction, suspendOrderAction, resumeOrderAction } from '@/lib/ui-actions/admin-actions';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
+import { SignalChip } from '@/components/admin/SignalChip';
+import type { OrderSignalChip } from '@/lib/order-signals';
 
 type Row = {
   id: string;
@@ -21,6 +23,8 @@ type Row = {
   exception: string | null;
   createdAt: Date;
   expiresAt: Date | null;
+  // Time-horizon chip, computed server-side (status revision phase 2).
+  signal: OrderSignalChip | null;
 };
 
 // Canon .dt anchor scheme: L = 64px chk + 164px Order ID + 164px Expires R-anchor
@@ -134,9 +138,16 @@ export function OrdersBulkTable({ orders }: { orders: Row[] }) {
                 <td className="col-money">{money(o.amount)}</td>
                 <td className="col-status"><span className={`chip ${o.paymentStatus.toLowerCase()} cell-tip chip-clip`} data-tip={cap(o.paymentStatus.replace(/_/g, ' '))}>{cap(o.paymentStatus.replace(/_/g, ' '))}</span></td>
                 <td className="col-status">
-                  {o.exception
-                    ? <span className="chip danger cell-tip chip-clip" data-tip={cap(o.exception.replace(/_/g, ' '))}>{cap(o.exception.replace(/_/g, ' '))}</span>
-                    : <span className={`chip ${o.status.toLowerCase().replace('_', '-')} cell-tip chip-clip`} data-tip={cap(o.status.replace(/_/g, ' '))}>{cap(o.status.replace(/_/g, ' '))}</span>}
+                  {/* Layered status (revision phase 2): the lifecycle chip is
+                      ALWAYS shown — an exception no longer displaces it — plus
+                      ONE secondary chip: the exception if present, else the
+                      time-horizon signal (payment has its own column). */}
+                  <div className="chip-stack">
+                    <span className={`chip ${o.status.toLowerCase().replace('_', '-')} cell-tip chip-clip`} data-tip={cap(o.status.replace(/_/g, ' '))}>{cap(o.status.replace(/_/g, ' '))}</span>
+                    {o.exception
+                      ? <span className="chip danger cell-tip chip-clip" data-tip={cap(o.exception.replace(/_/g, ' '))}>{cap(o.exception.replace(/_/g, ' '))}</span>
+                      : o.signal && <SignalChip chip={o.signal} clip />}
+                  </div>
                 </td>
                 <td className="col-date">{fmtAdminStamp(o.createdAt)}</td>
                 <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>

@@ -216,6 +216,10 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 .chip.violet, .chip.pending-renewal, .chip.replacement, .chip.review { background: var(--violet-dim); color: var(--violet); }
 .chip.muted { background: var(--bg-hover); color: var(--muted); }
 .chip.accent { background: var(--accent-dim); color: var(--accent-text); }
+/* Two-layer status cell (status revision phase 2): the lifecycle chip stacked
+   over ONE secondary chip (exception or time-horizon). Left-aligned so the
+   stack reads as one unit inside canon table cells. */
+.chip-stack { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
 
 /* ===== Buttons ===== */
 .btn {

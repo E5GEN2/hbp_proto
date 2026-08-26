@@ -7,6 +7,8 @@ import { ConfirmAction } from '@/components/ui/ConfirmAction';
 import { ExtendOrderModal } from '@/components/admin/modals/ExtendOrderModal';
 import { cancelOrderAction, markPaidAction } from '@/lib/ui-actions/admin-actions';
 import { fmtAdminStamp } from '@/lib/date';
+import { SignalChip } from '@/components/admin/SignalChip';
+import type { OrderSignalChip } from '@/lib/order-signals';
 
 export type RenewalRow = {
   id: string;
@@ -22,6 +24,9 @@ export type RenewalRow = {
   exception: string | null;
   autoRenew: boolean;
   paymentId: string | null;   // awaiting payment id (for Mark paid)
+  // Live time-horizon chip (status revision phase 2) — the row's true clock
+  // state, independent of the bucket the tab queued it under.
+  signal: OrderSignalChip | null;
 };
 
 
@@ -34,17 +39,23 @@ function extendLabel(view: string): string {
   return 'Extend';
 }
 
-function statusChip(o: RenewalRow) {
-  if (o.status === 'PENDING_RENEWAL') return <span className="chip pending-renewal">Pending payment</span>;
-  if (o.exception) {
-    return o.status === 'EXPIRED'
-      ? <span className="chip expired">Expired</span>
-      : <span className="chip pending">Exception</span>;
-  }
-  if (o.renewalBucket === 'GRACE') return <span className="chip grace">Grace</span>;
-  if (o.renewalBucket === 'RENEWED') return <span className="chip active">Renewed</span>;
-  if (o.renewalBucket === 'EXPIRED' || o.status === 'EXPIRED') return <span className="chip expired">Expired</span>;
-  return <span className="chip pending">Expiring</span>;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+// Layered status (revision phase 2, replacing the old bucket-driven cascade):
+// the LIFECYCLE chip is always shown — a SUSPENDED order queued under a stale
+// frozen bucket now reads "Suspended", not "Expiring" — plus ONE secondary
+// chip: the exception (named, not a generic "Exception") if present, else the
+// live time-horizon signal ("Expiring · 24h/3d/7d" — more precise than the old
+// single "Expiring", and honest when a row's clock disagrees with its tab).
+function statusCell(o: RenewalRow) {
+  return (
+    <div className="chip-stack">
+      <span className={`chip ${o.status.toLowerCase().replace(/_/g, '-')} cell-tip chip-clip`} data-tip={cap(o.status.replace(/_/g, ' '))}>{cap(o.status.replace(/_/g, ' '))}</span>
+      {o.exception
+        ? <span className="chip danger cell-tip chip-clip" data-tip={cap(o.exception.replace(/_/g, ' '))}>{cap(o.exception.replace(/_/g, ' '))}</span>
+        : o.signal && <SignalChip chip={o.signal} clip />}
+    </div>
+  );
 }
 
 export function RenewalsBulkTable({ rows, view }: { rows: RenewalRow[]; view: string }) {
@@ -184,7 +195,7 @@ export function RenewalsBulkTable({ rows, view }: { rows: RenewalRow[]; view: st
                 <td className="col-text muted">{o.planName}</td>
                 <td className="col-date">{fmtAdminStamp(o.expiresAt)}</td>
                 <td className={`col-date ${o.lastReminderAt ? '' : 'muted'}`}>{o.lastReminderAt ? fmtAdminStamp(o.lastReminderAt) : '—'}</td>
-                <td className="col-status">{statusChip(o)}</td>
+                <td className="col-status">{statusCell(o)}</td>
                 <td className="col-status"><span className={`chip ${o.autoRenew ? 'active' : 'expired'}`}>{o.autoRenew ? 'ON' : 'OFF'}</span></td>
               </tr>
             ))}

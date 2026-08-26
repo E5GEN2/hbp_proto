@@ -13,6 +13,7 @@ import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
 import { loadTierGraceHours, effectiveGraceHours, DEFAULT_TIER_GRACE_HOURS } from '@/lib/grace';
+import { orderTimeSignal, timeSignalChip } from '@/lib/order-signals';
 
 const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -118,6 +119,9 @@ export default async function AdminClientDetail({ params }: { params: { id: stri
               autoRenew: o.autoRenew,
               status: o.status,
               exception: o.exception,
+              // Time-horizon layer (status revision phase 2) — the client row
+              // itself carries the grace inputs; assignments are the live set.
+              signal: timeSignalChip(orderTimeSignal(o, o.assignments.length, c, tierGrace, Date.now())),
             }))} />
 
             {/* Payments */}

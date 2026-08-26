@@ -7,7 +7,8 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { loadTierGraceHours } from '@/lib/grace';
-import { orderTimeSignal, msToShort } from '@/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, msToShort } from '@/lib/order-signals';
+import { SignalChip } from '@/components/admin/SignalChip';
 import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton, CompleteRefundButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
@@ -191,6 +192,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   const tierGrace = await loadTierGraceHours();
   const nowMs = Date.now();
   const timeSignal = orderTimeSignal(order, activeAssignments, order.client, tierGrace, nowMs);
+  const timeChip = timeSignalChip(timeSignal);
   const timeToneVar = timeSignal
     ? { danger: 'var(--danger)', warning: 'var(--warning)', violet: 'var(--violet)', success: 'var(--success)', muted: 'var(--muted)' }[timeSignal.tone]
     : undefined;
@@ -297,15 +299,10 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
             <div className="detail-id">{order.id}</div>
             <div className="detail-chips">
               <span className={`chip ${statusClass}`}>{cap(order.status.replace(/_/g, ' '))}</span>
-              {timeSignal && (
-                <Link
-                  href={timeSignal.href}
-                  className={`chip ${timeSignal.tone}`}
-                  /* A passed boundary must not read "until X" — that phrases a
-                     permanent closure as lifting at X (review find). */
-                  title={timeSignal.until ? `${timeSignal.untilPassed ? 'grace ended' : 'until'} ${fmtAdminStamp(timeSignal.until)}` : undefined}
-                >{timeSignal.label}</Link>
-              )}
+              {/* One renderer for the horizon chip everywhere (phase 2) — the
+                  tip wording, passed-boundary rule included, lives in
+                  timeSignalChip. */}
+              {timeChip && <SignalChip chip={timeChip} />}
               {ATTENTION_PAY.has(order.paymentStatus) && <span className={`chip ${payChipClass}`}>{cap(order.paymentStatus.replace(/_/g, ' '))}</span>}
               {exc && <span className={`exc-chip ${exc.tone}`}>{exc.short}</span>}
               {order.manualFulfillmentOverride && <span className="exc-chip">Manual fulfillment · payment {order.paymentStatus.toLowerCase()}</span>}

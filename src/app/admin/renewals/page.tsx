@@ -5,6 +5,8 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { RenewalsBulkTable, type RenewalRow } from '@/components/admin/RenewalsBulkTable';
+import { loadTierGraceHours } from '@/lib/grace';
+import { orderTimeSignal, timeSignalChip } from '@/lib/order-signals';
 
 const PER_PAGE = 10;
 
@@ -66,6 +68,8 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
     countFor('24h'), countFor('3d'), countFor('7d'),
     countFor('grace'), countFor('expired'), countFor('renewed'),
   ]);
+  const tierGrace = await loadTierGraceHours();
+  const nowMs = Date.now();
 
   const carriers = catalogItems.filter(c => c.kind === 'CARRIER').map(c => ({ value: c.value, label: c.value }));
   const regions = catalogItems.filter(c => c.kind === 'REGION').map(c => ({ value: c.value, label: c.value }));
@@ -80,10 +84,15 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
     expiresAt: o.expiresAt,
     lastReminderAt: o.lastReminderAt,
     status: o.status,
-    renewalBucket: o.renewalBucket,
     exception: o.exception,
     autoRenew: o.autoRenew,
     paymentId: o.payments[0]?.id ?? null,
+    // Time-horizon layer (status revision phase 2), computed LIVE — on this
+    // board it deliberately double-checks the bucket the tab queued on: a row
+    // whose live signal disagrees with its tab (e.g. a SUSPENDED order with a
+    // frozen bucket, or a boundary crossed since the last sweep tick) shows
+    // its true state instead of inheriting the tab's claim.
+    signal: o.client ? timeSignalChip(orderTimeSignal(o, o.assignments.length, o.client, tierGrace, nowMs)) : null,
   }));
 
   const sp = new URLSearchParams();

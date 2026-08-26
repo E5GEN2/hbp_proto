@@ -216,6 +216,10 @@ button { font: inherit; color: inherit; background: none; border: none; padding:
 .chip.violet, .chip.pending-renewal, .chip.replacement, .chip.review { background: var(--violet-dim); color: var(--violet); }
 .chip.muted { background: var(--bg-hover); color: var(--muted); }
 .chip.accent { background: var(--accent-dim); color: var(--accent-text); }
+/* Two-layer status cell (status revision phase 2): the lifecycle chip stacked
+   over ONE secondary chip (exception or time-horizon). Left-aligned so the
+   stack reads as one unit inside canon table cells. */
+.chip-stack { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
 
 /* ===== Buttons ===== */
 .btn {
@@ -1259,12 +1263,18 @@ table.dt thead th:has(.th-label) { overflow: visible; }
 /* Chip columns anchored to the widest COMMON chip: rare overlong labels clip
    (no ellipsis inside a pill) but carry .cell-tip so hover reveals the full
    text. */
-.cell-tip.chip-clip {
+.cell-tip.chip-clip,
+.chip.chip-clip {
   /* Stay an inline pill: .cell-tip's display:block is later in source than
      .chip's inline-flex and would stretch the chip to full cell width. The
      max-width cap makes the CHIP itself overflow when the label is too long,
      so the TipFloater clip-gate fires on the chip, and the clip happens
-     inside the pill. */
+     inside the pill.
+     .chip.chip-clip (no .cell-tip): same geometry for chips that carry a
+     NON-REDUNDANT data-tip (e.g. the time-horizon boundary) — without
+     .cell-tip they hit TipFloater's unconditional bare-[data-tip] branch, so
+     the extra info is reachable even when the label fits (review find: the
+     clip-gate made boundary tips unreachable on every fitting label). */
   display: inline-flex;
   max-width: 100%;
   min-width: 0;

@@ -1,8 +1,9 @@
 // Standalone assertion test for the time-horizon order signal (status revision
 // phase 1) — no test runner in the repo, same pattern as test-grace.ts.
 // Run: pnpm exec tsx scripts/test-order-signals.ts
-import { orderTimeSignal, msToShort, type OrderTimeSignal } from '../src/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, msToShort, type OrderTimeSignal } from '../src/lib/order-signals';
 import { DEFAULT_TIER_GRACE_HOURS } from '../src/lib/grace';
+import { fmtAdminStamp } from '../src/lib/date';
 
 let pass = 0, fail = 0;
 function eq(label: string, got: unknown, want: unknown) {
@@ -75,6 +76,25 @@ kindOf('ACTIVE without expiresAt → no signal', orderTimeSignal(ord('ACTIVE', n
   eq('renewalClosed boundary is passed', c.untilPassed, true);
   const h = orderTimeSignal(ord('EXPIRED', -30), 2, std, TG, NOW)!;
   eq('pastGraceHeld boundary is passed', h.untilPassed, true);
+}
+
+// ── timeSignalChip (serializable form for the list tables, phase 2) ──
+{
+  eq('chip of null is null', timeSignalChip(null), null);
+  const s = orderTimeSignal(ord('ACTIVE', 5), 2, std, TG, NOW)!;
+  eq('future boundary tip says "until"', timeSignalChip(s), {
+    label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h',
+    tip: `until ${fmtAdminStamp(new Date(NOW + 5 * H))}`,
+  });
+  const c = orderTimeSignal(ord('EXPIRED', -30), 0, std, TG, NOW)!;
+  eq('passed boundary tip says "grace ended"', timeSignalChip(c), {
+    label: 'Renewal closed', tone: 'muted', href: '/admin/renewals?view=expired',
+    tip: `grace ended ${fmtAdminStamp(new Date(NOW - 30 * H + 24 * H))}`,
+  });
+  const r = orderTimeSignal(ord('ACTIVE', 200, 'RENEWED'), 2, std, TG, NOW)!;
+  eq('renewed chip has no tip', timeSignalChip(r), {
+    label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', tip: null,
+  });
 }
 
 // ── msToShort ──

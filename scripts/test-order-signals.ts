@@ -1,7 +1,7 @@
 // Standalone assertion test for the time-horizon order signal (status revision
 // phase 1) — no test runner in the repo, same pattern as test-grace.ts.
 // Run: pnpm exec tsx scripts/test-order-signals.ts
-import { orderTimeSignal, timeSignalChip, msToShort, type OrderTimeSignal } from '../src/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, msToShort, targetBucket, bucketQueueWhere, BUCKET_CLOCK_STATUSES, type OrderTimeSignal } from '../src/lib/order-signals';
 import { DEFAULT_TIER_GRACE_HOURS } from '../src/lib/grace';
 import { fmtAdminStamp } from '../src/lib/date';
 
@@ -96,6 +96,37 @@ kindOf('ACTIVE without expiresAt → no signal', orderTimeSignal(ord('ACTIVE', n
     label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', tip: null,
   });
 }
+
+// ── targetBucket (queue classifier, moved from sweep.ts in phase 3 —
+//    boundaries must stay in lockstep with the display windows above) ──
+{
+  const tb = (hoursToExpiry: number | null, bucket: 'RENEWED' | null = null, graceHours = 24) =>
+    targetBucket({ expiresAt: hoursToExpiry === null ? null : new Date(NOW + hoursToExpiry * H), renewalBucket: bucket as any, graceHours }, NOW);
+  eq('no expiry → no bucket', tb(null), null);
+  eq('5h → H24', tb(5), 'H24');
+  eq('exactly 24h → H24', tb(24), 'H24');
+  eq('25h → D3', tb(25), 'D3');
+  eq('100h → D7', tb(100), 'D7');
+  eq('exactly 168h → D7', tb(168), 'D7');
+  eq('169h no sticky → null', tb(169), null);
+  eq('169h RENEWED sticky survives', tb(169, 'RENEWED'), 'RENEWED');
+  eq('5h past, 24h grace → GRACE', tb(-5), 'GRACE');
+  eq('30h past, 24h grace → EXPIRED', tb(-30), 'EXPIRED');
+  eq('30h past, 72h grace → GRACE', tb(-30, null, 72), 'GRACE');
+  // Boundary parity with the display layer: both sides classify the same
+  // instant into the same window (inclusive <=24/<=72/<=168 on hoursLeft).
+  for (const h of [24, 25, 72, 73, 168]) {
+    const sig = orderTimeSignal(ord('ACTIVE', h), 2, std, TG, NOW)!;
+    const want = { expiring24: 'H24', expiring3d: 'D3', expiring7d: 'D7' }[sig.kind as string];
+    eq(`window parity at ${h}h`, tb(h), want);
+  }
+}
+
+// ── bucketQueueWhere (the one where-shape every bucket reader counts with) ──
+eq('queue where carries the clock-status gate', bucketQueueWhere('H24'), {
+  renewalBucket: 'H24', status: { in: ['ACTIVE', 'EXPIRED'] },
+});
+eq('clock statuses are exactly ACTIVE+EXPIRED', BUCKET_CLOCK_STATUSES, ['ACTIVE', 'EXPIRED']);
 
 // ── msToShort ──
 eq('sub-minute floors', msToShort(30_000), '<1m');

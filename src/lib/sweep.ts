@@ -9,6 +9,9 @@ import { failAwaitingPayment } from './settle-payment';
 import { reconcileCryptoPayments } from './np-reconcile';
 import { loadTierGraceHours, effectiveGraceHours, loadReminderDefaultHours, effectiveReminderHours } from './grace';
 import { applyCustomExpiry } from './new-order-policy';
+// The bucket classifier lives beside the display taxonomy (status revision
+// phase 3) — one set of window boundaries for the queue and the chips.
+import { targetBucket } from './order-signals';
 import type { RenewalBucket } from '@prisma/client';
 
 /**
@@ -84,20 +87,6 @@ async function notify(userId: string, title: string, kind: 'INFO' | 'WARNING' | 
 // actorId null renders as "System" in the admin log table
 async function log(action: string, objectType: 'ORDER' | 'PAYMENT', objectId: string, detail: string) {
   await prisma.log.create({ data: { actorId: null, action, objectType, objectId, detail } });
-}
-
-function targetBucket(order: { expiresAt: Date | null; renewalBucket: RenewalBucket | null; graceHours: number }, now: number): RenewalBucket | null {
-  if (!order.expiresAt) return null;
-  const msLeft = order.expiresAt.getTime() - now;
-  if (msLeft <= 0) {
-    return now < order.expiresAt.getTime() + order.graceHours * 3_600_000 ? 'GRACE' : 'EXPIRED';
-  }
-  const hoursLeft = msLeft / 3_600_000;
-  if (hoursLeft <= 24) return 'H24';
-  if (hoursLeft <= 72) return 'D3';
-  if (hoursLeft <= 168) return 'D7';
-  // Beyond 7 days out: keep "Renewal paid" visible on the renewals board
-  return order.renewalBucket === 'RENEWED' ? 'RENEWED' : null;
 }
 
 let running = false;

@@ -82,6 +82,44 @@ export function orderTimeSignal(
   return { kind: 'pastGraceHeld', label: 'Past grace · proxies held', tone: 'danger', href: '/admin/renewals?view=expired', until: graceEnd, untilPassed: true };
 }
 
+// ── The renewalBucket QUEUE taxonomy (phase 3) ──────────────────────────────
+// The bucket column materializes the same 24h/3d/7d/grace windows for the
+// Renewals board. Only these statuses have a running clock — the sweep
+// classifies exactly this set, cancelOrder/suspendOrder clear the bucket on
+// the way out, and every bucket READER must carry the same gate so a stale
+// bucket (legacy rows, direct writes) can never resurface a frozen order in
+// a queue, a KPI or the bell.
+export const BUCKET_CLOCK_STATUSES: OrderStatus[] = ['ACTIVE', 'EXPIRED'];
+
+// The one where-shape for reading a bucket queue: dashboard KPIs/strip, the
+// Renewals tabs and the admin bell all count with THIS, so every counter
+// equals the list it links to (coherent-signals rule).
+export function bucketQueueWhere(bucket: RenewalBucket): { renewalBucket: RenewalBucket; status: { in: OrderStatus[] } } {
+  return { renewalBucket: bucket, status: { in: BUCKET_CLOCK_STATUSES } };
+}
+
+// The sweep's bucket classifier (moved here from sweep.ts in phase 3 so the
+// queue taxonomy lives beside the display taxonomy above — one set of
+// boundaries, two consumers). Returns the bucket an order belongs to at
+// `now`, or null when its clock is quiet (no expiry, or >7d out without a
+// sticky RENEWED marker).
+export function targetBucket(
+  order: { expiresAt: Date | null; renewalBucket: RenewalBucket | null; graceHours: number },
+  now: number,
+): RenewalBucket | null {
+  if (!order.expiresAt) return null;
+  const msLeft = order.expiresAt.getTime() - now;
+  if (msLeft <= 0) {
+    return now < order.expiresAt.getTime() + order.graceHours * 3_600_000 ? 'GRACE' : 'EXPIRED';
+  }
+  const hoursLeft = msLeft / 3_600_000;
+  if (hoursLeft <= 24) return 'H24';
+  if (hoursLeft <= 72) return 'D3';
+  if (hoursLeft <= 168) return 'D7';
+  // Beyond 7 days out: keep "Renewal paid" visible on the renewals board
+  return order.renewalBucket === 'RENEWED' ? 'RENEWED' : null;
+}
+
 // Serializable chip form (phase 2): the RSC pages compute the signal and hand
 // the client-side tables this plain object — Dates flattened into the ready
 // tooltip string, so every surface words the boundary identically ("until X"

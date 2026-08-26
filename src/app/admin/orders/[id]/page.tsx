@@ -301,7 +301,9 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
                 <Link
                   href={timeSignal.href}
                   className={`chip ${timeSignal.tone}`}
-                  title={timeSignal.until ? `until ${fmtAdminStamp(timeSignal.until)}` : undefined}
+                  /* A passed boundary must not read "until X" — that phrases a
+                     permanent closure as lifting at X (review find). */
+                  title={timeSignal.until ? `${timeSignal.untilPassed ? 'grace ended' : 'until'} ${fmtAdminStamp(timeSignal.until)}` : undefined}
                 >{timeSignal.label}</Link>
               )}
               {ATTENTION_PAY.has(order.paymentStatus) && <span className={`chip ${payChipClass}`}>{cap(order.paymentStatus.replace(/_/g, ' '))}</span>}

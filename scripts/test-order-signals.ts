@@ -64,11 +64,17 @@ kindOf('ACTIVE without expiresAt → no signal', orderTimeSignal(ord('ACTIVE', n
 // ── vocabulary invariants: label/tone/href fixed per kind ──
 {
   const s = orderTimeSignal(ord('ACTIVE', 5), 2, std, TG, NOW)!;
-  eq('24h chip contract', { label: s.label, tone: s.tone, href: s.href }, { label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h' });
+  eq('24h chip contract', { label: s.label, tone: s.tone, href: s.href, untilPassed: s.untilPassed }, { label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h', untilPassed: false });
   const g = orderTimeSignal(ord('EXPIRED', -5), 2, std, TG, NOW)!;
-  eq('grace chip contract', { label: g.label, tone: g.tone, href: g.href }, { label: 'In grace', tone: 'warning', href: '/admin/renewals?view=grace' });
+  eq('grace chip contract', { label: g.label, tone: g.tone, href: g.href, untilPassed: g.untilPassed }, { label: 'In grace', tone: 'warning', href: '/admin/renewals?view=grace', untilPassed: false });
   const r = orderTimeSignal(ord('ACTIVE', 200, 'RENEWED'), 2, std, TG, NOW)!;
   eq('renewed chip contract', { label: r.label, tone: r.tone, href: r.href, until: r.until }, { label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', until: null });
+  // Past-grace kinds carry a PASSED boundary — surfaces must word it "grace
+  // ended", never "until" (review find: "until <past date>" inverts meaning).
+  const c = orderTimeSignal(ord('EXPIRED', -30), 0, std, TG, NOW)!;
+  eq('renewalClosed boundary is passed', c.untilPassed, true);
+  const h = orderTimeSignal(ord('EXPIRED', -30), 2, std, TG, NOW)!;
+  eq('pastGraceHeld boundary is passed', h.untilPassed, true);
 }
 
 // ── msToShort ──

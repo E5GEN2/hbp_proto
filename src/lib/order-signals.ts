@@ -25,6 +25,12 @@ export type OrderTimeSignal = {
   // The clock boundary behind the signal: the expiry for expiring*, the grace
   // end for grace/pastGraceHeld/renewalClosed; null for the sticky renewed.
   until: Date | null;
+  // Whether that boundary is already in the past (the two past-grace kinds).
+  // Surfaces MUST word the stamp accordingly — "until <stamp>" for a future
+  // deadline, "grace ended <stamp>" for a passed one: phrasing a past grace
+  // end as "until X" reads as the closure lifting at X, the inverse of the
+  // truth (adversarial review P1-review finding).
+  untilPassed: boolean;
 };
 
 // The 24h/3d/7d windows are the same boundaries the sweep's targetBucket uses
@@ -48,12 +54,12 @@ export function orderTimeSignal(
 
   if (msLeft > 0) {
     const hoursLeft = msLeft / 3_600_000;
-    if (hoursLeft <= 24) return { kind: 'expiring24', label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h', until: order.expiresAt };
-    if (hoursLeft <= 72) return { kind: 'expiring3d', label: 'Expiring · 3d', tone: 'warning', href: '/admin/renewals?view=3d', until: order.expiresAt };
-    if (hoursLeft <= 168) return { kind: 'expiring7d', label: 'Expiring · 7d', tone: 'violet', href: '/admin/renewals?view=7d', until: order.expiresAt };
+    if (hoursLeft <= 24) return { kind: 'expiring24', label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h', until: order.expiresAt, untilPassed: false };
+    if (hoursLeft <= 72) return { kind: 'expiring3d', label: 'Expiring · 3d', tone: 'warning', href: '/admin/renewals?view=3d', until: order.expiresAt, untilPassed: false };
+    if (hoursLeft <= 168) return { kind: 'expiring7d', label: 'Expiring · 7d', tone: 'violet', href: '/admin/renewals?view=7d', until: order.expiresAt, untilPassed: false };
     // Beyond 7 days the clock is quiet; surface the sticky "renewal paid"
     // marker so a freshly-renewed order reads as resolved, not unsignalled.
-    if (order.renewalBucket === 'RENEWED') return { kind: 'renewed', label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', until: null };
+    if (order.renewalBucket === 'RENEWED') return { kind: 'renewed', label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', until: null, untilPassed: false };
     return null;
   }
 
@@ -64,15 +70,15 @@ export function orderTimeSignal(
   // early is honest and matches the clock-based server renewal guards.
   const graceEnd = new Date(expMs + effectiveGraceHours(client, tierGrace) * 3_600_000);
   if (nowMs <= graceEnd.getTime()) {
-    return { kind: 'grace', label: 'In grace', tone: 'warning', href: '/admin/renewals?view=grace', until: graceEnd };
+    return { kind: 'grace', label: 'In grace', tone: 'warning', href: '/admin/renewals?view=grace', until: graceEnd, untilPassed: false };
   }
   if (renewalClosed(order.expiresAt, liveAssignments, client, tierGrace, nowMs)) {
-    return { kind: 'renewalClosed', label: 'Renewal closed', tone: 'muted', href: '/admin/renewals?view=expired', until: graceEnd };
+    return { kind: 'renewalClosed', label: 'Renewal closed', tone: 'muted', href: '/admin/renewals?view=expired', until: graceEnd, untilPassed: true };
   }
   // Past grace but proxies still bound (the autoReleaseAfterGrace kill-switch
   // off — custom contracts): a contiguous renewal is STILL possible, and the
   // client is holding proxies past their paid window — flag it loudly.
-  return { kind: 'pastGraceHeld', label: 'Past grace · proxies held', tone: 'danger', href: '/admin/renewals?view=expired', until: graceEnd };
+  return { kind: 'pastGraceHeld', label: 'Past grace · proxies held', tone: 'danger', href: '/admin/renewals?view=expired', until: graceEnd, untilPassed: true };
 }
 
 // Short human duration for "time left" copy: '45m', '5h', '2d 4h', '12d'.

@@ -1636,7 +1636,11 @@ export async function blockClient({
       for (const o of active) {
         await tx.order.update({
           where: { id: o.id },
-          data: { status: 'SUSPENDED', autoRenewBeforeSuspend: o.autoRenew, autoRenew: false },
+          // renewalBucket: null — same bucket hygiene as suspendOrder/
+          // cancelOrder (review find: this third SUSPENDED writer kept
+          // minting stale-bucket rows, and a later resume would re-classify
+          // from the stale sticky instead of a clean slate).
+          data: { status: 'SUSPENDED', autoRenewBeforeSuspend: o.autoRenew, autoRenew: false, renewalBucket: null },
         });
         suspended++;
       }

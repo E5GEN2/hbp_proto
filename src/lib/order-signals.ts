@@ -98,6 +98,17 @@ export function bucketQueueWhere(bucket: RenewalBucket): { renewalBucket: Renewa
   return { renewalBucket: bucket, status: { in: BUCKET_CLOCK_STATUSES } };
 }
 
+// RENEWED is a sticky MARKER, not a clock window, so its queue is wider than
+// the clock gate (review find): a paid renewal that hit a short pool sits in
+// PROVISIONING with expiresAt null (reprovisionRenewedOrder's clock-held
+// state) and renewalBucket RENEWED — exactly the row the Renewal-paid tab
+// exists to surface for manual Assign. Frozen/terminal statuses stay out.
+export const RENEWED_QUEUE_STATUSES: OrderStatus[] = ['ACTIVE', 'EXPIRED', 'PROVISIONING'];
+
+export function renewedQueueWhere(): { renewalBucket: RenewalBucket; status: { in: OrderStatus[] } } {
+  return { renewalBucket: 'RENEWED', status: { in: RENEWED_QUEUE_STATUSES } };
+}
+
 // The sweep's bucket classifier (moved here from sweep.ts in phase 3 so the
 // queue taxonomy lives beside the display taxonomy above — one set of
 // boundaries, two consumers). Returns the bucket an order belongs to at
@@ -110,6 +121,11 @@ export function targetBucket(
   if (!order.expiresAt) return null;
   const msLeft = order.expiresAt.getTime() - now;
   if (msLeft <= 0) {
+    // NB: strict `<` at the grace end (the sweep's historical boundary),
+    // while the display layer above counts the exact instant as still-grace
+    // (`<=`, matching isPastGrace). The two disagree for that one instant
+    // only — harmless (the queue re-buckets on the next tick, the chip is
+    // live) and pinned by the test suite so a real drift can't hide in it.
     return now < order.expiresAt.getTime() + order.graceHours * 3_600_000 ? 'GRACE' : 'EXPIRED';
   }
   const hoursLeft = msLeft / 3_600_000;

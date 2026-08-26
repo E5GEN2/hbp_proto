@@ -20,7 +20,7 @@ const CAP_LABEL: Record<string, string> = {
 export default async function AdminDashboardPage() {
   await requireAdmin();
   const [
-    paidToday, revenue30dAgg, activeOrders, activeClients, expiringToday, inGrace,
+    paidToday, revenue30dAgg, activeOrders, activeClients, expiring24h, inGrace,
     recentOrders, capacityRows, healthBuckets,
   ] = await Promise.all([
     prisma.payment.aggregate({
@@ -94,7 +94,7 @@ export default async function AdminDashboardPage() {
     <>
       <AdminTopbar title="Dashboard" />
       <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-        {/* KPI row — Paid Today · Revenue 30D · Active Orders · Active Clients · Expiring Today · In Grace Period */}
+        {/* KPI row — Paid Today · Revenue 30D · Active Orders · Active Clients · Expiring · 24h · In Grace Period */}
         <div className="kpi-row" style={{ marginBottom: 16 }}>
           <Link className="kpi-card" href="/admin/payments?view=confirmed" title="Open Payments · Confirmed">
             <div className="kpi-label">Paid Today</div>
@@ -118,7 +118,7 @@ export default async function AdminDashboardPage() {
           </Link>
           <Link className="kpi-card" href="/admin/renewals?view=24h" title="Open Renewals · Next 24h">
             <div className="kpi-label">Expiring · 24h</div>
-            <div className="kpi-value tone-warning">{expiringToday}</div>
+            <div className="kpi-value tone-warning">{expiring24h}</div>
             <div className="kpi-accent-bar full orange" />
           </Link>
           <Link className="kpi-card" href="/admin/renewals?view=grace" title="Open Renewals · In grace">

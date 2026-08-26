@@ -6,7 +6,7 @@ import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { RenewalsBulkTable, type RenewalRow } from '@/components/admin/RenewalsBulkTable';
 import { loadTierGraceHours } from '@/lib/grace';
-import { orderTimeSignal, timeSignalChip, bucketQueueWhere } from '@/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, bucketQueueWhere, renewedQueueWhere } from '@/lib/order-signals';
 
 const PER_PAGE = 10;
 
@@ -24,7 +24,10 @@ function bucketWhere(view: string): any {
     case '7d':      return bucketQueueWhere('D7');
     case 'grace':   return bucketQueueWhere('GRACE');
     case 'expired': return bucketQueueWhere('EXPIRED');
-    case 'renewed': return { OR: [bucketQueueWhere('RENEWED'), { status: 'PENDING_RENEWAL' }] };
+    // renewedQueueWhere, not the clock gate: a paid renewal stuck in
+    // re-provisioning (short pool → PROVISIONING, clock held) must stay on
+    // this tab — it is the tab's primary manual-Assign queue (review find).
+    case 'renewed': return { OR: [renewedQueueWhere(), { status: 'PENDING_RENEWAL' }] };
     default:        return {};
   }
 }

@@ -24,8 +24,10 @@ export function ClientDiscountPanel({
   async function save() {
     setErr(null);
     const v = parseFloat(value);
-    if (!Number.isFinite(v) || !Number.isInteger(v) || v < 1 || v > 100) {
-      return setErr('Percent must be an integer 1..100');
+    // 99 cap (owner decision 2026-08-26): 100% meant free-everything-forever —
+    // that's what per-order Comp / renewal grants are for.
+    if (!Number.isFinite(v) || !Number.isInteger(v) || v < 1 || v > 99) {
+      return setErr('Percent must be an integer 1..99');
     }
     setPending(true);
     try {
@@ -75,7 +77,7 @@ export function ClientDiscountPanel({
           <>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
-                className="form-input" type="number" min={1} max={100} step={1}
+                className="form-input" type="number" min={1} max={99} step={1}
                 value={value} onChange={e => setValue(e.target.value)}
                 placeholder="e.g. 10"
                 aria-label="Discount percent" style={{ flex: 1 }}

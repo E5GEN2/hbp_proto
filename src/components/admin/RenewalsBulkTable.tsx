@@ -20,7 +20,6 @@ export type RenewalRow = {
   expiresAt: Date | null;
   lastReminderAt: Date | null;
   status: string;             // OrderStatus
-  renewalBucket: string | null;
   exception: string | null;
   autoRenew: boolean;
   paymentId: string | null;   // awaiting payment id (for Mark paid)

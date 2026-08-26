@@ -84,7 +84,6 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
     expiresAt: o.expiresAt,
     lastReminderAt: o.lastReminderAt,
     status: o.status,
-    renewalBucket: o.renewalBucket,
     exception: o.exception,
     autoRenew: o.autoRenew,
     paymentId: o.payments[0]?.id ?? null,

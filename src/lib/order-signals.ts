@@ -98,6 +98,32 @@ export function bucketQueueWhere(bucket: RenewalBucket): { renewalBucket: Renewa
   return { renewalBucket: bucket, status: { in: BUCKET_CLOCK_STATUSES } };
 }
 
+// ── Live pre-expiry windows (phase 4) ───────────────────────────────────────
+// The 24h/3d/7d queues read LIVE: a pure expiresAt range needs no per-client
+// data, so the Renewals tabs, the dashboard KPI/strip and the row chips all
+// share the display layer's exact boundaries with ZERO sweep lag (the bucket
+// column lags up to one 5-min tick). grace/expired deliberately stay
+// materialized (bucketQueueWhere): their boundary is per-client — the grace
+// override → tier → settings cascade — which is exactly what the sweep's
+// classification exists to bake into a queryable column; their lag is ≤ one
+// tick and the phase-3 status gate already hides frozen rows.
+// Boundaries mirror orderTimeSignal: (now, now+24h], (now+24h, now+72h],
+// (now+72h, now+168h] — an order expiring at the exact instant `now` is not
+// "expiring", it is already in grace (display agrees). ACTIVE only: EXPIRED
+// cannot carry a future expiry, and a sweep-lagged ACTIVE-past-expiry row
+// belongs to grace, not to a window.
+export type LiveWindow = '24h' | '3d' | '7d';
+
+export function liveWindowWhere(win: LiveWindow, nowMs: number): {
+  status: OrderStatus; expiresAt: { gt: Date; lte: Date };
+} {
+  const [fromH, toH] = win === '24h' ? [0, 24] : win === '3d' ? [24, 72] : [72, 168];
+  return {
+    status: 'ACTIVE',
+    expiresAt: { gt: new Date(nowMs + fromH * 3_600_000), lte: new Date(nowMs + toH * 3_600_000) },
+  };
+}
+
 // RENEWED is a sticky MARKER, not a clock window, so its queue is wider than
 // the clock gate (review find): a paid renewal that hit a short pool sits in
 // PROVISIONING with expiresAt null (reprovisionRenewedOrder's clock-held

@@ -6,27 +6,28 @@ import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { RenewalsBulkTable, type RenewalRow } from '@/components/admin/RenewalsBulkTable';
 import { loadTierGraceHours } from '@/lib/grace';
-import { orderTimeSignal, timeSignalChip, bucketQueueWhere, renewedQueueWhere } from '@/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, bucketQueueWhere, renewedQueueWhere, liveWindowWhere } from '@/lib/order-signals';
 
 const PER_PAGE = 10;
 
-// Canon Renewals buckets are mutually exclusive and driven by order.renewalBucket
-// (same source the dashboard "Expiring soon" strip uses), NOT recomputed expiry
-// windows. Every tab reads via bucketQueueWhere (status revision phase 3), so a
-// stale bucket on a frozen order (e.g. SUSPENDED before the suspend-clears-
-// bucket hygiene landed) can never resurface here — and the dashboard/bell
-// counters use the same shape, keeping counter == list. The Renewal-paid tab
-// folds in PENDING_RENEWAL requests (canon Phase 8).
-function bucketWhere(view: string): any {
+// Canon Renewals tabs, phase-4 split (same shapes the dashboard counters use,
+// keeping counter == list):
+//   · 24h/3d/7d — LIVE expiresAt windows (liveWindowWhere): zero sweep lag,
+//     identical boundaries to the row chips.
+//   · grace/expired — materialized renewalBucket via bucketQueueWhere: the
+//     grace boundary is per-client (override → tier → settings cascade), the
+//     exact thing the sweep bakes into the column; lag ≤ one tick, and the
+//     phase-3 status gate hides frozen rows.
+//   · renewed — the sticky RENEWED marker (renewedQueueWhere, PROVISIONING
+//     admitted for the short-pool manual-Assign queue) + PENDING_RENEWAL
+//     requests (canon Phase 8).
+function bucketWhere(view: string, nowMs: number): any {
   switch (view) {
-    case '24h':     return bucketQueueWhere('H24');
-    case '3d':      return bucketQueueWhere('D3');
-    case '7d':      return bucketQueueWhere('D7');
+    case '24h':     return liveWindowWhere('24h', nowMs);
+    case '3d':      return liveWindowWhere('3d', nowMs);
+    case '7d':      return liveWindowWhere('7d', nowMs);
     case 'grace':   return bucketQueueWhere('GRACE');
     case 'expired': return bucketQueueWhere('EXPIRED');
-    // renewedQueueWhere, not the clock gate: a paid renewal stuck in
-    // re-provisioning (short pool → PROVISIONING, clock held) must stay on
-    // this tab — it is the tab's primary manual-Assign queue (review find).
     case 'renewed': return { OR: [renewedQueueWhere(), { status: 'PENDING_RENEWAL' }] };
     default:        return {};
   }
@@ -54,8 +55,11 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
     ];
   }
 
-  const where = { AND: [baseWhere, bucketWhere(view)] };
-  const countFor = (v: string) => prisma.order.count({ where: { AND: [baseWhere, bucketWhere(v)] } });
+  // ONE clock instant for the whole request: the live-window tab list, its
+  // count, the sibling tab counts and the row chips must all agree on `now`.
+  const nowMs = Date.now();
+  const where = { AND: [baseWhere, bucketWhere(view, nowMs)] };
+  const countFor = (v: string) => prisma.order.count({ where: { AND: [baseWhere, bucketWhere(v, nowMs)] } });
 
   const [orders, total, catalogItems, n24, n3, n7, nGrace, nExpired, nRenewed] = await Promise.all([
     prisma.order.findMany({
@@ -76,7 +80,6 @@ export default async function AdminRenewalsPage({ searchParams }: { searchParams
     countFor('grace'), countFor('expired'), countFor('renewed'),
   ]);
   const tierGrace = await loadTierGraceHours();
-  const nowMs = Date.now();
 
   const carriers = catalogItems.filter(c => c.kind === 'CARRIER').map(c => ({ value: c.value, label: c.value }));
   const regions = catalogItems.filter(c => c.kind === 'REGION').map(c => ({ value: c.value, label: c.value }));

@@ -5,7 +5,7 @@ import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { underProvisionedCount } from '@/lib/provisioning';
-import { bucketQueueWhere, BUCKET_CLOCK_STATUSES } from '@/lib/order-signals';
+import { bucketQueueWhere, liveWindowWhere } from '@/lib/order-signals';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
@@ -19,6 +19,8 @@ const CAP_LABEL: Record<string, string> = {
 
 export default async function AdminDashboardPage() {
   await requireAdmin();
+  // One clock instant for every live-window count on this render.
+  const nowMs = Date.now();
   const [
     paidToday, revenue30dAgg, activeOrders, activeClients, expiring24h, inGrace,
     recentOrders, capacityRows, healthBuckets,
@@ -34,10 +36,10 @@ export default async function AdminDashboardPage() {
     prisma.order.count({ where: { status: 'ACTIVE' } }),
     prisma.user.count({ where: { role: 'CLIENT', status: 'ACTIVE' } }),
     // Both KPIs count with the SAME where their target Renewals tab lists
-    // (status revision phase 3, counter == page count). The old "Expiring
-    // Today" used a calendar-day window while its link opened the rolling
-    // Next-24h tab — the two disagreed most of the day.
-    prisma.order.count({ where: bucketQueueWhere('H24') }),
+    // (counter == page count). Expiring · 24h reads the LIVE window (phase 4
+    // — zero sweep lag, identical to the row chips); In Grace stays on the
+    // materialized bucket (per-client grace boundary), matching its tab.
+    prisma.order.count({ where: liveWindowWhere('24h', nowMs) }),
     prisma.order.count({ where: bucketQueueWhere('GRACE') }),
     prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
@@ -59,14 +61,16 @@ export default async function AdminDashboardPage() {
   ]);
 
   // Read-only: Expiring Soon (24h/3d/7d) + Exceptions by type for the canon
-  // widgets. The strip counts carry the same clock-status gate as the tabs
-  // they link to (bucketQueueWhere shape) — counter == page count.
-  const [expBuckets, excBuckets, underProvisioned] = await Promise.all([
-    prisma.order.groupBy({ by: ['renewalBucket'], where: { renewalBucket: { in: ['H24', 'D3', 'D7'] }, status: { in: BUCKET_CLOCK_STATUSES } }, _count: { _all: true } }),
+  // widgets. The strip counts the same LIVE windows as the tabs it links to
+  // (phase 4) — counter == page count, zero sweep lag.
+  const [exp24, exp3d, exp7d, excBuckets, underProvisioned] = await Promise.all([
+    prisma.order.count({ where: liveWindowWhere('24h', nowMs) }),
+    prisma.order.count({ where: liveWindowWhere('3d', nowMs) }),
+    prisma.order.count({ where: liveWindowWhere('7d', nowMs) }),
     prisma.order.groupBy({ by: ['exception'], where: { exception: { not: null } }, _count: { _all: true } }),
     underProvisionedCount(),
   ]);
-  const expN = (b: 'H24' | 'D3' | 'D7') => expBuckets.find(x => x.renewalBucket === b)?._count._all ?? 0;
+  const expN = (b: 'H24' | 'D3' | 'D7') => (b === 'H24' ? exp24 : b === 'D3' ? exp3d : exp7d);
   const excN = (e: string) => excBuckets.find(x => x.exception === e)?._count._all ?? 0;
 
   const [faulty, maintenance] = healthBuckets;

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { underProvisionedCount } from '@/lib/provisioning';
+import { bucketQueueWhere } from '@/lib/order-signals';
 
 // Admin bell feed — canon prototype `notifSourceRows()`: rows are DERIVED from
 // live data so counts never lie (no stored notifications, no read state).
@@ -32,7 +33,9 @@ export async function GET() {
       where: { exception: { not: null } },
       _count: { _all: true },
     }),
-    prisma.order.count({ where: { renewalBucket: 'GRACE' } }),
+    // Same where as the Renewals "In grace" tab and the dashboard KPI (status
+    // revision phase 3) — the bell count equals the list its row opens.
+    prisma.order.count({ where: bucketQueueWhere('GRACE') }),
     prisma.payment.count({ where: { status: { in: ['AWAITING', 'PENDING', 'MANUAL_REVIEW'] } } }),
     // Matches the payments page's "Refund requested" tab: client requests plus
     // refunds initiated but not yet completed with proof (manual-refund flow) —
@@ -66,7 +69,9 @@ export async function GET() {
     });
   }
   if (grace) {
-    rows.push({ tone: 'warn', title: `${grace} in grace period`, meta: 'Needs renewal decision', href: '/admin/renewals' });
+    // Deep-link to the tab the count was taken from — the bare board opened
+    // the default Next-24h tab, a different list than the number promised.
+    rows.push({ tone: 'warn', title: `${grace} in grace period`, meta: 'Needs renewal decision', href: '/admin/renewals?view=grace' });
   }
   if (partiallyPaid) {
     rows.push({ tone: 'danger', title: `${partiallyPaid} crypto payment${partiallyPaid === 1 ? '' : 's'} underpaid`, meta: 'Money arrived — confirm or refund in Payments', href: '/admin/payments' });

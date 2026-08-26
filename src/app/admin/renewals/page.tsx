@@ -6,21 +6,28 @@ import { FilterBar } from '@/components/admin/FilterBar';
 import { Pagination } from '@/components/admin/Pagination';
 import { RenewalsBulkTable, type RenewalRow } from '@/components/admin/RenewalsBulkTable';
 import { loadTierGraceHours } from '@/lib/grace';
-import { orderTimeSignal, timeSignalChip } from '@/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, bucketQueueWhere, renewedQueueWhere } from '@/lib/order-signals';
 
 const PER_PAGE = 10;
 
 // Canon Renewals buckets are mutually exclusive and driven by order.renewalBucket
 // (same source the dashboard "Expiring soon" strip uses), NOT recomputed expiry
-// windows. The Renewal-paid tab folds in PENDING_RENEWAL requests (canon Phase 8).
+// windows. Every tab reads via bucketQueueWhere (status revision phase 3), so a
+// stale bucket on a frozen order (e.g. SUSPENDED before the suspend-clears-
+// bucket hygiene landed) can never resurface here — and the dashboard/bell
+// counters use the same shape, keeping counter == list. The Renewal-paid tab
+// folds in PENDING_RENEWAL requests (canon Phase 8).
 function bucketWhere(view: string): any {
   switch (view) {
-    case '24h':     return { renewalBucket: 'H24' };
-    case '3d':      return { renewalBucket: 'D3' };
-    case '7d':      return { renewalBucket: 'D7' };
-    case 'grace':   return { renewalBucket: 'GRACE' };
-    case 'expired': return { renewalBucket: 'EXPIRED' };
-    case 'renewed': return { OR: [{ renewalBucket: 'RENEWED' }, { status: 'PENDING_RENEWAL' }] };
+    case '24h':     return bucketQueueWhere('H24');
+    case '3d':      return bucketQueueWhere('D3');
+    case '7d':      return bucketQueueWhere('D7');
+    case 'grace':   return bucketQueueWhere('GRACE');
+    case 'expired': return bucketQueueWhere('EXPIRED');
+    // renewedQueueWhere, not the clock gate: a paid renewal stuck in
+    // re-provisioning (short pool → PROVISIONING, clock held) must stay on
+    // this tab — it is the tab's primary manual-Assign queue (review find).
+    case 'renewed': return { OR: [renewedQueueWhere(), { status: 'PENDING_RENEWAL' }] };
     default:        return {};
   }
 }

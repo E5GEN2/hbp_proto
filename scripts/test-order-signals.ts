@@ -1,7 +1,7 @@
 // Standalone assertion test for the time-horizon order signal (status revision
 // phase 1) — no test runner in the repo, same pattern as test-grace.ts.
 // Run: pnpm exec tsx scripts/test-order-signals.ts
-import { orderTimeSignal, timeSignalChip, msToShort, type OrderTimeSignal } from '../src/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, msToShort, targetBucket, bucketQueueWhere, renewedQueueWhere, BUCKET_CLOCK_STATUSES, RENEWED_QUEUE_STATUSES, type OrderTimeSignal } from '../src/lib/order-signals';
 import { DEFAULT_TIER_GRACE_HOURS } from '../src/lib/grace';
 import { fmtAdminStamp } from '../src/lib/date';
 
@@ -96,6 +96,54 @@ kindOf('ACTIVE without expiresAt → no signal', orderTimeSignal(ord('ACTIVE', n
     label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', tip: null,
   });
 }
+
+// ── targetBucket (queue classifier, moved from sweep.ts in phase 3).
+//    The pre-expiry windows are in lockstep with the display layer (parity
+//    loop below); the grace-END instant deliberately diverges — display
+//    counts it as still-grace (<=, isPastGrace semantics), the queue as
+//    EXPIRED (the sweep's historical strict <) — pinned explicitly below so
+//    a real drift can't hide behind the known one-instant difference. ──
+{
+  const tb = (hoursToExpiry: number | null, bucket: 'RENEWED' | null = null, graceHours = 24) =>
+    targetBucket({ expiresAt: hoursToExpiry === null ? null : new Date(NOW + hoursToExpiry * H), renewalBucket: bucket as any, graceHours }, NOW);
+  eq('no expiry → no bucket', tb(null), null);
+  eq('5h → H24', tb(5), 'H24');
+  eq('exactly 24h → H24', tb(24), 'H24');
+  eq('25h → D3', tb(25), 'D3');
+  eq('100h → D7', tb(100), 'D7');
+  eq('exactly 168h → D7', tb(168), 'D7');
+  eq('169h no sticky → null', tb(169), null);
+  eq('169h RENEWED sticky survives', tb(169, 'RENEWED'), 'RENEWED');
+  eq('5h past, 24h grace → GRACE', tb(-5), 'GRACE');
+  eq('30h past, 24h grace → EXPIRED', tb(-30), 'EXPIRED');
+  eq('30h past, 72h grace → GRACE', tb(-30, null, 72), 'GRACE');
+  // Boundary parity with the display layer: both sides classify the same
+  // instant into the same window (inclusive <=24/<=72/<=168 on hoursLeft).
+  for (const h of [24, 25, 72, 73, 168]) {
+    const sig = orderTimeSignal(ord('ACTIVE', h), 2, std, TG, NOW)!;
+    const want = { expiring24: 'H24', expiring3d: 'D3', expiring7d: 'D7' }[sig.kind as string];
+    eq(`window parity at ${h}h`, tb(h), want);
+  }
+  // The KNOWN one-instant divergence at the grace end (see targetBucket's
+  // comment): display says still-grace, queue says EXPIRED. Pinned so a real
+  // boundary drift on either side fails loudly instead of hiding behind it.
+  eq('grace-end instant: display still grace', orderTimeSignal(ord('EXPIRED', -24), 2, std, TG, NOW)!.kind, 'grace');
+  eq('grace-end instant: queue already EXPIRED', tb(-24), 'EXPIRED');
+  eq('one ms before grace end: queue still GRACE', targetBucket({ expiresAt: new Date(NOW - 24 * H + 1), renewalBucket: null, graceHours: 24 }, NOW), 'GRACE');
+}
+
+// ── bucketQueueWhere (the one where-shape every bucket reader counts with) ──
+eq('queue where carries the clock-status gate', bucketQueueWhere('H24'), {
+  renewalBucket: 'H24', status: { in: ['ACTIVE', 'EXPIRED'] },
+});
+eq('clock statuses are exactly ACTIVE+EXPIRED', BUCKET_CLOCK_STATUSES, ['ACTIVE', 'EXPIRED']);
+// RENEWED is a sticky marker, not a clock window: its queue additionally
+// admits PROVISIONING — a paid renewal held for manual Assign after a short
+// pool (reprovisionRenewedOrder) must stay on the Renewal-paid tab.
+eq('renewed queue admits the clock-held reprovision state', renewedQueueWhere(), {
+  renewalBucket: 'RENEWED', status: { in: ['ACTIVE', 'EXPIRED', 'PROVISIONING'] },
+});
+eq('renewed statuses exclude frozen/terminal', RENEWED_QUEUE_STATUSES.includes('SUSPENDED' as any) || RENEWED_QUEUE_STATUSES.includes('CANCELLED' as any), false);
 
 // ── msToShort ──
 eq('sub-minute floors', msToShort(30_000), '<1m');

@@ -19,7 +19,8 @@ import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney, applyCustomExpiry } from './new-order-policy';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
-import { loadTierGraceHours, renewalClosed } from './grace';
+import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from './grace';
+import { targetBucket } from './order-signals';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -506,6 +507,11 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
         autoRenewBeforeSuspend: ord.autoRenew,
         autoRenew: false,
         credentialsBeforeSuspend: ord.credentialsChannel,
+        // Bucket hygiene (status revision phase 3, symmetric with cancelOrder):
+        // a suspended order's clock is frozen — the sweep classifier skips it
+        // (ACTIVE/EXPIRED only), so a kept bucket would park it in the
+        // Renewals queues / dashboard counters forever as "expiring".
+        renewalBucket: null,
       },
     });
     // Proxies stay reserved (per the prototype contract)
@@ -534,12 +540,13 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
 
 export async function resumeOrder({ orderId, actor }: { orderId: string; actor: Actor }) {
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const tierGrace = await loadTierGraceHours();
   const result = await prisma.$transaction(async tx => {
     const ord = await tx.order.findUnique({
       where: { id: orderId },
       include: {
         assignments: { where: { releasedAt: null } },
-        client: { select: { email: true, emailIncidents: true } },
+        client: { select: { email: true, emailIncidents: true, tier: true, graceHoursOverride: true } },
       },
     });
     if (!ord) throw new Error('Order not found');
@@ -552,6 +559,14 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
       data: {
         status: intact ? 'ACTIVE' : 'PROVISIONING',
         autoRenew: ord.autoRenewBeforeSuspend ?? false,
+        // The clock restarts with the order (phase 3): re-classify the bucket
+        // immediately instead of leaving the queues blind until the next
+        // sweep tick. suspendOrder cleared it, so the RENEWED sticky is gone
+        // by design (a suspension is a manual intervention); a resume to
+        // PROVISIONING keeps it null — no running clock there.
+        renewalBucket: intact
+          ? targetBucket({ expiresAt: ord.expiresAt, renewalBucket: ord.renewalBucket, graceHours: effectiveGraceHours(ord.client, tierGrace) }, Date.now())
+          : null,
       },
     });
     await tx.assignment.updateMany({
@@ -1621,7 +1636,11 @@ export async function blockClient({
       for (const o of active) {
         await tx.order.update({
           where: { id: o.id },
-          data: { status: 'SUSPENDED', autoRenewBeforeSuspend: o.autoRenew, autoRenew: false },
+          // renewalBucket: null — same bucket hygiene as suspendOrder/
+          // cancelOrder (review find: this third SUSPENDED writer kept
+          // minting stale-bucket rows, and a later resume would re-classify
+          // from the stale sticky instead of a clean slate).
+          data: { status: 'SUSPENDED', autoRenewBeforeSuspend: o.autoRenew, autoRenew: false, renewalBucket: null },
         });
         suspended++;
       }

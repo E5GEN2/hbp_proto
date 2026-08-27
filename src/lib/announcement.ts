@@ -18,7 +18,7 @@ export type Announcement = {
 // Default reproduces the design's nav promo verbatim.
 export const DEFAULT_ANNOUNCEMENT: Announcement = {
   enabled: true,
-  text: '10% off the 90‑days plan',
+  text: '5% off the 90‑days plan',
   href: '#plans',
   variant: 'promo',
 };

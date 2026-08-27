@@ -71,13 +71,17 @@ export async function POST(req: Request) {
     if (amount < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });
 
     const newId = await nextPaymentId();
+    // Split-payment top-up: preserve the link to the order so the re-issued
+    // charge still auto-pays it at settle (adversarial review P1 — dropping
+    // autoPayOrderId orphaned the order + leaked its seats).
+    const isSplitTopup = !!old.autoPayOrderId;
     let np: NpDirectPayment;
     try {
       np = await npCreatePayment({
         amountUsd: amount,
         payCurrency: coin.code,
         paymentId: newId,
-        description: `Balance top-up (re-issued)`,
+        description: isSplitTopup ? `Top-up for order ${old.autoPayOrderId} (re-issued)` : `Balance top-up (re-issued)`,
       });
     } catch (e: any) {
       return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
@@ -103,6 +107,7 @@ export async function POST(req: Request) {
             method: 'Crypto',
             gross: amount, fees: 0, net: amount,
             status: 'AWAITING',
+            autoPayOrderId: old.autoPayOrderId,
             externalRef: np.npPaymentId,
             payCurrency: np.payCurrency,
             payAmount: np.payAmount,
@@ -181,6 +186,14 @@ export async function POST(req: Request) {
   const review = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'MANUAL_REVIEW' }, select: { id: true } });
   if (review) {
     return NextResponse.json({ error: 'A payment for this order is being verified — no need to pay again.' }, { status: 409 });
+  }
+  // A split-payment top-up in flight (TOPUP, orderId null, linked via
+  // autoPayOrderId) will pay/extend this order from balance when it settles —
+  // re-issuing an order charge here would double-pay (split payment; the same
+  // guard added to every other renewal originator).
+  const splitInFlight = await prisma.payment.findFirst({ where: { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }, select: { id: true } });
+  if (splitInFlight) {
+    return NextResponse.json({ error: 'A top-up for this order is already awaiting confirmation — complete or cancel it first.' }, { status: 409 });
   }
 
   const awaiting = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'AWAITING' } });

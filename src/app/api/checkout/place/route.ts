@@ -734,6 +734,24 @@ async function handleSplitNewOrder({ userId, planId, qty, autoExtend, userBalanc
   if (userBalance <= 0) return NextResponse.json({ error: 'Your balance is empty — pay the full amount with crypto or top up first.' }, { status: 400 });
   if (userBalance >= total) return NextResponse.json({ error: 'Your balance covers this order — pay from balance.' }, { status: 400 });
 
+  // One unpaid split order per plan (mirrors the crypto path's unpaid-dup 409):
+  // each split order reserves seats as NEW, and its charge is a TOPUP with
+  // orderId null (autoPayOrderId is a plain column, no relation) — invisible to
+  // the regular unpaid-order check, which this dispatch runs before. Without
+  // this a client (or a stale tab) could stack seat-reserving NEW split orders
+  // (adversarial review P2). Two-step: pending top-ups → their NEW orders.
+  const pendingSplits = await prisma.payment.findMany({
+    where: { clientId: userId, kind: 'TOPUP', status: { in: ['AWAITING', 'MANUAL_REVIEW'] }, autoPayOrderId: { not: null } },
+    select: { autoPayOrderId: true },
+  });
+  if (pendingSplits.length) {
+    const ids = pendingSplits.map(p => p.autoPayOrderId!).filter(Boolean);
+    const stacked = await prisma.order.findFirst({ where: { id: { in: ids }, clientId: userId, planId, status: 'NEW' }, select: { id: true } });
+    if (stacked) {
+      return NextResponse.json({ error: `You already have an unpaid split order (${stacked.id}) for this plan — complete its top-up or cancel it first.`, orderId: stacked.id }, { status: 409 });
+    }
+  }
+
   // Top up the shortfall, floored at the crypto minimum. Any overshoot beyond
   // the shortfall (when the shortfall is below the floor) stays on the balance.
   const topup = splitTopupAmount(total, userBalance, CRYPTO_MIN_USD);

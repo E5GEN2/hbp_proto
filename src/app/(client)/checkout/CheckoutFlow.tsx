@@ -212,12 +212,14 @@ export function CheckoutFlow({
     try {
       const r = await fetch('/api/checkout/repay', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        // Renewal mode only: same displayed-total echo as placeOrder — the pay
-        // panel shows `total` as its USD amount, and a fresh renewal address
-        // must not be silently priced differently. New orders are exempt: repay
-        // always re-issues at the FROZEN order.amount (the price this wizard
-        // charged at placement), so a live-recomputed echo could only 409-loop.
-        body: JSON.stringify({ orderId, payCoin: coinCode, ...(renewOf ? { expectedTotal: total } : {}) }),
+        // Split: the charge is a TOPUP deposit, not an order charge — re-issue
+        // it by paymentId (repay's TOPUP branch, which preserves autoPayOrderId
+        // and the fixed top-up amount). Crypto/renewal: re-issue by orderId.
+        // Renewal echoes the displayed total (a fresh renewal address must not
+        // be silently repriced); new orders re-issue at the frozen order.amount.
+        body: paymentMethod === 'split'
+          ? JSON.stringify({ paymentId: payData?.paymentId, payCoin: coinCode })
+          : JSON.stringify({ orderId, payCoin: coinCode, ...(renewOf ? { expectedTotal: total } : {}) }),
       });
       const j = await r.json().catch(() => ({} as any));
       // Pricing moved since this panel rendered: surface the honest message

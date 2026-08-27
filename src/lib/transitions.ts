@@ -61,6 +61,10 @@ async function log(tx: Tx, actorId: string | null, action: string, objectType: L
 export async function markPaymentPaid({
   paymentId, actor, source, externalRef,
 }: { paymentId: string; actor: Actor; source?: string; externalRef?: string }) {
+  // NB: a split-payment top-up (TOPUP, orderId null, autoPayOrderId set) is NOT
+  // handled here — markPaidAction (the admin action) routes it to
+  // settleAwaitingPayment instead, the ONE atomic credit+auto-pay path. If it
+  // reached here it would credit the balance only and orphan the linked order.
   // Built inside the tx, sent after commit (no HTTP inside $transaction).
   let adminAlert: string | null = null;
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
@@ -2234,7 +2238,10 @@ export async function clientCancelNewOrder({ orderId, clientId }: { orderId: str
     // and mid-verification. The Cancel button lives inside the pay panel, so
     // this is a real click (re-review C5). Support resolves it: settle if the
     // transfer completes, otherwise refund to balance.
-    const parked = await tx.payment.findFirst({ where: { orderId, status: 'MANUAL_REVIEW' }, select: { id: true } });
+    // A split-payment top-up (TOPUP, orderId null, linked via autoPayOrderId)
+    // under review is money on this order too — the OR keeps the misleading
+    // "nothing was charged" cancel from firing over it (review C5 + split).
+    const parked = await tx.payment.findFirst({ where: { OR: [{ orderId, status: 'MANUAL_REVIEW' }, { autoPayOrderId: orderId, status: 'MANUAL_REVIEW' }] }, select: { id: true } });
     if (parked) throw new Error('We’ve detected your payment for this order and it’s being verified — contact support instead of cancelling.');
     await tx.order.update({
       where: { id: orderId },
@@ -2494,108 +2501,6 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     await notify(tx, clientId, `Order ${orderId} renewed — new expiry ${fmtDate(newExpiry)}`, 'SUCCESS', `/orders/${orderId}`);
     return { ok: true, redirect: null, newExpiry: newExpiry.toISOString() };
   });
-}
-
-// Split payment (owner decision 2026-08-27, approach B): the crypto top-up that
-// covered an order's shortfall has just settled and credited the balance — now
-// pay the still-NEW purchase from that balance. Mirrors the crypto-settle
-// new-order branch (provision pool-first, guarded activation, custom expiry)
-// but with a guarded balance debit + a CONFIRMED balance ORDER payment.
-// Outcomes:
-//   · 'activated'   — order is ACTIVE (auto-provision plan, pool had proxies)
-//   · 'provisioning'— order is PROVISIONING (manual plan or pool short)
-//   · 'not_new'     — order was cancelled/activated meanwhile → caller only
-//                     credited the balance, nothing else to do
-//   · 'insufficient'— balance no longer covers the order (client drained it
-//                     between checkout and settle) → caller leaves it NEW and
-//                     tells the client to complete it from balance
-export type AutoPayResult =
-  | { outcome: 'activated' | 'provisioning'; assignedCount: number }
-  | { outcome: 'not_new' }
-  | { outcome: 'insufficient' };
-
-export async function activateNewOrderFromBalance({ orderId, clientId }: { orderId: string; clientId: string }): Promise<AutoPayResult> {
-  try {
-    return await prisma.$transaction(async tx => {
-      const order = await tx.order.findUnique({ where: { id: orderId }, include: { plan: true } });
-      if (!order) throw new Error(`Order ${orderId} not found for auto-pay`);
-      // Serialize with any concurrent writer on this order; only a still-NEW
-      // order is payable here (a since-cancelled or already-activated one is
-      // left untouched — the top-up simply stays as balance).
-      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
-      const fresh = await tx.order.findUnique({ where: { id: orderId }, select: { status: true } });
-      if (fresh?.status !== 'NEW') return { outcome: 'not_new' as const };
-
-      const now = new Date();
-      const total = Number(order.amount);
-      const payId = await nextPaymentIdInTx(tx);
-
-      // Guarded balance debit FIRST — if the just-credited balance no longer
-      // covers the order the whole activation rolls back (InsufficientBalance),
-      // and the caller notifies the client to complete it from balance.
-      const newBal = await debitBalance(tx, clientId, total);
-      await tx.payment.create({
-        data: { id: payId, orderId, clientId, provider: 'Balance', method: 'Balance', gross: total, fees: 0, net: total, status: 'CONFIRMED', confirmedAt: now },
-      });
-      await tx.balanceLedgerEntry.create({
-        data: { userId: clientId, op: 'ORDER_DEBIT', amount: -total, balanceAfter: newBal, refOrderId: orderId, refPaymentId: payId, note: `Order ${orderId} (balance + top-up)` },
-      });
-      const invId = await nextInvoiceIdInTx(tx);
-      await tx.invoice.create({ data: { id: invId, paymentId: payId, orderId, clientId, amount: total } });
-
-      // Provision pool-first (mirrors settle-payment / checkout/place).
-      let assignedCount = 0;
-      if (order.autoProvision) {
-        const candidates = await tx.proxy.findMany({
-          where: { carrier: order.plan.carrier, region: order.region, pool: order.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' },
-          take: order.qty,
-        });
-        if (candidates.length < order.qty) {
-          const more = await tx.proxy.findMany({
-            where: { carrier: order.plan.carrier, region: order.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: candidates.map(c => c.id) } },
-            take: order.qty - candidates.length,
-          });
-          candidates.push(...more);
-        }
-        for (const px of candidates.slice(0, order.qty)) {
-          const aid = await nextAssignmentId();
-          await tx.assignment.create({ data: { id: aid, orderId, proxyId: px.id, actorId: 'ADM-SYS', assignedAt: now } });
-          await tx.proxy.update({ where: { id: px.id }, data: { status: 'ASSIGNED', currentOrderId: orderId } });
-          assignedCount++;
-        }
-      }
-      const fullyAssigned = order.autoProvision && assignedCount >= order.qty;
-      const finalStatus = fullyAssigned ? ('ACTIVE' as const) : ('PROVISIONING' as const);
-      const custom = applyCustomExpiry(order.customExpiresAt, order.plan.durationDays, now);
-      const finalException = order.autoProvision && !fullyAssigned ? ('PAID_NOT_PROVISIONED' as const) : null;
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: 'PAID',
-          status: finalStatus,
-          activatedAt: finalStatus === 'ACTIVE' ? now : null,
-          expiresAt: finalStatus === 'ACTIVE' ? custom.expiresAt : null,
-          ...(finalStatus === 'ACTIVE' ? { customExpiresAt: null } : {}),
-          credentialsSentAt: finalStatus === 'ACTIVE' ? now : null,
-          credentialsChannel: null,
-          exception: finalException,
-          excInfo: finalException ? `Pool exhausted — ${assignedCount}/${order.qty} provisioned` : null,
-        },
-      });
-      await log(tx, clientId, 'PAYMENT.CONFIRM', 'PAYMENT', payId,
-        `Order ${orderId} paid from balance after crypto top-up · status=${finalStatus}${finalException ? ' · ' + finalException : ''}`);
-      await notify(tx, clientId,
-        finalStatus === 'ACTIVE'
-          ? `Order ${orderId} activated — ${order.qty} ${order.qty === 1 ? 'proxy' : 'proxies'} ready`
-          : `Order ${orderId} paid — provisioning in progress`,
-        finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO', `/orders/${orderId}`);
-      return { outcome: finalStatus === 'ACTIVE' ? ('activated' as const) : ('provisioning' as const), assignedCount };
-    });
-  } catch (e) {
-    if (e instanceof InsufficientBalance) return { outcome: 'insufficient' };
-    throw e;
-  }
 }
 
 // Per-order renewal discount (owner decision 2026-08-21): admin grants a

@@ -1,7 +1,7 @@
 // Standalone assertion test for the time-horizon order signal (status revision
 // phase 1) — no test runner in the repo, same pattern as test-grace.ts.
 // Run: pnpm exec tsx scripts/test-order-signals.ts
-import { orderTimeSignal, timeSignalChip, msToShort, targetBucket, bucketQueueWhere, renewedQueueWhere, BUCKET_CLOCK_STATUSES, RENEWED_QUEUE_STATUSES, type OrderTimeSignal } from '../src/lib/order-signals';
+import { orderTimeSignal, timeSignalChip, msToShort, targetBucket, bucketQueueWhere, renewedQueueWhere, liveWindowWhere, BUCKET_CLOCK_STATUSES, RENEWED_QUEUE_STATUSES, type OrderTimeSignal, type LiveWindow } from '../src/lib/order-signals';
 import { DEFAULT_TIER_GRACE_HOURS } from '../src/lib/grace';
 import { fmtAdminStamp } from '../src/lib/date';
 
@@ -139,11 +139,61 @@ eq('queue where carries the clock-status gate', bucketQueueWhere('H24'), {
 eq('clock statuses are exactly ACTIVE+EXPIRED', BUCKET_CLOCK_STATUSES, ['ACTIVE', 'EXPIRED']);
 // RENEWED is a sticky marker, not a clock window: its queue additionally
 // admits PROVISIONING — a paid renewal held for manual Assign after a short
-// pool (reprovisionRenewedOrder) must stay on the Renewal-paid tab.
-eq('renewed queue admits the clock-held reprovision state', renewedQueueWhere(), {
+// pool (reprovisionRenewedOrder) must stay on the Renewal-paid tab — while
+// EXCLUDING any row that has aged back into the live ≤7d horizon (that row is
+// on its live-window tab; the NOT keeps it off this one — review find, no
+// double-listing until the sweep re-buckets).
+eq('renewed queue admits reprovision + excludes the live 7d horizon', renewedQueueWhere(NOW), {
   renewalBucket: 'RENEWED', status: { in: ['ACTIVE', 'EXPIRED', 'PROVISIONING'] },
+  NOT: { status: 'ACTIVE', expiresAt: { gt: new Date(NOW), lte: new Date(NOW + 168 * H) } },
 });
 eq('renewed statuses exclude frozen/terminal', RENEWED_QUEUE_STATUSES.includes('SUSPENDED' as any) || RENEWED_QUEUE_STATUSES.includes('CANCELLED' as any), false);
+// The exclusion boundary matches the live 7d horizon exactly: an ACTIVE
+// RENEWED row expiring within (now, now+168h] is excluded (belongs to a live
+// window tab); one expiring beyond 168h, or PROVISIONING (null expiry), stays.
+{
+  const inLive7d = (expMs: number) => {
+    const n = renewedQueueWhere(NOW).NOT;
+    return expMs > n.expiresAt.gt.getTime() && expMs <= n.expiresAt.lte.getTime();
+  };
+  eq('renewed excludes a row aged into 7d (167h)', inLive7d(NOW + 167 * H), true);
+  eq('renewed keeps a far-future sticky (200h)', inLive7d(NOW + 200 * H), false);
+  eq('renewed exclusion boundary is exclusive at now', inLive7d(NOW), false);
+  eq('renewed exclusion boundary is inclusive at 168h', inLive7d(NOW + 168 * H), true);
+}
+
+// ── liveWindowWhere (phase 4: the pre-expiry tabs/KPIs read live) ──
+{
+  const w24 = liveWindowWhere('24h', NOW);
+  eq('24h window shape', w24, { status: 'ACTIVE', expiresAt: { gt: new Date(NOW), lte: new Date(NOW + 24 * H) } });
+  eq('3d window range', liveWindowWhere('3d', NOW).expiresAt, { gt: new Date(NOW + 24 * H), lte: new Date(NOW + 72 * H) });
+  eq('7d window range', liveWindowWhere('7d', NOW).expiresAt, { gt: new Date(NOW + 72 * H), lte: new Date(NOW + 168 * H) });
+
+  // Parity with the display layer at every boundary instant: an ACTIVE order
+  // falls in a live window exactly when its chip shows that window. Windows
+  // are half-open (gt, lte], so each instant belongs to exactly one place.
+  const inWin = (win: LiveWindow, expiresAt: Date) => {
+    const w = liveWindowWhere(win, NOW).expiresAt;
+    return expiresAt.getTime() > w.gt.getTime() && expiresAt.getTime() <= w.lte.getTime();
+  };
+  const KIND_TO_WIN: Record<string, LiveWindow> = { expiring24: '24h', expiring3d: '3d', expiring7d: '7d' };
+  for (const h of [0.5, 24, 24.5, 72, 100, 168]) {
+    const exp = new Date(NOW + h * H);
+    const sig = orderTimeSignal({ status: 'ACTIVE' as any, expiresAt: exp, renewalBucket: null }, 2, std, TG, NOW)!;
+    const win = KIND_TO_WIN[sig.kind];
+    eq(`live/display parity at +${h}h`, [inWin('24h', exp), inWin('3d', exp), inWin('7d', exp)],
+      [win === '24h', win === '3d', win === '7d']);
+  }
+  // The exact instant `now`: not in any window (gt) — display agrees, that
+  // order is already in grace, not "expiring".
+  eq('expiry at now is in no window', [inWin('24h', new Date(NOW)), inWin('3d', new Date(NOW)), inWin('7d', new Date(NOW))], [false, false, false]);
+  // …and the DISPLAY side agrees at that exact instant: msLeft == 0 falls to
+  // the grace branch, NOT a window (review find — the parity comment claimed
+  // this but no test pinned expiresAt == now on the display side; a `>` → `>=`
+  // slip in orderTimeSignal would now fail loudly here).
+  eq('expiry at now: display says grace, not expiring', orderTimeSignal(ord('ACTIVE', 0), 2, std, TG, NOW)!.kind, 'grace');
+  eq('169h is beyond every window', inWin('7d', new Date(NOW + 169 * H)), false);
+}
 
 // ── msToShort ──
 eq('sub-minute floors', msToShort(30_000), '<1m');

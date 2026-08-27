@@ -2542,14 +2542,19 @@ export async function setOrderRenewalDiscount({
 // client — integer percent off ALL their orders, new purchases and renewals.
 // Never stacks with a plan renewal discount (the LARGER wins — renewalPricing);
 // an active per-order grant beats both. `null` clears. Indefinite by design.
+// Capped at 99 (owner decision 2026-08-26): a 100% client discount meant free
+// EVERYTHING forever — $0 renewals on every order while new purchases bounced
+// off the only-Comp-may-be-$0 guard. A truly free client is what per-order
+// Comp / 100% renewal grants are for; the $0-renewal handling stays in place
+// for those grants (and for any legacy 100% row — the cap is write-side only).
 export async function setClientDiscount({
   userId, pct, actor,
 }: { userId: string; pct: number | null; actor: Actor }) {
   return prisma.$transaction(async tx => {
     const before = await tx.user.findUnique({ where: { id: userId } });
     if (!before || before.role !== 'CLIENT') throw new Error('Client not found');
-    if (pct !== null && (!Number.isInteger(pct) || pct < 1 || pct > 100)) {
-      throw new Error('Percent discount must be an integer 1..100');
+    if (pct !== null && (!Number.isInteger(pct) || pct < 1 || pct > 99)) {
+      throw new Error('Percent discount must be an integer 1..99');
     }
     await tx.user.update({ where: { id: userId }, data: { clientDiscountPct: pct } });
     const was = before.clientDiscountPct != null ? ` (was −${before.clientDiscountPct}%)` : '';

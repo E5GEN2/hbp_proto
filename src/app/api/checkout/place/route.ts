@@ -367,7 +367,13 @@ export async function POST(req: Request) {
           finalStatus === 'ACTIVE'
             ? `Order ${orderId} activated — ${qty} ${qty === 1 ? 'proxy' : 'proxies'} ready`
             : isInstant
-              ? `Order ${orderId} confirmed — your proxies are being prepared`
+              // Paid but not yet provisioned (a manual-fulfillment plan OR an
+              // auto-provision plan whose pool was empty at checkout →
+              // PAID_NOT_PROVISIONED). Both reach here, and in both the proxies
+              // are NOT instant — say so honestly and promise the follow-up
+              // (owner decision 2026-08-27) so the client doesn't read
+              // "confirmed" as "ready".
+              ? `Order ${orderId} confirmed — your proxies are being prepared. We'll notify you the moment they're ready.`
               : `Order ${orderId} placed — complete payment to start provisioning`,
         kind: finalStatus === 'ACTIVE' ? 'SUCCESS' : 'INFO',
         link: `/orders/${orderId}`,

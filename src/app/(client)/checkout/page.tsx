@@ -107,8 +107,14 @@ export default async function CheckoutPage({ searchParams }: {
       // after it settles (else falls back to Billing).
       const resumeReturn = searchParams.returnTo ? (safeReturn(decodeURIComponent(searchParams.returnTo)) ?? undefined) : undefined;
       // Split top-up: at settle it pays its linked order (atomic), so land on the
-      // ORDER confirmation, not the generic "deposit added" screen (review R3 P3).
-      const splitSettledHref = pay.autoPayOrderId ? `/checkout?success=${pay.autoPayOrderId}` : undefined;
+      // ORDER PAGE — the ONE surface that is honest across all four settle
+      // outcomes (activated / provisioning / renewed / balance-short-so-NOT-
+      // paid-or-renewed). The /checkout?success screen would falsely read
+      // "Order confirmed" for an ACTIVE order whose split renewal didn't
+      // complete because the balance ran short (review R4 P2), and couldn't tell
+      // a purchase from a renewal (R4 P3). The settle already fired the matching
+      // bell (activated / renewed / "couldn't complete — top-up kept as balance").
+      const splitSettledHref = pay.autoPayOrderId ? `/orders/${pay.autoPayOrderId}` : undefined;
       if (pay.status === 'AWAITING' && pay.payAddress) {
         return (
           <>

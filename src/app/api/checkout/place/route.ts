@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { nextOrderId, nextPaymentId, nextInvoiceId, nextAssignmentId } from '@/lib/id';
 import { mockPaymentsAllowed, newOrdersFrozen, enabledProviders } from '@/lib/runtime-flags';
 import { renewalBase, renewalPricing, purchaseUnitPrice, consumeRenewalDiscountCycle } from '@/lib/renewal';
+import { splitTopupAmount } from '@/lib/split-payment';
 import { fmtDate } from '@/lib/date';
 import { money } from '@/lib/money';
 import { debitBalance, InsufficientBalance } from '@/lib/balance';
@@ -19,7 +20,11 @@ const Schema = z.object({
   planId: z.string(),
   qty: z.number().int().min(1).max(100),
   autoExtend: z.boolean(),
-  paymentMethod: z.enum(['balance', 'crypto', 'card']),
+  // 'split' (owner decision 2026-08-27, approach B): pay what the balance
+  // covers and top up the shortfall via crypto — the order is paid from
+  // balance once the top-up settles. The top-up leg is real crypto, so 'split'
+  // shares crypto's prerequisites (npEnabled + providers.crypto + a coin).
+  paymentMethod: z.enum(['balance', 'crypto', 'card', 'split']),
   // In-portal crypto: the coin the client picked. Validated against NP_COINS —
   // never forwarded to the processor raw.
   payCoin: z.string().optional(),
@@ -58,19 +63,24 @@ export async function POST(req: Request) {
   if (!parse.success) return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Bad input' }, { status: 400 });
   const { planId, qty, autoExtend, paymentMethod, renewOf, expectedTotal } = parse.data;
 
-  // Whitelist-validate the coin up front (both the new-order and the renewal
-  // branch create the NP charge with it).
-  const coin = paymentMethod === 'crypto' && npEnabled() ? npCoin(parse.data.payCoin) : null;
-  if (paymentMethod === 'crypto' && npEnabled() && !coin) {
+  // Whitelist-validate the coin up front. Both crypto and split create an NP
+  // charge (split's charge is the top-up), so both need a picked coin.
+  const cryptoLike = paymentMethod === 'crypto' || paymentMethod === 'split';
+  const coin = cryptoLike && npEnabled() ? npCoin(parse.data.payCoin) : null;
+  if (cryptoLike && npEnabled() && !coin) {
     return NextResponse.json({ error: 'Pick the cryptocurrency you want to pay with.' }, { status: 400 });
   }
 
   if (paymentMethod === 'card' && !mockPaymentsAllowed()) {
     return NextResponse.json({ error: 'Card payments are not available yet — use balance or crypto.' }, { status: 400 });
   }
-  // Crypto needs either a real processor (NOWPayments) or the dev mock.
+  // Crypto needs either a real processor (NOWPayments) or the dev mock; split's
+  // top-up is real crypto only (no mock split).
   if (paymentMethod === 'crypto' && !npEnabled() && !mockPaymentsAllowed()) {
     return NextResponse.json({ error: 'Crypto payments are temporarily unavailable — use balance or contact support.' }, { status: 400 });
+  }
+  if (paymentMethod === 'split' && !npEnabled()) {
+    return NextResponse.json({ error: 'Top-up payments are temporarily unavailable — use balance or crypto.' }, { status: 400 });
   }
 
   // Admin provider toggles (Settings → Payment Providers) gate NEW charges,
@@ -79,7 +89,7 @@ export async function POST(req: Request) {
   if (paymentMethod === 'card' && !providers.stripe) {
     return NextResponse.json({ error: 'Card payments are currently disabled — use balance or crypto.' }, { status: 400 });
   }
-  if (paymentMethod === 'crypto' && !providers.crypto) {
+  if (cryptoLike && !providers.crypto) {
     return NextResponse.json({ error: 'Crypto payments are currently disabled — use balance or card.' }, { status: 400 });
   }
 
@@ -91,6 +101,12 @@ export async function POST(req: Request) {
   //    original order server-side; freeze applies to NEW orders only.
   if (renewOf) {
     return handleRenewal({ renewOf, userId, userBalance: Number(user.balance), paymentMethod, coin, expectedTotal });
+  }
+
+  // Split payment for a NEW purchase (approach B): balance covers part, a crypto
+  // top-up covers the shortfall, the order is paid from balance at settle.
+  if (paymentMethod === 'split') {
+    return handleSplitNewOrder({ userId, planId, qty, autoExtend, userBalance: Number(user.balance), clientDiscountPct: user.clientDiscountPct, coin, expectedTotal });
   }
 
   if (await newOrdersFrozen()) {
@@ -417,7 +433,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   renewOf: string;
   userId: string;
   userBalance: number;
-  paymentMethod: 'balance' | 'crypto' | 'card';
+  paymentMethod: 'balance' | 'crypto' | 'card' | 'split';
   coin: ReturnType<typeof npCoin>; // whitelist-validated by the caller (non-null when crypto+npEnabled)
   expectedTotal?: number; // displayed-total guard, see Schema — never a pricing input
 }) {
@@ -476,6 +492,13 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
       return NextResponse.json({ error: `A payment (${anyAwaiting.id}) on this order is already awaiting confirmation — complete or cancel it first.`, orderId: order.id }, { status: 409 });
     }
   }
+  // Split top-ups live as TOPUP deposits (orderId null), invisible to the
+  // renewal-charge guards above — block a second renewal (or split) while one
+  // is in flight, or it would pay the order from balance twice at settle.
+  const pendingSplit = await prisma.payment.findFirst({ where: { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }, select: { id: true } });
+  if (pendingSplit) {
+    return NextResponse.json({ error: `A top-up (${pendingSplit.id}) for this order is already awaiting confirmation — complete or cancel it first.`, orderId: order.id }, { status: 409 });
+  }
 
   // Renewal discounts (audit B-6) — renewalPricing is the ONE source for every
   // renewal charge and display (a per-order admin grant replaces the plan and
@@ -492,6 +515,12 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
       priceChanged: true,
     }, { status: 409 });
   }
+  // Split renewal (approach B): balance covers part, a crypto top-up the rest;
+  // the order is extended from balance when the top-up settles.
+  if (paymentMethod === 'split') {
+    return handleSplitRenewal({ orderId: order.id, orderQty: order.qty, planName: order.plan.name, userId, userBalance, total, coin });
+  }
+
   const isInstant = paymentMethod === 'balance' || paymentMethod === 'card';
   if (paymentMethod === 'balance' && userBalance < total) {
     return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 });
@@ -527,7 +556,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     // then SEE the winner's committed charge in the re-check below.
     await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
     const parkedNow = await tx.payment.findFirst({
-      where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+      where: { OR: [{ orderId: order.id, status: 'MANUAL_REVIEW' }, { orderId: order.id, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }] },
       select: { id: true },
     });
     if (parkedNow) throw new Error('RENEWAL_RACE');
@@ -669,4 +698,223 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   }
 
   return NextResponse.json({ ok: true, orderId: order.id, renewed: isInstant, ...(npPay ? { payment: payPanelPayload(paymentId, npPay) } : {}) });
+}
+
+// Split payment for a NEW purchase (approach B). The client's balance covers
+// part of the price; a crypto TOPUP covers the shortfall (floored at the crypto
+// minimum). The order is created NEW to hold its seats; when the top-up settles
+// it credits the balance and pays the order from it in one atomic tx
+// (settle-payment settleAutoPayTopup). If the top-up never
+// arrives, the sweep / failAwaitingPayment cancels this NEW order and frees the
+// seats. `coin` is whitelist-validated and npEnabled() confirmed by the caller.
+const round2 = (n: number) => Math.round(n * 100) / 100;
+async function handleSplitNewOrder({ userId, planId, qty, autoExtend, userBalance, clientDiscountPct, coin, expectedTotal }: {
+  userId: string; planId: string; qty: number; autoExtend: boolean;
+  userBalance: number; clientDiscountPct: number | null;
+  coin: ReturnType<typeof npCoin>; expectedTotal?: number;
+}) {
+  if (await newOrdersFrozen()) {
+    return NextResponse.json({ error: 'Ordering is temporarily paused — please try again later.' }, { status: 403 });
+  }
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
+  if (!plan || !plan.active || plan.deletedAt) return NextResponse.json({ error: 'Plan unavailable' }, { status: 400 });
+
+  const unitPrice = purchaseUnitPrice(Number(plan.price), clientDiscountPct);
+  const total = round2(unitPrice * qty);
+  if (total <= 0) {
+    return NextResponse.json({ error: 'This order cannot be priced at $0 — contact support to arrange it.' }, { status: 400 });
+  }
+  // Displayed-total guard (audit B-6), same as the balance/crypto paths.
+  if (expectedTotal !== undefined && Math.round(expectedTotal * 100) !== Math.round(total * 100)) {
+    return NextResponse.json({ error: `The order total is now ${money(total)} — pricing changed while you were checking out. Review the updated total and try again.`, priceChanged: true }, { status: 409 });
+  }
+
+  // Split is only valid with a PARTIAL balance: none → use full crypto; enough
+  // → use full balance. Guarded here and mirrored in the UI's offer condition.
+  if (userBalance <= 0) return NextResponse.json({ error: 'Your balance is empty — pay the full amount with crypto or top up first.' }, { status: 400 });
+  if (userBalance >= total) return NextResponse.json({ error: 'Your balance covers this order — pay from balance.' }, { status: 400 });
+
+  // One unpaid split order per plan (mirrors the crypto path's unpaid-dup 409):
+  // each split order reserves seats as NEW, and its charge is a TOPUP with
+  // orderId null (autoPayOrderId is a plain column, no relation) — invisible to
+  // the regular unpaid-order check, which this dispatch runs before. Without
+  // this a client (or a stale tab) could stack seat-reserving NEW split orders
+  // (adversarial review P2). Two-step: pending top-ups → their NEW orders.
+  const pendingSplits = await prisma.payment.findMany({
+    where: { clientId: userId, kind: 'TOPUP', status: { in: ['AWAITING', 'MANUAL_REVIEW'] }, autoPayOrderId: { not: null } },
+    select: { autoPayOrderId: true },
+  });
+  if (pendingSplits.length) {
+    const ids = pendingSplits.map(p => p.autoPayOrderId!).filter(Boolean);
+    const stacked = await prisma.order.findFirst({ where: { id: { in: ids }, clientId: userId, planId, status: 'NEW' }, select: { id: true } });
+    if (stacked) {
+      return NextResponse.json({ error: `You already have an unpaid split order (${stacked.id}) for this plan — complete its top-up or cancel it first.`, orderId: stacked.id }, { status: 409 });
+    }
+  }
+
+  // Top up the shortfall, floored at the crypto minimum. Any overshoot beyond
+  // the shortfall (when the shortfall is below the floor) stays on the balance.
+  const topup = splitTopupAmount(total, userBalance, CRYPTO_MIN_USD);
+
+  // Capacity pre-check (re-checked in-tx under the plan lock).
+  const alloc = await prisma.order.aggregate({
+    _sum: { qty: true },
+    where: { planId, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+  });
+  if (plan.availableQuota - (alloc._sum.qty ?? 0) < qty) {
+    return NextResponse.json({ error: 'Capacity unavailable for requested quantity' }, { status: 400 });
+  }
+
+  const orderId = await nextOrderId();
+  const paymentId = await nextPaymentId();
+
+  // NP direct payment for the top-up BEFORE persisting — if the processor is
+  // down, no dangling order/deposit is left behind.
+  let npPay: NpDirectPayment;
+  try {
+    npPay = await npCreatePayment({
+      amountUsd: topup,
+      payCurrency: coin!.code,
+      paymentId,
+      description: `Top-up for order ${orderId} — ${qty} × ${plan.name}`,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
+  }
+
+  const now = new Date();
+  try {
+    await prisma.$transaction(async tx => {
+      // Authoritative capacity re-check under the plan lock (audit B-5).
+      await tx.$queryRaw`SELECT id FROM plans WHERE id = ${planId} FOR UPDATE`;
+      const allocNow = await tx.order.aggregate({
+        _sum: { qty: true },
+        where: { planId, status: { in: ['ACTIVE', 'PROVISIONING', 'SUSPENDED', 'NEW', 'PENDING_RENEWAL'] } },
+      });
+      if (plan.availableQuota - (allocNow._sum.qty ?? 0) < qty) throw new Error('CAPACITY_EXHAUSTED');
+
+      // The order holds its seats as NEW/AWAITING; it carries NO order payment
+      // (the money arrives as a balance top-up), so the one-awaiting-per-order
+      // index is untouched. Provisioning happens at settle from balance.
+      await tx.order.create({
+        data: {
+          id: orderId, clientId: userId, planId: plan.id,
+          qty, unitPrice, amount: total, region: plan.region,
+          paymentStatus: 'AWAITING', status: 'NEW',
+          autoRenew: autoExtend, autoProvision: plan.autoProvision,
+          source: 'in-portal', credentialsChannel: null,
+        },
+      });
+      // The top-up deposit: a crypto TOPUP linked to this order via
+      // autoPayOrderId. On settle it credits the balance and pays the order.
+      await tx.payment.create({
+        data: {
+          id: paymentId, kind: 'TOPUP', orderId: null, clientId: userId,
+          provider: 'NOWPayments', method: 'Crypto',
+          gross: topup, fees: 0, net: topup, status: 'AWAITING',
+          autoPayOrderId: orderId,
+          externalRef: npPay.npPaymentId,
+          payCurrency: npPay.payCurrency, payAmount: npPay.payAmount,
+          payAddress: npPay.payAddress, payinExtraId: npPay.payinExtraId,
+          payExpiresAt: npPay.expiresAt,
+        },
+      });
+      await tx.log.create({
+        data: {
+          actorId: userId, action: 'ORDER.CREATE', objectType: 'ORDER', objectId: orderId,
+          detail: `Split order created · ${money(total)} = ${money(round2(total - topup))} from balance + ${money(topup)} crypto top-up (${paymentId})`,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          id: `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, userId,
+          title: `Order ${orderId} placed — complete the ${money(topup)} crypto top-up to activate`,
+          kind: 'INFO', link: `/orders/${orderId}`,
+        },
+      });
+    });
+  } catch (e: any) {
+    if (e?.message === 'CAPACITY_EXHAUSTED') {
+      return NextResponse.json({ error: 'Capacity unavailable for requested quantity' }, { status: 400 });
+    }
+    throw e;
+  }
+
+  return NextResponse.json({
+    ok: true, orderId,
+    split: { total, topup, fromBalance: round2(total - topup) },
+    payment: payPanelPayload(paymentId, npPay),
+  });
+}
+
+// Split payment for a RENEWAL (approach B). The order already holds its term;
+// a crypto TOPUP covers the shortfall and, at settle, extends the order from
+// the topped-up balance (settle-payment settleAutoPayTopup).
+// If the top-up never arrives, the deposit fails and the order is untouched.
+// `total` is the discounted renewal total; caller validated renewability + the
+// no-in-flight-renewal/split guards.
+async function handleSplitRenewal({ orderId, orderQty, planName, userId, userBalance, total, coin }: {
+  orderId: string; orderQty: number; planName: string;
+  userId: string; userBalance: number; total: number;
+  coin: ReturnType<typeof npCoin>;
+}) {
+  if (userBalance <= 0) return NextResponse.json({ error: 'Your balance is empty — pay the full renewal with crypto or top up first.' }, { status: 400 });
+  if (userBalance >= total) return NextResponse.json({ error: 'Your balance covers this renewal — pay from balance.' }, { status: 400 });
+
+  const topup = splitTopupAmount(total, userBalance, CRYPTO_MIN_USD);
+  const paymentId = await nextPaymentId();
+
+  let npPay: NpDirectPayment;
+  try {
+    npPay = await npCreatePayment({
+      amountUsd: topup,
+      payCurrency: coin!.code,
+      paymentId,
+      description: `Top-up for renewal of order ${orderId} — ${orderQty} × ${planName}`,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'Crypto payment processor is unavailable.' }, { status: 502 });
+  }
+
+  try {
+    await prisma.$transaction(async tx => {
+      // Serialize with other renewal writers on the order row (R3): re-check
+      // no split/renewal charge slipped in between the pre-tx guard and here.
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+      const clash = await tx.payment.findFirst({
+        where: { OR: [{ autoPayOrderId: orderId, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }, { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { orderId, status: 'MANUAL_REVIEW' }] },
+        select: { id: true },
+      });
+      if (clash) throw new Error('RENEWAL_RACE');
+      await tx.payment.create({
+        data: {
+          id: paymentId, kind: 'TOPUP', orderId: null, clientId: userId,
+          provider: 'NOWPayments', method: 'Crypto',
+          gross: topup, fees: 0, net: topup, status: 'AWAITING',
+          autoPayOrderId: orderId,
+          externalRef: npPay.npPaymentId,
+          payCurrency: npPay.payCurrency, payAmount: npPay.payAmount,
+          payAddress: npPay.payAddress, payinExtraId: npPay.payinExtraId,
+          payExpiresAt: npPay.expiresAt,
+        },
+      });
+      await tx.log.create({
+        data: {
+          actorId: userId, action: 'PAYMENT.PENDING', objectType: 'PAYMENT', objectId: paymentId,
+          detail: `Split renewal top-up for ${orderId} · ${money(total)} = ${money(round2(total - topup))} from balance + ${money(topup)} crypto`,
+        },
+      });
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2002' || e?.message === 'RENEWAL_RACE') {
+      return NextResponse.json({ error: 'A renewal for this order was just started elsewhere — reload to see its state.', orderId }, { status: 409 });
+    }
+    throw e;
+  }
+
+  return NextResponse.json({
+    ok: true, orderId,
+    split: { total, topup, fromBalance: round2(total - topup) },
+    payment: payPanelPayload(paymentId, npPay),
+  });
 }

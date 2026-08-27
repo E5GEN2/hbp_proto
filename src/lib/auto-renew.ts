@@ -40,7 +40,13 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   // override is not a renewal in flight — the broad check auto-renew-starved
   // such orders every tick with a mislabelled reason.
   const pending = await prisma.payment.findFirst({
-    where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+    where: { OR: [
+      { orderId: order.id, status: 'MANUAL_REVIEW' },
+      { orderId: order.id, status: 'AWAITING', renewalDiscountApplied: { not: null } },
+      // A split-payment top-up in flight will extend this order from balance at
+      // settle — don't also auto-charge it (split payment).
+      { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } },
+    ] },
   });
   if (pending) return { renewed: false, reason: `payment ${pending.id} for this order is already ${pending.status === 'AWAITING' ? 'awaiting confirmation' : 'under verification'}` };
 
@@ -66,7 +72,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       // to plain reads; the row lock makes the loser wait and see it.
       await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
       const parkedNow = await tx.payment.findFirst({
-        where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+        where: { OR: [{ orderId: order.id, status: 'MANUAL_REVIEW' }, { orderId: order.id, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }] },
         select: { id: true },
       });
       if (parkedNow) throw new AutoRenewFail(`renewal payment ${parkedNow.id} appeared concurrently — no charge attempted`);

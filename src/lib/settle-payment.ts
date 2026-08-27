@@ -4,16 +4,16 @@
 // endpoint (dev only) — both paths settle identically and idempotently.
 
 import { prisma } from './prisma';
-import { nextInvoiceId, nextAssignmentId } from './id';
+import { nextInvoiceId, nextAssignmentId, nextPaymentId } from './id';
 import { fmtDate } from './date';
 import { money } from './money';
-import { creditBalance } from './balance';
+import { creditBalance, debitBalance, InsufficientBalance } from './balance';
 import { reprovisionRenewedOrder } from './transitions';
 import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
 import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
 import { isResurrectable, RESURRECTABLE_STATUSES } from './crypto-window';
-import { renewalBase, consumeRenewalDiscountCycle } from './renewal';
+import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from './renewal';
 import { applyCustomExpiry } from './new-order-policy';
 
 export type SettleResult =
@@ -73,6 +73,18 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   // ── Balance top-up (payment carries no order) ─────────────────────────────
   if (!payment.orderId) {
     const amount = Number(payment.gross);
+    // Split payment (approach B): a top-up linked to an order (autoPayOrderId)
+    // credits the balance AND pays that order from it in ONE transaction — so
+    // the whole thing is atomic (no concurrent renewer can double-extend in a
+    // gap), idempotent (a lost guardedConfirm race or a mid-tx failure rolls
+    // the credit back too, and the retry re-runs), and crash-safe. Insufficient
+    // balance at settle (the client drained it meanwhile) is handled WITHOUT
+    // rolling back the credit: we read the freshly-credited balance and only
+    // debit when it covers the order.
+    if (payment.autoPayOrderId) {
+      return settleAutoPayTopup(payment, payment.autoPayOrderId, via, guardedConfirm, AlreadySettled, now);
+    }
+    // ── Plain deposit ────────────────────────────────────────────────────────
     let newBal = 0;
     try {
       await prisma.$transaction(async tx => {
@@ -378,6 +390,172 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   return { ok: true, kind: 'order' };
 }
 
+// Split payment (approach B), ATOMIC settle: credit the top-up AND pay the
+// linked order from the topped-up balance in ONE transaction. Everything the
+// two-phase version had races on — a concurrent renewer double-extending in the
+// credit→pay gap, a crash between credit and pay orphaning the order — is closed
+// because the order-row lock is held throughout and a failure rolls the credit
+// back too (the retry re-runs via guardedConfirm). Insufficient balance at
+// settle does NOT roll back the credit: we read the freshly-credited balance and
+// only debit when it covers the order, otherwise the top-up simply stays as
+// balance (and a reserved NEW purchase is cancelled to free its seats).
+type AutoPayRes =
+  | { kind: 'purchase'; active: boolean; orderId: string; qty: number; assigned: number; planName: string; total: number }
+  | { kind: 'renew'; orderId: string; newExpiry: Date | null; reproShort: boolean }
+  | { kind: 'insufficient-cancelled'; orderId: string }
+  | { kind: 'insufficient-kept'; orderId: string }
+  | { kind: 'credited-only'; orderId: string };
+
+async function settleAutoPayTopup(
+  payment: { id: string; clientId: string; gross: unknown; client: { email: string; name: string | null; id: string } },
+  autoPayOrderId: string,
+  via: string,
+  guardedConfirm: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<void>,
+  AlreadySettledClass: new () => Error,
+  now: Date,
+): Promise<SettleResult> {
+  const clientId = payment.clientId;
+  const amount = Number(payment.gross);
+  let res: AutoPayRes | null = null;
+
+  try {
+    await prisma.$transaction(async tx => {
+      await guardedConfirm(tx); // top-up AWAITING/resurrectable → CONFIRMED (idempotent)
+      // Credit ALWAYS — the crypto arrived. The order payment below is conditional.
+      const bal = await creditBalance(tx, clientId, amount);
+      await tx.balanceLedgerEntry.create({
+        data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: bal, refPaymentId: payment.id, note: `Top-up for order ${autoPayOrderId} (${via})` },
+      });
+      const depInv = await nextInvoiceId();
+      await tx.invoice.create({ data: { id: depInv, paymentId: payment.id, orderId: null, clientId, amount } });
+      await tx.log.create({
+        data: { actorId: clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id, detail: `Split top-up for order ${autoPayOrderId} confirmed via ${via} · ${money(amount)}` },
+      });
+
+      // Lock + load the linked order so no concurrent renewer/canceller can race.
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${autoPayOrderId} FOR UPDATE`;
+      const ord = await tx.order.findUnique({ where: { id: autoPayOrderId }, include: { plan: true, client: { select: { clientDiscountPct: true } } } });
+      // Stale/foreign link or the order was cancelled while the transfer was in
+      // flight → the top-up just stays on the balance (money safe), say so.
+      if (!ord || ord.clientId !== clientId || ord.status === 'CANCELLED') {
+        res = { kind: 'credited-only', orderId: autoPayOrderId };
+        await tx.notification.create({ data: { id: notifId(), userId: clientId, title: `Your top-up of ${money(amount)} was added to your balance · bal ${money(bal)}`, kind: 'SUCCESS', link: '/billing' } });
+        return;
+      }
+
+      // ── NEW purchase: activate from balance ──────────────────────────────
+      if (ord.status === 'NEW') {
+        const total = Number(ord.amount);
+        if (bal < total) {
+          // Client drained their pre-existing balance meanwhile — cancel the
+          // reserved NEW order (free its seats); the top-up stays as balance.
+          await tx.order.update({ where: { id: ord.id }, data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: now, cancelledReason: 'Split payment — balance short at settle; top-up kept as balance', autoRenew: false, renewalBucket: null, customExpiresAt: null } });
+          await tx.log.create({ data: { actorId: null, action: 'ORDER.CANCEL', objectType: 'ORDER', objectId: ord.id, detail: 'Split payment: balance short at settle — order cancelled, top-up kept as balance' } });
+          await tx.notification.create({ data: { id: notifId(), userId: clientId, title: `Order ${ord.id} couldn't be completed — your balance changed. Your ${money(amount)} top-up was added to your balance.`, kind: 'WARNING', link: '/billing' } });
+          res = { kind: 'insufficient-cancelled', orderId: ord.id };
+          return;
+        }
+        const payId = await nextPaymentId();
+        const nb = await debitBalance(tx, clientId, total);
+        await tx.payment.create({ data: { id: payId, orderId: ord.id, clientId, provider: 'Balance', method: 'Balance', gross: total, fees: 0, net: total, status: 'CONFIRMED', confirmedAt: now } });
+        await tx.balanceLedgerEntry.create({ data: { userId: clientId, op: 'ORDER_DEBIT', amount: -total, balanceAfter: nb, refOrderId: ord.id, refPaymentId: payId, note: `Order ${ord.id} (balance + top-up)` } });
+        const ordInv = await nextInvoiceId();
+        await tx.invoice.create({ data: { id: ordInv, paymentId: payId, orderId: ord.id, clientId, amount: total } });
+        // Provision pool-first (mirrors settle-payment / checkout/place).
+        let assigned = 0;
+        if (ord.autoProvision) {
+          const cand = await tx.proxy.findMany({ where: { carrier: ord.plan.carrier, region: ord.region, pool: ord.plan.pool, status: 'AVAILABLE', health: 'HEALTHY' }, take: ord.qty });
+          if (cand.length < ord.qty) {
+            const more = await tx.proxy.findMany({ where: { carrier: ord.plan.carrier, region: ord.region, status: 'AVAILABLE', health: 'HEALTHY', id: { notIn: cand.map(c => c.id) } }, take: ord.qty - cand.length });
+            cand.push(...more);
+          }
+          for (const px of cand.slice(0, ord.qty)) {
+            const aid = await nextAssignmentId();
+            await tx.assignment.create({ data: { id: aid, orderId: ord.id, proxyId: px.id, actorId: 'ADM-SYS', assignedAt: now } });
+            await tx.proxy.update({ where: { id: px.id }, data: { status: 'ASSIGNED', currentOrderId: ord.id } });
+            assigned++;
+          }
+        }
+        const fully = ord.autoProvision && assigned >= ord.qty;
+        const status = fully ? ('ACTIVE' as const) : ('PROVISIONING' as const);
+        const custom = applyCustomExpiry(ord.customExpiresAt, ord.plan.durationDays, now);
+        const exc = ord.autoProvision && !fully ? ('PAID_NOT_PROVISIONED' as const) : null;
+        await tx.order.update({
+          where: { id: ord.id },
+          data: {
+            paymentStatus: 'PAID', status,
+            activatedAt: status === 'ACTIVE' ? now : null,
+            expiresAt: status === 'ACTIVE' ? custom.expiresAt : null,
+            ...(status === 'ACTIVE' ? { customExpiresAt: null } : {}),
+            credentialsSentAt: status === 'ACTIVE' ? now : null,
+            credentialsChannel: null,
+            exception: exc, excInfo: exc ? `Pool exhausted — ${assigned}/${ord.qty} provisioned` : null,
+          },
+        });
+        await tx.log.create({ data: { actorId: clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payId, detail: `Order ${ord.id} paid from balance after split top-up via ${via} · status=${status}${exc ? ' · ' + exc : ''}` } });
+        await tx.notification.create({ data: { id: notifId(), userId: clientId, title: status === 'ACTIVE' ? `Order ${ord.id} activated — ${ord.qty} ${ord.qty === 1 ? 'proxy' : 'proxies'} ready` : `Order ${ord.id} paid — provisioning in progress`, kind: status === 'ACTIVE' ? 'SUCCESS' : 'INFO', link: `/orders/${ord.id}` } });
+        res = { kind: 'purchase', active: status === 'ACTIVE', orderId: ord.id, qty: ord.qty, assigned, planName: ord.plan.name, total };
+        return;
+      }
+
+      // ── Renewal (ACTIVE/EXPIRED/PROVISIONING): extend from balance ─────────
+      const pricing = renewalPricing(ord.plan, ord, ord.client);
+      const total = pricing.total;
+      if (bal < total) {
+        res = { kind: 'insufficient-kept', orderId: ord.id };
+        await tx.notification.create({ data: { id: notifId(), userId: clientId, title: `Your top-up of ${money(amount)} was added to your balance, but the renewal of ${ord.id} couldn't complete (balance changed).`, kind: 'WARNING', link: `/orders/${ord.id}` } });
+        return;
+      }
+      const payId = await nextPaymentId();
+      if (total > 0) {
+        const nb = await debitBalance(tx, clientId, total);
+        await tx.balanceLedgerEntry.create({ data: { userId: clientId, op: 'ORDER_DEBIT', amount: -total, balanceAfter: nb, refOrderId: ord.id, refPaymentId: payId, note: `Renewal of ${ord.id} (balance + top-up)` } });
+      }
+      await tx.payment.create({ data: { id: payId, orderId: ord.id, clientId, provider: 'Balance', method: 'Balance', gross: total, fees: 0, net: total, status: 'CONFIRMED', confirmedAt: now, renewalDiscountApplied: pricing.source === 'order' } });
+      const rInv = await nextInvoiceId();
+      await tx.invoice.create({ data: { id: rInv, paymentId: payId, orderId: ord.id, clientId, amount: total } });
+      const reproOrd = { id: ord.id, qty: ord.qty, region: ord.region, activatedAt: ord.activatedAt, autoProvision: ord.autoProvision, plan: { carrier: ord.plan.carrier, pool: ord.plan.pool, durationDays: ord.plan.durationDays } };
+      const repro = ord.status === 'EXPIRED' ? await reprovisionRenewedOrder(tx, reproOrd, 'ADM-SYS', now) : null;
+      let newExpiry: Date | null;
+      if (repro) {
+        await tx.order.update({ where: { id: ord.id }, data: repro.data });
+        newExpiry = repro.fullyAssigned ? new Date(now.getTime() + ord.plan.durationDays * 86_400_000) : null;
+        await tx.notification.create({ data: { id: notifId(), userId: clientId, title: repro.fullyAssigned ? `Order ${ord.id} renewed — ${ord.qty} fresh ${ord.qty === 1 ? 'proxy' : 'proxies'} assigned` : `Order ${ord.id} renewed — proxies are being provisioned`, kind: 'SUCCESS', link: `/orders/${ord.id}` } });
+        res = { kind: 'renew', orderId: ord.id, newExpiry, reproShort: !repro.fullyAssigned };
+      } else {
+        const base = renewalBase(ord.expiresAt, ord.plan.durationDays, now);
+        newExpiry = new Date(base.getTime() + ord.plan.durationDays * 86_400_000);
+        await tx.order.update({ where: { id: ord.id }, data: { expiresAt: newExpiry, status: ord.status === 'EXPIRED' ? 'ACTIVE' : ord.status, activatedAt: ord.activatedAt ?? now, renewalBucket: 'RENEWED', lastReminderAt: null, exception: ord.exception === 'RENEWAL_NOT_EXTENDED' ? null : ord.exception } });
+        await tx.notification.create({ data: { id: notifId(), userId: clientId, title: `Order ${ord.id} renewed — new expiry ${fmtDate(newExpiry)}`, kind: 'SUCCESS', link: `/orders/${ord.id}` } });
+        res = { kind: 'renew', orderId: ord.id, newExpiry, reproShort: false };
+      }
+      if (pricing.source === 'order') await consumeRenewalDiscountCycle(tx, ord.id);
+      await tx.log.create({ data: { actorId: clientId, action: 'ORDER.EXTEND', objectType: 'ORDER', objectId: ord.id, detail: `Renewed from balance after split top-up via ${via} · ${money(total)}${newExpiry ? ' · new expiry ' + newExpiry.toISOString().slice(0, 10) : ' · provisioning'}` } });
+    });
+  } catch (e) {
+    if (e instanceof AlreadySettledClass) return { ok: true, already: true };
+    throw e;
+  }
+
+  // Post-commit emails/alerts (best-effort, outside the tx).
+  const r = res!;
+  const clientEmail = payment.client.email;
+  if (r.kind === 'purchase') {
+    await sendEmail({ to: clientEmail, ...orderPaidEmail(r.orderId, r.active) });
+    try {
+      await sendAdminTelegram(adminNewOrderAlert({
+        orderId: r.orderId, clientName: payment.client.name ?? payment.client.id, clientId,
+        planName: r.planName, qty: r.qty, amount: money(r.total),
+        method: 'Balance + crypto top-up', status: r.active ? 'ACTIVE' : 'PROVISIONING',
+        assigned: r.assigned, adminUrl: appUrl(`/admin/orders/${r.orderId}`), via,
+      }));
+    } catch { /* best-effort */ }
+  } else if (r.kind === 'renew') {
+    await sendEmail({ to: clientEmail, ...orderRenewedEmail(r.orderId, r.newExpiry ? fmtDate(r.newExpiry) : (r.reproShort ? 'starts when your proxies are assigned' : fmtDate(now))) });
+  }
+  return { ok: true, kind: 'order' };
+}
+
 // IPN told us the charge died (expired / failed / refunded before credit).
 // Only an AWAITING payment flips — a settled one is left alone.
 export async function failAwaitingPayment(paymentId: string, reason: string): Promise<{ ok: true; changed: boolean }> {
@@ -411,6 +589,31 @@ export async function failAwaitingPayment(paymentId: string, reason: string): Pr
           id: notifId(), userId: payment.clientId,
           title: `Payment for order ${payment.orderId} didn't complete — you can retry from the order page`,
           kind: 'WARNING', link: `/orders/${payment.orderId}`,
+        },
+      });
+    } else if (payment.autoPayOrderId) {
+      // Split payment (approach B): the top-up that was to fund an order's
+      // shortfall died. Cancel the still-NEW purchase it reserved (free its
+      // seats) — a renewal's order (non-NEW) is left untouched, the client
+      // simply didn't renew. Guarded on NEW so a since-activated order (a late
+      // finished IPN could still resurrect+settle this charge) is never
+      // clobbered.
+      const linked = await tx.order.findUnique({ where: { id: payment.autoPayOrderId }, select: { status: true } });
+      let cancelledNew = false;
+      if (linked?.status === 'NEW') {
+        const c = await tx.order.updateMany({
+          where: { id: payment.autoPayOrderId, status: 'NEW' },
+          data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Top-up for split payment did not complete', autoRenew: false, renewalBucket: null, customExpiresAt: null },
+        });
+        cancelledNew = c.count > 0;
+      }
+      await tx.notification.create({
+        data: {
+          id: notifId(), userId: payment.clientId,
+          title: cancelledNew
+            ? `Order ${payment.autoPayOrderId} was cancelled — the top-up payment didn't complete. You can order again any time.`
+            : `Your top-up for ${payment.autoPayOrderId} didn't complete — your balance was not credited.`,
+          kind: 'WARNING', link: cancelledNew ? `/orders/${payment.autoPayOrderId}` : '/billing',
         },
       });
     } else {

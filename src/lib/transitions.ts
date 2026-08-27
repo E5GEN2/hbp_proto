@@ -61,6 +61,10 @@ async function log(tx: Tx, actorId: string | null, action: string, objectType: L
 export async function markPaymentPaid({
   paymentId, actor, source, externalRef,
 }: { paymentId: string; actor: Actor; source?: string; externalRef?: string }) {
+  // NB: a split-payment top-up (TOPUP, orderId null, autoPayOrderId set) is NOT
+  // handled here — markPaidAction (the admin action) routes it to
+  // settleAwaitingPayment instead, the ONE atomic credit+auto-pay path. If it
+  // reached here it would credit the balance only and orphan the linked order.
   // Built inside the tx, sent after commit (no HTTP inside $transaction).
   let adminAlert: string | null = null;
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
@@ -2234,7 +2238,10 @@ export async function clientCancelNewOrder({ orderId, clientId }: { orderId: str
     // and mid-verification. The Cancel button lives inside the pay panel, so
     // this is a real click (re-review C5). Support resolves it: settle if the
     // transfer completes, otherwise refund to balance.
-    const parked = await tx.payment.findFirst({ where: { orderId, status: 'MANUAL_REVIEW' }, select: { id: true } });
+    // A split-payment top-up (TOPUP, orderId null, linked via autoPayOrderId)
+    // under review is money on this order too — the OR keeps the misleading
+    // "nothing was charged" cancel from firing over it (review C5 + split).
+    const parked = await tx.payment.findFirst({ where: { OR: [{ orderId, status: 'MANUAL_REVIEW' }, { autoPayOrderId: orderId, status: 'MANUAL_REVIEW' }] }, select: { id: true } });
     if (parked) throw new Error('We’ve detected your payment for this order and it’s being verified — contact support instead of cancelling.');
     await tx.order.update({
       where: { id: orderId },
@@ -2352,10 +2359,13 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
   // under verification block a second charge.
   const parkedPay = await prisma.payment.findFirst({
     where: {
-      orderId,
       OR: [
-        { status: 'MANUAL_REVIEW' },
-        { status: 'AWAITING', renewalDiscountApplied: { not: null } },
+        { orderId, status: 'MANUAL_REVIEW' },
+        { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } },
+        // A split-payment top-up in flight (TOPUP, orderId null, linked via
+        // autoPayOrderId) will extend this order from balance when it settles —
+        // block a second renewal so it isn't extended twice (split payment).
+        { autoPayOrderId: orderId, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } },
       ],
     },
     select: { id: true, status: true },
@@ -2402,7 +2412,7 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     // inserted its AWAITING charge after the pre-tx guard above — committing
     // this balance renewal on top would double-charge and double-consume.
     const parkedNow = await tx.payment.findFirst({
-      where: { orderId, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+      where: { OR: [{ orderId, status: 'MANUAL_REVIEW' }, { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { autoPayOrderId: orderId, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }] },
       select: { id: true },
     });
     if (parkedNow) throw new Error('A renewal payment is already awaiting confirmation — complete or cancel it first.');

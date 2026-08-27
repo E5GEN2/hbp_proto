@@ -7,6 +7,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions, isAdminRole } from './auth';
 import * as T from './transitions';
 import { listAssignCandidates } from './provisioning';
+import { prisma } from './prisma';
+import { settleAwaitingPayment } from './settle-payment';
 
 async function getAdminActor() {
   const session = await getServerSession(authOptions);
@@ -27,6 +29,23 @@ function bust() {
 
 export const markPaidAction = guarded(async function markPaidAction(paymentId: string, source: string, externalRef?: string) {
   const actor = await getAdminActor();
+  // A split-payment top-up (TOPUP, orderId null, autoPayOrderId set) must credit
+  // the balance AND pay the linked order — route it through the ONE atomic
+  // credit+auto-pay path instead of markPaymentPaid's deposit-only branch, which
+  // would orphan the order (adversarial review P1). resurrectFailed handles a
+  // top-up that was parked (MANUAL_REVIEW) or timed out (FAILED).
+  const pay = await prisma.payment.findUnique({ where: { id: paymentId }, select: { kind: true, orderId: true, autoPayOrderId: true } });
+  if (pay && pay.kind === 'TOPUP' && !pay.orderId && pay.autoPayOrderId) {
+    const r = await settleAwaitingPayment(paymentId, `MarkPaid by ${actor.name ?? actor.id}`, { resurrectFailed: true });
+    // Only log the admin action when THIS call actually settled it — a
+    // concurrent IPN/reconcile may have won the race ({already}), and a
+    // "auto-paid order X" line there would be false (review P3).
+    if (!('already' in r)) {
+      await prisma.log.create({ data: { actorId: actor.id, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: paymentId, detail: `Admin MarkPaid on split top-up → auto-paid order ${pay.autoPayOrderId}` } });
+    }
+    bust();
+    return { ok: true };
+  }
   const r = await T.markPaymentPaid({ paymentId, actor, source, externalRef });
   bust();
   return r;

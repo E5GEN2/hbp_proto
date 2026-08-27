@@ -8,6 +8,7 @@ import { durationLabel, tierFeatures, planDisplayName } from '@/lib/catalog';
 import { FormSelect } from '@/components/ui/FormSelect';
 import { CryptoPayPanel, CoinSelect, useCoinList, type PayPanelData } from '@/components/client/CryptoPayPanel';
 import { CRYPTO_MIN_USD } from '@/lib/np-coins';
+import { splitTopupAmount } from '@/lib/split-payment';
 import { CompletePaymentActions } from './CompletePaymentActions';
 import { SoldOutModal } from '@/components/client/SoldOutModal';
 import { signalStructural } from '@/lib/nav-history';
@@ -54,7 +55,7 @@ export function CheckoutFlow({
   const [qty, setQty] = useState(Math.max(1, qtyInit));
   const [autoExtend, setAutoExtend] = useState(autoExtendInit);
   const [location, setLocation] = useState(locationInit);
-  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'balance' | 'card'>('balance');
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'balance' | 'card' | 'split'>('balance');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -84,6 +85,12 @@ export function CheckoutFlow({
   // per-coin min endpoint is unreliable, so block a sub-$10 crypto order up
   // front with a clear note instead of a server-side rejection after "Buy now".
   const belowMin = paymentMethod === 'crypto' && total < CRYPTO_MIN_USD;
+  // Split payment (balance + crypto top-up): offered only with a PARTIAL
+  // balance (none → full crypto; enough → full balance) and only when crypto
+  // is available. splitTopupAmount is the SAME helper the server charges with,
+  // so the shown top-up equals the charged one.
+  const splitTopup = splitTopupAmount(total, balance, CRYPTO_MIN_USD);
+  const canSplit = allowCrypto && balance > 0 && balance < total;
   const label = durationLabel(duration);
   // Deposit round-trip must preserve the CONFIGURED cart (trace finds #6/#14/#16):
   // renewOf is load-bearing (its absence turns a renewal into a brand-new order);
@@ -113,7 +120,7 @@ export function CheckoutFlow({
   // confirmation, not a blank buy form.
   const successUrl = (id: string) => `/checkout?success=${id}${renewOf ? '&renewed=1' : ''}`;
 
-  async function placeOrder(method: 'balance' | 'crypto' | 'card', opts?: { confirmDuplicate?: boolean }) {
+  async function placeOrder(method: 'balance' | 'crypto' | 'card' | 'split', opts?: { confirmDuplicate?: boolean }) {
     setBusy(true); setErr(null);
     try {
       const r = await fetch('/api/checkout/place', {
@@ -125,7 +132,8 @@ export function CheckoutFlow({
           // total and 409s if pricing moved since this page rendered, instead
           // of silently charging an amount the buyer never saw (audit B-6).
           expectedTotal: total,
-          ...(method === 'crypto' && payCoin ? { payCoin } : {}),
+          // crypto AND split create an NP charge (split's is the top-up).
+          ...((method === 'crypto' || method === 'split') && payCoin ? { payCoin } : {}),
           ...(opts?.confirmDuplicate ? { confirmDuplicate: true } : {}),
           ...(renewOf ? { renewOf } : {}),
         }),
@@ -204,12 +212,14 @@ export function CheckoutFlow({
     try {
       const r = await fetch('/api/checkout/repay', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        // Renewal mode only: same displayed-total echo as placeOrder — the pay
-        // panel shows `total` as its USD amount, and a fresh renewal address
-        // must not be silently priced differently. New orders are exempt: repay
-        // always re-issues at the FROZEN order.amount (the price this wizard
-        // charged at placement), so a live-recomputed echo could only 409-loop.
-        body: JSON.stringify({ orderId, payCoin: coinCode, ...(renewOf ? { expectedTotal: total } : {}) }),
+        // Split: the charge is a TOPUP deposit, not an order charge — re-issue
+        // it by paymentId (repay's TOPUP branch, which preserves autoPayOrderId
+        // and the fixed top-up amount). Crypto/renewal: re-issue by orderId.
+        // Renewal echoes the displayed total (a fresh renewal address must not
+        // be silently repriced); new orders re-issue at the frozen order.amount.
+        body: paymentMethod === 'split'
+          ? JSON.stringify({ paymentId: payData?.paymentId, payCoin: coinCode })
+          : JSON.stringify({ orderId, payCoin: coinCode, ...(renewOf ? { expectedTotal: total } : {}) }),
       });
       const j = await r.json().catch(() => ({} as any));
       // Pricing moved since this panel rendered: surface the honest message
@@ -395,6 +405,21 @@ export function CheckoutFlow({
                 )}
                 <PayRow icon={<IconWallet />} selected={paymentMethod === 'balance'} disabled={!balanceOk} onClick={() => setPaymentMethod('balance')}
                   title="Account balance" caption={<>Your balance: <strong>{money(balance)}</strong>{!balanceOk && <> · <Link href={depositLink}>Add funds</Link></>}</>} />
+                {/* Split: partial balance + crypto top-up for the rest. Offered
+                    only when the balance covers PART of the total (0 < bal <
+                    total) and crypto is available; the order activates from
+                    balance once the top-up settles. */}
+                {canSplit && (
+                  <>
+                    <PayRow icon={<IconWallet />} selected={paymentMethod === 'split'} onClick={() => setPaymentMethod('split')}
+                      title="Balance + crypto top-up"
+                      caption={<>Use your <strong>{money(balance)}</strong> balance and top up <strong>{money(splitTopup)}</strong> in crypto. Activates after the top-up confirms.</>} />
+                    {paymentMethod === 'split' && (
+                      <CoinSelect totalUsd={splitTopup} value={payCoin} onChange={setPayCoin}
+                        coins={coinList.coins} loading={coinList.loading} error={coinList.error} onRetry={coinList.retry} />
+                    )}
+                  </>
+                )}
                 {allowCard && <PayRow icon={<IconCard />} selected={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')}
                   title="Card · Visa •• 4242" caption={<>Mock card — instant activation in this prototype.</>} />}
                 {belowMin && (
@@ -409,12 +434,14 @@ export function CheckoutFlow({
                 <button className="btn primary"
                   /* coinList.error ≠ NP-off: a failed fetch must not arm the
                      button coin-less (the server would 400) — Retry first.
-                     belowMin: block a sub-minimum crypto order up front. */
-                  disabled={busy || belowMin || (paymentMethod === 'balance' && !balanceOk) || (paymentMethod === 'crypto' && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
+                     belowMin: block a sub-minimum crypto order up front.
+                     split needs a coin too (its top-up is crypto). */
+                  disabled={busy || belowMin || (paymentMethod === 'balance' && !balanceOk) || ((paymentMethod === 'crypto' || paymentMethod === 'split') && (coinList.loading || coinList.error || (directCrypto && !payCoin)))}
                   onClick={() => placeOrder(paymentMethod)}>
                   {busy ? 'Processing…'
                     : belowMin ? `Crypto minimum is ${money(CRYPTO_MIN_USD)}`
-                    : paymentMethod === 'crypto' && directCrypto && !payCoin ? 'Pick a coin to continue'
+                    : (paymentMethod === 'crypto' || paymentMethod === 'split') && directCrypto && !payCoin ? 'Pick a coin to continue'
+                    : paymentMethod === 'split' ? `Top up ${money(splitTopup)} & pay`
                     : 'Buy now'}
                 </button>
               </div>
@@ -432,9 +459,11 @@ export function CheckoutFlow({
       {step === 'processing' && payData && (
         <CryptoPayPanel
           key={payData.paymentId}
+          /* Split: the crypto leg is the TOP-UP, not the full total — show what
+             the client actually sends on-chain; the rest is paid from balance. */
           pay={payData}
-          amountUsd={total}
-          title="Complete your payment"
+          amountUsd={paymentMethod === 'split' ? splitTopup : total}
+          title={paymentMethod === 'split' ? 'Complete your top-up' : 'Complete your payment'}
           onSettled={() => orderId && router.replace(successUrl(orderId))}
           onRegenerate={regenerate}
           regenerating={regenBusy}

@@ -378,6 +378,12 @@ model Payment {
   renewalDiscountApplied Boolean?
   externalRef     String?
   source          String?
+  // Split payment (owner decision 2026-08-27, approach B): a crypto TOPUP
+  // deposit whose settle should AUTO-PAY this order from balance — the client
+  // paid part from balance and topped up the shortfall via crypto. Set only on
+  // TOPUP rows (kind=TOPUP, orderId null); the linked order is paid from
+  // balance when the deposit confirms. NULL on every other payment.
+  autoPayOrderId  String?
   createdAt       DateTime      @default(now())
   confirmedAt     DateTime?
   refundedAt      DateTime?

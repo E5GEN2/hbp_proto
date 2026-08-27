@@ -100,7 +100,7 @@ export function ResumePayPanel({ orderId, amountUsd, initial, expiredMode, renew
   );
 }
 
-export function DepositResumePanel({ amountUsd, initial, returnTo }: { amountUsd: number; initial: PayPanelData; returnTo?: string }) {
+export function DepositResumePanel({ amountUsd, initial, returnTo, settledHref }: { amountUsd: number; initial: PayPanelData; returnTo?: string; settledHref?: string }) {
   const toast = useToast();
   const back = returnTo ?? '/billing';
   const [payData, setPayData] = useState<PayPanelData>(initial);
@@ -110,7 +110,9 @@ export function DepositResumePanel({ amountUsd, initial, returnTo }: { amountUsd
   // 2026-08-10: no silent redirect to Billing after a top-up). returnTo rides
   // along so the confirmation can offer "Continue checkout". Hard-nav kept
   // (PR #111). Derived from payData — a regenerated charge has a NEW id.
-  const settledUrl = `/checkout?kind=deposit&resume=${payData.paymentId}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
+  // settledHref: a SPLIT top-up pays its order at settle (atomic), so it lands
+  // on the ORDER confirmation, not the generic "deposit added" screen.
+  const settledUrl = settledHref ?? `/checkout?kind=deposit&resume=${payData.paymentId}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`;
 
   // Deposit regenerate — the repay endpoint's TOPUP branch (same recovery
   // orders always had; deposits used to dead-end on a lapsed window).

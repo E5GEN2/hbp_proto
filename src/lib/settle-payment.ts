@@ -8,7 +8,7 @@ import { nextInvoiceId, nextAssignmentId } from './id';
 import { fmtDate } from './date';
 import { money } from './money';
 import { creditBalance } from './balance';
-import { reprovisionRenewedOrder } from './transitions';
+import { reprovisionRenewedOrder, activateNewOrderFromBalance, clientRenewOrder, clientCancelNewOrder } from './transitions';
 import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
 import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
@@ -73,6 +73,10 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   // ── Balance top-up (payment carries no order) ─────────────────────────────
   if (!payment.orderId) {
     const amount = Number(payment.gross);
+    // Split payment (approach B): a top-up that funds an order's shortfall
+    // suppresses the generic "added to balance" bell/email — the order-payment
+    // step below is the honest signal; a plain top-up keeps them.
+    const autoPay = payment.autoPayOrderId;
     let newBal = 0;
     try {
       await prisma.$transaction(async tx => {
@@ -81,20 +85,29 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
         if (!me) throw new Error(`User ${clientId} not found for deposit ${payment.id}`);
         newBal = await creditBalance(tx, clientId, amount); // atomic (P1-1)
         await tx.balanceLedgerEntry.create({
-          data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payment.id, note: `Deposit crypto (${via})` },
+          data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payment.id, note: autoPay ? `Top-up for order ${autoPay} (${via})` : `Deposit crypto (${via})` },
         });
         const invoiceId = await nextInvoiceId();
         await tx.invoice.create({ data: { id: invoiceId, paymentId: payment.id, orderId: null, clientId, amount } });
-        await tx.notification.create({
-          data: { id: notifId(), userId: clientId, title: `Deposit of ${money(amount)} added to your balance · new bal ${money(newBal)}`, kind: 'SUCCESS', link: '/billing' },
-        });
+        if (!autoPay) {
+          await tx.notification.create({
+            data: { id: notifId(), userId: clientId, title: `Deposit of ${money(amount)} added to your balance · new bal ${money(newBal)}`, kind: 'SUCCESS', link: '/billing' },
+          });
+        }
         await tx.log.create({
-          data: { actorId: clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id, detail: `Crypto deposit confirmed via ${via} · ${money(amount)}` },
+          data: { actorId: clientId, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id, detail: `Crypto ${autoPay ? `top-up for order ${autoPay}` : 'deposit'} confirmed via ${via} · ${money(amount)}` },
         });
       });
     } catch (e) {
       if (e instanceof AlreadySettled) return { ok: true, already: true };
       throw e;
+    }
+    // Split payment: the balance is now topped up — pay the linked order from
+    // it. The credit committed above, so on any failure here the client's money
+    // is safe as balance; we notify them to complete the order manually.
+    if (autoPay) {
+      await autoPayLinkedOrder(autoPay, clientId, clientEmail);
+      return { ok: true, kind: 'order' };
     }
     await sendEmail({ to: clientEmail, ...depositConfirmedEmail(money(amount), money(newBal)) });
     return { ok: true, kind: 'deposit' };
@@ -378,6 +391,59 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   return { ok: true, kind: 'order' };
 }
 
+// Split payment (approach B): the balance has just been credited by a settled
+// top-up whose `autoPayOrderId` links it to an order. Pay that order from the
+// now-sufficient balance. Runs AFTER the credit committed, so on any failure
+// the client's money is safe as balance and we tell them what happened.
+async function autoPayLinkedOrder(orderId: string, clientId: string, clientEmail: string): Promise<void> {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true, clientId: true } });
+  // Stale / foreign link, or the client cancelled the order while the transfer
+  // was in flight → the top-up simply stays on their balance, nothing to pay.
+  if (!order || order.clientId !== clientId || order.status === 'CANCELLED') return;
+
+  if (order.status === 'NEW') {
+    let r;
+    try {
+      r = await activateNewOrderFromBalance({ orderId, clientId });
+    } catch (e: any) {
+      await prisma.notification.create({
+        data: { id: notifId(), userId: clientId, title: `Your top-up landed — order ${orderId} needs another try. Your balance was credited.`, kind: 'WARNING', link: `/orders/${orderId}` },
+      });
+      await prisma.log.create({ data: { actorId: null, action: 'PAYMENT.PARTIAL', objectType: 'ORDER', objectId: orderId, detail: `Auto-pay from balance failed: ${e?.message ?? 'error'} — top-up credited to balance` } });
+      return;
+    }
+    if (r.outcome === 'insufficient') {
+      // The client spent their pre-existing balance between checkout and settle,
+      // so the top-up alone can't cover the order. Free the reserved seats and
+      // keep the top-up as balance — the client re-orders when ready.
+      try { await clientCancelNewOrder({ orderId, clientId }); } catch { /* already moved */ }
+      await prisma.notification.create({
+        data: { id: notifId(), userId: clientId, title: `Order ${orderId} couldn't be completed — your balance changed. The top-up was added to your balance; place a new order any time.`, kind: 'WARNING', link: '/billing' },
+      });
+    }
+    // activated / provisioning / not_new → activateNewOrderFromBalance already
+    // fired the right bell (or the order was resolved elsewhere).
+    return;
+  }
+
+  // Renewal — the order already holds its term/proxies; extend it from the
+  // now-topped-up balance (clientRenewOrder carries every renewal guard,
+  // discount and re-provision path).
+  try {
+    const res = await clientRenewOrder({ orderId, clientId });
+    if ('redirect' in res && res.redirect) {
+      await prisma.notification.create({
+        data: { id: notifId(), userId: clientId, title: `Your top-up landed — complete the renewal of ${orderId} from your balance.`, kind: 'WARNING', link: `/orders/${orderId}` },
+      });
+    }
+    // else extended — clientRenewOrder fired the "renewed" bell.
+  } catch (e: any) {
+    await prisma.notification.create({
+      data: { id: notifId(), userId: clientId, title: `Your top-up was added to your balance, but the renewal of ${orderId} couldn't complete (${e?.message ?? 'error'}).`, kind: 'WARNING', link: `/orders/${orderId}` },
+    });
+  }
+}
+
 // IPN told us the charge died (expired / failed / refunded before credit).
 // Only an AWAITING payment flips — a settled one is left alone.
 export async function failAwaitingPayment(paymentId: string, reason: string): Promise<{ ok: true; changed: boolean }> {
@@ -411,6 +477,31 @@ export async function failAwaitingPayment(paymentId: string, reason: string): Pr
           id: notifId(), userId: payment.clientId,
           title: `Payment for order ${payment.orderId} didn't complete — you can retry from the order page`,
           kind: 'WARNING', link: `/orders/${payment.orderId}`,
+        },
+      });
+    } else if (payment.autoPayOrderId) {
+      // Split payment (approach B): the top-up that was to fund an order's
+      // shortfall died. Cancel the still-NEW purchase it reserved (free its
+      // seats) — a renewal's order (non-NEW) is left untouched, the client
+      // simply didn't renew. Guarded on NEW so a since-activated order (a late
+      // finished IPN could still resurrect+settle this charge) is never
+      // clobbered.
+      const linked = await tx.order.findUnique({ where: { id: payment.autoPayOrderId }, select: { status: true } });
+      let cancelledNew = false;
+      if (linked?.status === 'NEW') {
+        const c = await tx.order.updateMany({
+          where: { id: payment.autoPayOrderId, status: 'NEW' },
+          data: { status: 'CANCELLED', paymentStatus: 'CANCELLED', cancelledAt: new Date(), cancelledReason: 'Top-up for split payment did not complete', autoRenew: false, renewalBucket: null, customExpiresAt: null },
+        });
+        cancelledNew = c.count > 0;
+      }
+      await tx.notification.create({
+        data: {
+          id: notifId(), userId: payment.clientId,
+          title: cancelledNew
+            ? `Order ${payment.autoPayOrderId} was cancelled — the top-up payment didn't complete. You can order again any time.`
+            : `Your top-up for ${payment.autoPayOrderId} didn't complete — your balance was not credited.`,
+          kind: 'WARNING', link: cancelledNew ? `/orders/${payment.autoPayOrderId}` : '/billing',
         },
       });
     } else {

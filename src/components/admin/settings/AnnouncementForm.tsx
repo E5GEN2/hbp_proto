@@ -71,7 +71,7 @@ export function AnnouncementForm({ initial }: { initial: Announcement }) {
           className="form-input"
           value={s.text}
           maxLength={200}
-          placeholder="10% off the 90-days plan"
+          placeholder="5% off the 90-days plan"
           onChange={(e) => setS({ ...s, text: e.target.value })}
         />
       </div>

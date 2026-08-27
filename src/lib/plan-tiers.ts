@@ -45,7 +45,7 @@ export const PLAN_TIER_TEMPLATES: PlanTierTemplate[] = [
   },
   {
     eyebrow: 'Pro <span class="pill">Mobile</span>',
-    ribbon: '<span class="plan__ribbon plan__ribbon--promo">10% off</span>',
+    ribbon: '<span class="plan__ribbon plan__ribbon--promo">5% off</span>',
     cardClass: 'plan',
     btnClass: 'btn btn--ink',
     features: [

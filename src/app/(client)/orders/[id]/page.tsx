@@ -56,11 +56,18 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
     events.push({ at: order.updatedAt, seq: LIFECYCLE.alert, tone: 'warning', title: 'Replacement in progress', detail: `${liveProxies} of ${order.qty} proxies attached — we're arranging the rest.` });
   }
   for (const p of [...order.payments].reverse()) {
-    // A renewal charge is distinguishable from the original purchase by its
-    // renewalDiscountApplied stamp: renewal-originated charges set it (true/
-    // false), purchases leave it null. Label it so the client sees WHY a
-    // second "Payment confirmed" appeared on an already-active order.
-    const isRenewalPay = p.renewalDiscountApplied !== null;
+    // Is this charge a renewal (vs the original purchase)? Two signals, OR'd:
+    //   · renewalDiscountApplied stamp — set (true/false) on every renewal
+    //     charge created since 2026-08-21, null on purchases; precise, and
+    //     catches a renewal charged within minutes of purchase.
+    //   · created well after the order — the purchase charge is always in the
+    //     order's own tx (≈ same instant), so a charge minted >5 min later is
+    //     a renewal. This backfills the label for renewals that had already
+    //     SETTLED before the stamp column existed (its migration only
+    //     backfilled unsettled charges), so an order renewed both before and
+    //     after that date reads consistently. Same +5min rule the migration used.
+    const isRenewalPay = p.renewalDiscountApplied !== null
+      || p.createdAt.getTime() > order.createdAt.getTime() + 5 * 60_000;
     if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.paid, tone: 'success', title: isRenewalPay ? 'Renewal payment confirmed' : 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
     else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, seq: LIFECYCLE.awaiting, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
     else if (p.status === 'FAILED') events.push({ at: p.createdAt, seq: LIFECYCLE.failed, tone: 'danger', title: 'Payment failed', detail: 'Retry from this order or contact support.' });

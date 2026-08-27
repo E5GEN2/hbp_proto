@@ -495,7 +495,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
   // Split top-ups live as TOPUP deposits (orderId null), invisible to the
   // renewal-charge guards above — block a second renewal (or split) while one
   // is in flight, or it would pay the order from balance twice at settle.
-  const pendingSplit = await prisma.payment.findFirst({ where: { autoPayOrderId: order.id, status: 'AWAITING' }, select: { id: true } });
+  const pendingSplit = await prisma.payment.findFirst({ where: { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }, select: { id: true } });
   if (pendingSplit) {
     return NextResponse.json({ error: `A top-up (${pendingSplit.id}) for this order is already awaiting confirmation — complete or cancel it first.`, orderId: order.id }, { status: 409 });
   }
@@ -556,7 +556,7 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
     // then SEE the winner's committed charge in the re-check below.
     await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
     const parkedNow = await tx.payment.findFirst({
-      where: { orderId: order.id, OR: [{ status: 'MANUAL_REVIEW' }, { status: 'AWAITING', renewalDiscountApplied: { not: null } }] },
+      where: { OR: [{ orderId: order.id, status: 'MANUAL_REVIEW' }, { orderId: order.id, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { autoPayOrderId: order.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }] },
       select: { id: true },
     });
     if (parkedNow) throw new Error('RENEWAL_RACE');
@@ -703,8 +703,8 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
 // Split payment for a NEW purchase (approach B). The client's balance covers
 // part of the price; a crypto TOPUP covers the shortfall (floored at the crypto
 // minimum). The order is created NEW to hold its seats; when the top-up settles
-// it credits the balance and pays the order from it (settle-payment
-// autoPayLinkedOrder → activateNewOrderFromBalance). If the top-up never
+// it credits the balance and pays the order from it in one atomic tx
+// (settle-payment settleAutoPayTopup). If the top-up never
 // arrives, the sweep / failAwaitingPayment cancels this NEW order and frees the
 // seats. `coin` is whitelist-validated and npEnabled() confirmed by the caller.
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -849,7 +849,7 @@ async function handleSplitNewOrder({ userId, planId, qty, autoExtend, userBalanc
 
 // Split payment for a RENEWAL (approach B). The order already holds its term;
 // a crypto TOPUP covers the shortfall and, at settle, extends the order from
-// the topped-up balance (settle-payment autoPayLinkedOrder → clientRenewOrder).
+// the topped-up balance (settle-payment settleAutoPayTopup).
 // If the top-up never arrives, the deposit fails and the order is untouched.
 // `total` is the discounted renewal total; caller validated renewability + the
 // no-in-flight-renewal/split guards.
@@ -882,7 +882,7 @@ async function handleSplitRenewal({ orderId, orderQty, planName, userId, userBal
       // no split/renewal charge slipped in between the pre-tx guard and here.
       await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
       const clash = await tx.payment.findFirst({
-        where: { OR: [{ autoPayOrderId: orderId, status: 'AWAITING' }, { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { orderId, status: 'MANUAL_REVIEW' }] },
+        where: { OR: [{ autoPayOrderId: orderId, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }, { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { orderId, status: 'MANUAL_REVIEW' }] },
         select: { id: true },
       });
       if (clash) throw new Error('RENEWAL_RACE');

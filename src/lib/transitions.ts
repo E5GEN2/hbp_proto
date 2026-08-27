@@ -2365,7 +2365,7 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
         // A split-payment top-up in flight (TOPUP, orderId null, linked via
         // autoPayOrderId) will extend this order from balance when it settles —
         // block a second renewal so it isn't extended twice (split payment).
-        { autoPayOrderId: orderId, status: 'AWAITING' },
+        { autoPayOrderId: orderId, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } },
       ],
     },
     select: { id: true, status: true },
@@ -2412,7 +2412,7 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     // inserted its AWAITING charge after the pre-tx guard above — committing
     // this balance renewal on top would double-charge and double-consume.
     const parkedNow = await tx.payment.findFirst({
-      where: { OR: [{ orderId, status: 'MANUAL_REVIEW' }, { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { autoPayOrderId: orderId, status: 'AWAITING' }] },
+      where: { OR: [{ orderId, status: 'MANUAL_REVIEW' }, { orderId, status: 'AWAITING', renewalDiscountApplied: { not: null } }, { autoPayOrderId: orderId, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }] },
       select: { id: true },
     });
     if (parkedNow) throw new Error('A renewal payment is already awaiting confirmation — complete or cancel it first.');

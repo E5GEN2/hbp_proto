@@ -36,8 +36,13 @@ export const markPaidAction = guarded(async function markPaidAction(paymentId: s
   // top-up that was parked (MANUAL_REVIEW) or timed out (FAILED).
   const pay = await prisma.payment.findUnique({ where: { id: paymentId }, select: { kind: true, orderId: true, autoPayOrderId: true } });
   if (pay && pay.kind === 'TOPUP' && !pay.orderId && pay.autoPayOrderId) {
-    await settleAwaitingPayment(paymentId, `MarkPaid by ${actor.name ?? actor.id}`, { resurrectFailed: true });
-    await prisma.log.create({ data: { actorId: actor.id, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: paymentId, detail: `Admin MarkPaid on split top-up → auto-paid order ${pay.autoPayOrderId}` } });
+    const r = await settleAwaitingPayment(paymentId, `MarkPaid by ${actor.name ?? actor.id}`, { resurrectFailed: true });
+    // Only log the admin action when THIS call actually settled it — a
+    // concurrent IPN/reconcile may have won the race ({already}), and a
+    // "auto-paid order X" line there would be false (review P3).
+    if (!('already' in r)) {
+      await prisma.log.create({ data: { actorId: actor.id, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: paymentId, detail: `Admin MarkPaid on split top-up → auto-paid order ${pay.autoPayOrderId}` } });
+    }
     bust();
     return { ok: true };
   }

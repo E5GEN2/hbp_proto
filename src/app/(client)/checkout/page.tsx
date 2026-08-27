@@ -242,6 +242,19 @@ export default async function CheckoutPage({ searchParams }: {
       notFound();
     }
 
+    // Split payment: the order's charge is a TOPUP deposit (orderId null, linked
+    // via autoPayOrderId), invisible to the order-scoped pay lookups below — so
+    // "Complete payment" from the order page would dead-end here. Route to the
+    // deposit-resume surface for that top-up, which re-opens its pay panel (or
+    // the fresh-address recovery). Newest live/lapsed top-up wins.
+    const splitTopup = await prisma.payment.findFirst({
+      where: { autoPayOrderId: resumeOrder.id, kind: 'TOPUP', status: { in: ['AWAITING', 'MANUAL_REVIEW', 'FAILED'] } },
+      orderBy: { createdAt: 'desc' }, select: { id: true },
+    });
+    if (splitTopup) {
+      redirect(`/checkout?kind=deposit&resume=${splitTopup.id}`);
+    }
+
     const isNewOrder = resumeOrder.status === 'NEW';
 
     // Funds under verification take precedence over ANY pay surface: money is

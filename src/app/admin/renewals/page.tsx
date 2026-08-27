@@ -19,8 +19,9 @@ const PER_PAGE = 10;
 //     exact thing the sweep bakes into the column; lag ≤ one tick, and the
 //     phase-3 status gate hides frozen rows.
 //   · renewed — the sticky RENEWED marker (renewedQueueWhere, PROVISIONING
-//     admitted for the short-pool manual-Assign queue) + PENDING_RENEWAL
-//     requests (canon Phase 8).
+//     admitted for the short-pool manual-Assign queue; a row aged back into
+//     the live ≤7d horizon is excluded so it can't double-list with a live
+//     window tab) + PENDING_RENEWAL requests (canon Phase 8).
 function bucketWhere(view: string, nowMs: number): any {
   switch (view) {
     case '24h':     return liveWindowWhere('24h', nowMs);
@@ -28,7 +29,7 @@ function bucketWhere(view: string, nowMs: number): any {
     case '7d':      return liveWindowWhere('7d', nowMs);
     case 'grace':   return bucketQueueWhere('GRACE');
     case 'expired': return bucketQueueWhere('EXPIRED');
-    case 'renewed': return { OR: [renewedQueueWhere(), { status: 'PENDING_RENEWAL' }] };
+    case 'renewed': return { OR: [renewedQueueWhere(nowMs), { status: 'PENDING_RENEWAL' }] };
     default:        return {};
   }
 }

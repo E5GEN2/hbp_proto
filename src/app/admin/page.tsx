@@ -62,15 +62,16 @@ export default async function AdminDashboardPage() {
 
   // Read-only: Expiring Soon (24h/3d/7d) + Exceptions by type for the canon
   // widgets. The strip counts the same LIVE windows as the tabs it links to
-  // (phase 4) — counter == page count, zero sweep lag.
-  const [exp24, exp3d, exp7d, excBuckets, underProvisioned] = await Promise.all([
-    prisma.order.count({ where: liveWindowWhere('24h', nowMs) }),
+  // (phase 4) — counter == page count, zero sweep lag. The 24h count is REUSED
+  // from the KPI above (same where, same nowMs) so the KPI and the strip's
+  // "Next 24 hours" segment are structurally identical, never a two-query race.
+  const [exp3d, exp7d, excBuckets, underProvisioned] = await Promise.all([
     prisma.order.count({ where: liveWindowWhere('3d', nowMs) }),
     prisma.order.count({ where: liveWindowWhere('7d', nowMs) }),
     prisma.order.groupBy({ by: ['exception'], where: { exception: { not: null } }, _count: { _all: true } }),
     underProvisionedCount(),
   ]);
-  const expN = (b: 'H24' | 'D3' | 'D7') => (b === 'H24' ? exp24 : b === 'D3' ? exp3d : exp7d);
+  const expN = (b: 'H24' | 'D3' | 'D7') => (b === 'H24' ? expiring24h : b === 'D3' ? exp3d : exp7d);
   const excN = (e: string) => excBuckets.find(x => x.exception === e)?._count._all ?? 0;
 
   const [faulty, maintenance] = healthBuckets;

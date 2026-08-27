@@ -107,6 +107,12 @@ export function bucketQueueWhere(bucket: RenewalBucket): { renewalBucket: Renewa
 // override → tier → settings cascade — which is exactly what the sweep's
 // classification exists to bake into a queryable column; their lag is ≤ one
 // tick and the phase-3 status gate already hides frozen rows.
+// Accepted transient from this split: an order that crossed its expiry leaves
+// the live window immediately but only enters the materialized grace queue at
+// the next sweep tick, so for ≤5 min it sits on neither Renewals tab (its
+// detail chip still shows "In grace" — orderTimeSignal is live). This is the
+// same ≤one-tick grace lag above, self-heals, and expressing grace live would
+// mean the per-client cascade in SQL — the reason it stays materialized.
 // Boundaries mirror orderTimeSignal: (now, now+24h], (now+24h, now+72h],
 // (now+72h, now+168h] — an order expiring at the exact instant `now` is not
 // "expiring", it is already in grace (display agrees). ACTIVE only: EXPIRED
@@ -131,8 +137,22 @@ export function liveWindowWhere(win: LiveWindow, nowMs: number): {
 // exists to surface for manual Assign. Frozen/terminal statuses stay out.
 export const RENEWED_QUEUE_STATUSES: OrderStatus[] = ['ACTIVE', 'EXPIRED', 'PROVISIONING'];
 
-export function renewedQueueWhere(): { renewalBucket: RenewalBucket; status: { in: OrderStatus[] } } {
-  return { renewalBucket: 'RENEWED', status: { in: RENEWED_QUEUE_STATUSES } };
+// Renewal-paid queue where-shape. Takes `now` because phase 4 made the
+// pre-expiry tabs LIVE while this one stays on the materialized sticky: a
+// RENEWED order whose expiry has aged back into the live ≤7d horizon already
+// shows on its live-window tab, so it must be EXCLUDED here or it double-lists
+// until the next sweep re-buckets it (review find — one row, one tab). The
+// exclusion only bites ACTIVE rows with a future ≤7d expiry; the sticky's real
+// homes — >7d out, or the clock-held PROVISIONING/EXPIRED states (null / past
+// expiry, not in the range) — are untouched.
+export function renewedQueueWhere(nowMs: number): {
+  renewalBucket: RenewalBucket; status: { in: OrderStatus[] }; NOT: { status: OrderStatus; expiresAt: { gt: Date; lte: Date } };
+} {
+  return {
+    renewalBucket: 'RENEWED',
+    status: { in: RENEWED_QUEUE_STATUSES },
+    NOT: { status: 'ACTIVE', expiresAt: { gt: new Date(nowMs), lte: new Date(nowMs + 168 * 3_600_000) } },
+  };
 }
 
 // The sweep's bucket classifier (moved here from sweep.ts in phase 3 so the

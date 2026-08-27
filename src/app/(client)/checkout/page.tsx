@@ -106,12 +106,15 @@ export default async function CheckoutPage({ searchParams }: {
       // Carry a safe returnTo so a deposit started from a checkout returns there
       // after it settles (else falls back to Billing).
       const resumeReturn = searchParams.returnTo ? (safeReturn(decodeURIComponent(searchParams.returnTo)) ?? undefined) : undefined;
+      // Split top-up: at settle it pays its linked order (atomic), so land on the
+      // ORDER confirmation, not the generic "deposit added" screen (review R3 P3).
+      const splitSettledHref = pay.autoPayOrderId ? `/checkout?success=${pay.autoPayOrderId}` : undefined;
       if (pay.status === 'AWAITING' && pay.payAddress) {
         return (
           <>
             <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Complete deposit' }]} balance={Number(me.balance)} />
             <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} returnTo={resumeReturn} />
+              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} returnTo={resumeReturn} settledHref={splitSettledHref} />
             </main>
           </>
         );
@@ -181,7 +184,7 @@ export default async function CheckoutPage({ searchParams }: {
           <>
             <ClientTopbar breadcrumb={[{ label: 'Billing', href: '/billing' }, { label: 'Complete deposit' }]} balance={Number(me.balance)} />
             <main style={{ padding: '24px 32px 32px', overflowY: 'auto' }}>
-              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} returnTo={resumeReturn} />
+              <DepositResumePanel amountUsd={Number(pay.gross)} initial={toPanelData(pay)} returnTo={resumeReturn} settledHref={splitSettledHref} />
             </main>
           </>
         );
@@ -246,13 +249,31 @@ export default async function CheckoutPage({ searchParams }: {
     // via autoPayOrderId), invisible to the order-scoped pay lookups below — so
     // "Complete payment" from the order page would dead-end here. Route to the
     // deposit-resume surface for that top-up, which re-opens its pay panel (or
-    // the fresh-address recovery). Newest live/lapsed top-up wins.
-    const splitTopup = await prisma.payment.findFirst({
-      where: { autoPayOrderId: resumeOrder.id, kind: 'TOPUP', status: { in: ['AWAITING', 'MANUAL_REVIEW', 'FAILED'] } },
-      orderBy: { createdAt: 'desc' }, select: { id: true },
-    });
-    if (splitTopup) {
-      redirect(`/checkout?kind=deposit&resume=${splitTopup.id}`);
+    // the fresh-address recovery). Newest live/lapsed top-up wins. Skipped for a
+    // CANCELLED order — its top-up (if any) just settles to balance; there is no
+    // order to "complete".
+    if (resumeOrder.status !== 'CANCELLED') {
+      const splitTopup = await prisma.payment.findFirst({
+        where: { autoPayOrderId: resumeOrder.id, kind: 'TOPUP', status: { in: ['AWAITING', 'MANUAL_REVIEW', 'FAILED'] } },
+        orderBy: { createdAt: 'desc' }, select: { id: true, status: true },
+      });
+      if (splitTopup) {
+        // AWAITING/MANUAL_REVIEW top-ups can't co-exist with an order-scoped
+        // charge (the renewal guards enforce that) → redirect unconditionally.
+        // A FAILED top-up IS deliberately unguarded (to allow retry), so it can
+        // co-exist with a fresh order-scoped renewal charge — redirecting to the
+        // dead top-up would then HIDE that live charge and bypass the reviewPay
+        // anti-double-pay screen below. Only redirect a FAILED top-up when there
+        // is no live/under-review order-scoped charge (review R3).
+        let go = splitTopup.status !== 'FAILED';
+        if (!go) {
+          const liveOrderCharge = await prisma.payment.findFirst({
+            where: { orderId: resumeOrder.id, status: { in: ['AWAITING', 'MANUAL_REVIEW'] } }, select: { id: true },
+          });
+          go = !liveOrderCharge;
+        }
+        if (go) redirect(`/checkout?kind=deposit&resume=${splitTopup.id}`);
+      }
     }
 
     const isNewOrder = resumeOrder.status === 'NEW';

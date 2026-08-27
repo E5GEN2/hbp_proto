@@ -56,7 +56,12 @@ export default async function ClientOrderDetail({ params }: { params: { id: stri
     events.push({ at: order.updatedAt, seq: LIFECYCLE.alert, tone: 'warning', title: 'Replacement in progress', detail: `${liveProxies} of ${order.qty} proxies attached — we're arranging the rest.` });
   }
   for (const p of [...order.payments].reverse()) {
-    if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.paid, tone: 'success', title: 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
+    // A renewal charge is distinguishable from the original purchase by its
+    // renewalDiscountApplied stamp: renewal-originated charges set it (true/
+    // false), purchases leave it null. Label it so the client sees WHY a
+    // second "Payment confirmed" appeared on an already-active order.
+    const isRenewalPay = p.renewalDiscountApplied !== null;
+    if (p.status === 'CONFIRMED' || p.status === 'PAID') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.paid, tone: 'success', title: isRenewalPay ? 'Renewal payment confirmed' : 'Payment confirmed', detail: `${p.method} · ${p.provider}` });
     else if (p.status === 'AWAITING' || p.status === 'PENDING') events.push({ at: p.createdAt, seq: LIFECYCLE.awaiting, tone: 'warning', title: 'Awaiting payment', detail: 'Complete checkout to provision proxies.' });
     else if (p.status === 'FAILED') events.push({ at: p.createdAt, seq: LIFECYCLE.failed, tone: 'danger', title: 'Payment failed', detail: 'Retry from this order or contact support.' });
     else if (p.status === 'REFUND_REQUESTED' || p.status === 'REFUND_IN_PROGRESS') events.push({ at: p.confirmedAt ?? p.createdAt, seq: LIFECYCLE.refunded, tone: 'warning', title: `Refund in progress · ${money(Number(p.refundedAmount ?? p.gross))}`, detail: p.status === 'REFUND_IN_PROGRESS' ? 'Being returned to you — you’ll be notified when it’s sent.' : 'Your refund request is under review.' });

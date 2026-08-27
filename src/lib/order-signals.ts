@@ -16,7 +16,7 @@ import { effectiveGraceHours, renewalClosed, type TierGraceHours } from './grace
 import { fmtAdminStamp } from './date';
 
 export type OrderTimeSignal = {
-  kind: 'expiring24' | 'expiring3d' | 'expiring7d' | 'grace' | 'pastGraceHeld' | 'renewalClosed' | 'renewed';
+  kind: 'expiring24' | 'expiring3d' | 'expiring7d' | 'grace' | 'pastGraceHeld' | 'renewalClosed';
   // Base label; surfaces may append the boundary ("· until 28 Aug, 14:00").
   label: string;
   // Maps 1:1 onto the shared .chip.* tone classes (globals.css).
@@ -58,9 +58,13 @@ export function orderTimeSignal(
     if (hoursLeft <= 24) return { kind: 'expiring24', label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h', until: order.expiresAt, untilPassed: false };
     if (hoursLeft <= 72) return { kind: 'expiring3d', label: 'Expiring · 3d', tone: 'warning', href: '/admin/renewals?view=3d', until: order.expiresAt, untilPassed: false };
     if (hoursLeft <= 168) return { kind: 'expiring7d', label: 'Expiring · 7d', tone: 'violet', href: '/admin/renewals?view=7d', until: order.expiresAt, untilPassed: false };
-    // Beyond 7 days the clock is quiet; surface the sticky "renewal paid"
-    // marker so a freshly-renewed order reads as resolved, not unsignalled.
-    if (order.renewalBucket === 'RENEWED') return { kind: 'renewed', label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', until: null, untilPassed: false };
+    // Beyond 7 days the clock is quiet → no time-horizon signal. A recent
+    // renewal is a PAST one-time event, not a current status (owner decision
+    // 2026-08-27): a freshly-renewed order far from expiry is simply Active,
+    // and the renewal itself lives in the activity timeline (ORDER.EXTEND log
+    // + the "Renewal payment confirmed" event). The Renewals board's "Renewal
+    // paid" tab still groups these via the RENEWED bucket (renewedQueueWhere),
+    // independent of this signal — that's a board filter, not an order status.
     return null;
   }
 

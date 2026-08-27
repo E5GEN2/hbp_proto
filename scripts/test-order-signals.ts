@@ -34,8 +34,11 @@ kindOf('exactly 72h → 3d window', orderTimeSignal(ord('ACTIVE', 72), 2, std, T
 kindOf('100h → 7d window', orderTimeSignal(ord('ACTIVE', 100), 2, std, TG, NOW), 'expiring7d');
 kindOf('exactly 168h → 7d window', orderTimeSignal(ord('ACTIVE', 168), 2, std, TG, NOW), 'expiring7d');
 kindOf('169h, no bucket → quiet', orderTimeSignal(ord('ACTIVE', 169), 2, std, TG, NOW), null);
-kindOf('169h, RENEWED sticky → renewed', orderTimeSignal(ord('ACTIVE', 169, 'RENEWED'), 2, std, TG, NOW), 'renewed');
-// A renewed order whose NEXT window arrived shows the window, not the sticky.
+// A recent renewal is a PAST event, not a status (owner decision 2026-08-27):
+// beyond 7d out there is NO signal even with the sticky RENEWED bucket — the
+// order is simply Active; the "Renewal paid" board tab (bucket-based) still
+// groups it. Its NEXT window still shows normally once it arrives.
+kindOf('169h, RENEWED sticky → no signal (renewed is not a status)', orderTimeSignal(ord('ACTIVE', 169, 'RENEWED'), 2, std, TG, NOW), null);
 kindOf('20h + RENEWED → 24h window wins', orderTimeSignal(ord('ACTIVE', 20, 'RENEWED'), 2, std, TG, NOW), 'expiring24');
 
 // ── grace (clock-based, works on EXPIRED and on ACTIVE lagging the sweep) ──
@@ -68,8 +71,9 @@ kindOf('ACTIVE without expiresAt → no signal', orderTimeSignal(ord('ACTIVE', n
   eq('24h chip contract', { label: s.label, tone: s.tone, href: s.href, untilPassed: s.untilPassed }, { label: 'Expiring · 24h', tone: 'danger', href: '/admin/renewals?view=24h', untilPassed: false });
   const g = orderTimeSignal(ord('EXPIRED', -5), 2, std, TG, NOW)!;
   eq('grace chip contract', { label: g.label, tone: g.tone, href: g.href, untilPassed: g.untilPassed }, { label: 'In grace', tone: 'warning', href: '/admin/renewals?view=grace', untilPassed: false });
-  const r = orderTimeSignal(ord('ACTIVE', 200, 'RENEWED'), 2, std, TG, NOW)!;
-  eq('renewed chip contract', { label: r.label, tone: r.tone, href: r.href, until: r.until }, { label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', until: null });
+  // A far-future RENEWED order has NO status signal (owner decision
+  // 2026-08-27 — renewed is a past event, not a status).
+  eq('far-future RENEWED → no signal', orderTimeSignal(ord('ACTIVE', 200, 'RENEWED'), 2, std, TG, NOW), null);
   // Past-grace kinds carry a PASSED boundary — surfaces must word it "grace
   // ended", never "until" (review find: "until <past date>" inverts meaning).
   const c = orderTimeSignal(ord('EXPIRED', -30), 0, std, TG, NOW)!;
@@ -91,10 +95,9 @@ kindOf('ACTIVE without expiresAt → no signal', orderTimeSignal(ord('ACTIVE', n
     label: 'Renewal closed', tone: 'muted', href: '/admin/renewals?view=expired',
     tip: `grace ended ${fmtAdminStamp(new Date(NOW - 30 * H + 24 * H))}`,
   });
-  const r = orderTimeSignal(ord('ACTIVE', 200, 'RENEWED'), 2, std, TG, NOW)!;
-  eq('renewed chip has no tip', timeSignalChip(r), {
-    label: 'Renewed', tone: 'success', href: '/admin/renewals?view=renewed', tip: null,
-  });
+  // timeSignalChip(null) already covered above; a far-future RENEWED order
+  // now yields a null signal → null chip (no "Renewed" chip anywhere).
+  eq('far-future RENEWED → null chip', timeSignalChip(orderTimeSignal(ord('ACTIVE', 200, 'RENEWED'), 2, std, TG, NOW)), null);
 }
 
 // ── targetBucket (queue classifier, moved from sweep.ts in phase 3).

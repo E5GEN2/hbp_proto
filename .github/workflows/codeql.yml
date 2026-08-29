@@ -1,0 +1,48 @@
+# CodeQL — GitHub-native static analysis (SAST) for JavaScript/TypeScript.
+# Free for this PUBLIC repository. Findings land in the repo's Security tab
+# (Code scanning alerts). Runs on every push to main, every PR into main, and
+# weekly so newly-published queries re-scan unchanged code.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1' # Mondays 04:17 UTC
+
+# Least privilege. security-events:write is required to publish alerts.
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # security-extended adds higher-signal security queries on top of the
+          # default set (a few more false positives, far better coverage).
+          queries: security-extended
+
+      # No compiled languages here — JS/TS needs no build step for CodeQL.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript

@@ -1,0 +1,121 @@
+# Security pipeline — secret scanning, dependency audit, and SAST.
+# Runs on every push to main, every PR into main, weekly, and on demand.
+#
+# GATING policy (see SECURITY.md):
+#   • secret-scan     → BLOCKING  (zero tolerance: no secret may ever be committed)
+#   • dependency-audit→ BLOCKING  (fails on a High/Critical advisory)
+#   • semgrep         → NON-BLOCKING (uploads findings to the Security tab for triage)
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC — full-history secret scan + fresh advisories
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # upload SARIF to the Security tab
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Secret scanning ────────────────────────────────────────────────────────
+  # gitleaks over the FULL git history (fetch-depth: 0). A secret committed in
+  # ANY past commit of a public repo is permanently exposed, so history matters,
+  # not just the working tree. Fails the build if anything matches.
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          # Resolve the latest official release (self-healing). Pin GITLEAKS_VERSION
+          # below for reproducibility if you prefer a fixed version.
+          GITLEAKS_VERSION="${GITLEAKS_VERSION:-$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oE '"tag_name": *"v[0-9.]+"' | grep -oE '[0-9.]+' | head -1)}"
+          echo "Using gitleaks v${GITLEAKS_VERSION}"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          chmod +x gitleaks
+
+      - name: Scan git history for secrets
+        run: |
+          ./gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose \
+            --exit-code 1 \
+            --report-format sarif \
+            --report-path gitleaks.sarif
+
+      - name: Upload gitleaks SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  # ── Dependency vulnerability audit ─────────────────────────────────────────
+  # Fails on a High/Critical advisory in the resolved dependency tree.
+  # Dependabot (.github/dependabot.yml) opens the update PRs; this gate catches
+  # anything not yet patched.
+  dependency-audit:
+    name: Dependency audit (pnpm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: pnpm audit (High/Critical → fail)
+        run: pnpm audit --audit-level high --prod
+
+  # ── SAST (Semgrep) ─────────────────────────────────────────────────────────
+  # Curated OWASP / JS / TS / Next.js / secret rulesets. NON-BLOCKING: results
+  # are uploaded to the Security tab (code scanning) for triage rather than
+  # walling every PR on pre-existing / low-confidence findings.
+  semgrep:
+    name: SAST (semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install semgrep
+        run: pip install --quiet semgrep
+      - name: Run semgrep (community rules)
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/owasp-top-ten \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/nextjs \
+            --config p/secrets \
+            --sarif --output semgrep.sarif \
+            --metrics off || true
+      - name: Upload semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep

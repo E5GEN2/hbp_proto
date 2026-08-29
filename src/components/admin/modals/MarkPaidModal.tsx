@@ -23,8 +23,19 @@ export function MarkPaidModal({
     setErr(null);
     start(async () => {
       try {
-        await markPaidAction(paymentId, source, ref.trim() || undefined);
-        toast('Payment confirmed', paymentId + (activate ? ' · order activation triggered' : ''), 'success');
+        const r: any = await markPaidAction(paymentId, source, ref.trim() || undefined);
+        // Approach A: a resurrected renewal charge routes through the settle path,
+        // whose result tells us what actually happened — report it truthfully
+        // instead of unconditionally claiming "order activation triggered".
+        if (r?.kind === 'deposit') {
+          toast('Charge credited to balance', paymentId + ' · order NOT extended — renew it from the client’s balance', 'success');
+        } else if (r?.kind === 'review') {
+          toast('Funds received', paymentId + ' · queued for manual review — order NOT changed', 'success');
+        } else if (r?.already) {
+          toast('Already settled', paymentId + ' · settled by another process — reload to see the result', 'success');
+        } else {
+          toast('Payment confirmed', paymentId + (activate ? ' · order activation triggered' : ''), 'success');
+        }
         onClose();
         router.refresh();
       } catch (e: any) { setErr(e?.message ?? 'Failed'); }

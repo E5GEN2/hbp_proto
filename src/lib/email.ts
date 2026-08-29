@@ -285,3 +285,20 @@ export function depositConfirmedEmail(amount: string, newBalance: string) {
     text: `Deposit of ${amount} confirmed. New balance: ${newBalance}. ${appUrl('/billing')}`,
   };
 }
+
+// A renewal crypto charge that arrived AFTER its window (resurrected) is credited
+// to balance rather than auto-applied (it could double-extend an order that was
+// renewed meanwhile). Say so plainly — an order-agnostic "top-up confirmed" mail
+// would read as an unsolicited deposit for an order that looks un-renewed.
+export function lateRenewalCreditedEmail(amount: string, newBalance: string, orderId: string) {
+  return {
+    subject: 'Your payment was added to your balance',
+    html: shell(
+      'Payment credited to your balance',
+      p(`Your payment of <strong>${amount}</strong> for order <strong>${orderId}</strong> arrived after its renewal window, so we added it to your account balance instead of renewing automatically. New balance: <strong>${newBalance}</strong>.`) +
+      p(`You can renew ${orderId} from your balance whenever you're ready.`) +
+      cta('View order', appUrl(`/orders/${orderId}`)),
+    ),
+    text: `Your payment of ${amount} for order ${orderId} arrived after its renewal window and was added to your balance (new balance ${newBalance}). Renew it from your balance any time: ${appUrl(`/orders/${orderId}`)}`,
+  };
+}

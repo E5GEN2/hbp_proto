@@ -26,7 +26,7 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "next": "^14.2.18",
-    "next-auth": "^4.24.10",
+    "next-auth": "^4.24.15",
     "pdf-lib": "^1.17.1",
     "qrcode-generator": "1.4.4",
     "react": "^18.3.1",
@@ -49,5 +49,24 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.18": "^8.5.18",
+      "nanoid@<3.3.18": "^3.3.18"
+    },
+    "auditConfig": {
+      "//": "Waived Next.js advisories that are only patched in the 15.5.x line. This app is on Next 14; the full fix is the Next 14->15 migration (tracked as a separate PR: SSRF in Server Actions/rewrites, DoS, and the Pages Middleware/Proxy bypass). REMOVE these once Next is >= 15.5.21. The audit gate stays at `high`, so any OTHER high/critical advisory still blocks.",
+      "ignoreGhsas": [
+        "GHSA-h25m-26qc-wcjf",
+        "GHSA-q4gf-8mx6-v5v3",
+        "GHSA-8h8q-6873-q5fj",
+        "GHSA-c4j6-fc7j-m34r",
+        "GHSA-36qx-fr4f-26g5",
+        "GHSA-m99w-x7hq-7vfj",
+        "GHSA-89xv-2m56-2m9x",
+        "GHSA-p9j2-gv94-2wf4"
+      ]
+    }
   }
 }

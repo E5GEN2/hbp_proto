@@ -1,0 +1,21 @@
+# gitleaks configuration (see .github/workflows/security.yml).
+# Extends gitleaks' built-in ruleset; only adds a tight allowlist for files that
+# intentionally contain placeholder-only values.
+title = "hbp_proto gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Env TEMPLATE with placeholders only (no real secrets)."
+# NOTE: this allowlists the template path, NOT any real .env (those are
+# git-ignored and must never be committed). Do not add real secret files here.
+paths = [
+  '''\.env\.example$''',
+]
+# Regexes for known placeholder strings, so a future template edit can't trip a
+# false positive. These are documented placeholders, never live secrets.
+regexes = [
+  '''generate-with-openssl-rand-base64-32''',
+  '''postgresql://USER@localhost''',
+]

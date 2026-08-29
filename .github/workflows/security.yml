@@ -83,7 +83,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
+      # No `cache: pnpm` and no install step: `pnpm audit` reads pnpm-lock.yaml
+      # directly and queries the advisory DB, so node_modules isn't needed.
+      # (Caching a store that was never populated fails the post-job cache-save.)
       - name: pnpm audit (High/Critical → fail)
         run: pnpm audit --audit-level high --prod
 

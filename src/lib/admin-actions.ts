@@ -7,6 +7,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions, isAdminRole } from './auth';
 import * as T from './transitions';
 import { listAssignCandidates } from './provisioning';
+import { prisma } from './prisma';
+import { settleAwaitingPayment } from './settle-payment';
 
 async function getAdminActor() {
   const session = await getServerSession(authOptions);
@@ -27,6 +29,24 @@ function bust() {
 
 export const markPaidAction = guarded(async function markPaidAction(paymentId: string, source: string, externalRef?: string) {
   const actor = await getAdminActor();
+  // Approach A (owner decision 2026-08-28, resurrect double-extend fix): a
+  // RESURRECTED renewal charge (a dead FAILED/CANCELLED/MANUAL_REVIEW charge on
+  // a live non-NEW order) must NOT be extended by MarkPaid — the order may have
+  // been renewed by another charge while this one was dead, so markPaymentPaid's
+  // unconditional extend would double the term and the charge. Route it through
+  // settleAwaitingPayment, which credits such a charge to the client's balance
+  // instead of auto-extending. markPaymentPaid still handles AWAITING renewals
+  // (a live charge the admin is confirming → extend), NEW-order charges
+  // (activate), CANCELLED-order charges (its own guard) and deposits (credit).
+  const pay = await prisma.payment.findUnique({ where: { id: paymentId }, select: { status: true, orderId: true } });
+  if (pay?.orderId && (pay.status === 'FAILED' || pay.status === 'CANCELLED' || pay.status === 'MANUAL_REVIEW')) {
+    const ord = await prisma.order.findUnique({ where: { id: pay.orderId }, select: { status: true } });
+    if (ord && ord.status !== 'NEW' && ord.status !== 'CANCELLED') {
+      const r = await settleAwaitingPayment(paymentId, `MarkPaid by ${actor.name ?? actor.id}`, { resurrectFailed: true });
+      bust();
+      return r;
+    }
+  }
   const r = await T.markPaymentPaid({ paymentId, actor, source, externalRef });
   bust();
   return r;

@@ -9,7 +9,7 @@ import { fmtDate } from './date';
 import { money } from './money';
 import { creditBalance } from './balance';
 import { reprovisionRenewedOrder } from './transitions';
-import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail } from './email';
+import { sendEmail, orderPaidEmail, orderRenewedEmail, depositConfirmedEmail, lateRenewalCreditedEmail } from './email';
 import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from './telegram';
 import { appUrl } from './app-url';
 import { isResurrectable, RESURRECTABLE_STATUSES } from './crypto-window';
@@ -165,6 +165,20 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
   //    them auto-released to the pool, so it re-provisions like a new order
   //    (fresh term from now; short pool → PAID_NOT_PROVISIONED, clock held). ──
   if (order.status !== 'NEW') {
+    // Approach A (owner decision 2026-08-28, resurrect double-extend fix): a
+    // RESURRECTED renewal charge — a locally dead FAILED/CANCELLED/MANUAL_REVIEW
+    // charge revived by a late `finished` IPN or admin MarkPaid — must NOT
+    // auto-extend the order. While it was dead the AWAITING/MANUAL_REVIEW renewal
+    // guards never matched it, so the order may have been renewed since by
+    // another charge (a client re-renewal or an auto-renew tick); extending here
+    // would double both the term and the charge, and no in-tx guard can see a
+    // renewal that commits AFTER this settle (the reverse race). Credit the real
+    // funds to the client's balance instead — they can renew from it any time. A
+    // normally-AWAITING charge that never died still extends below: the renewal
+    // guards forbid a competing renewal while it is AWAITING, so it can't double.
+    if (resurrect) {
+      return creditRenewalChargeToBalance(payment, order.id, via, guardedConfirm, now);
+    }
     let newExpiry: Date | null = null; // assigned in-tx from the FRESH expiry base
     let reproShort = false;
     try {
@@ -376,6 +390,57 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
     via,
   }));
   return { ok: true, kind: 'order' };
+}
+
+// Approach A (owner decision 2026-08-28): a RESURRECTED renewal charge is not
+// applied to its order — the order may already have been renewed by another
+// charge while this one was dead, and a settle can never see a renewal that
+// commits after it. Its real crypto funds are credited to the client's balance
+// instead (exactly like a deposit), so the money is never lost and the client
+// can renew from balance. The payment is detached from the order (orderId →
+// null) so it does not pollute the order's payment history or "amount paid"
+// totals. Idempotent + crash-safe via the same guardedConfirm status flip; no
+// order-row lock is taken, so this introduces no lock-ordering hazard.
+async function creditRenewalChargeToBalance(
+  payment: { id: string; clientId: string; gross: unknown; client: { email: string } },
+  orderId: string,
+  via: string,
+  guardedConfirm: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<void>,
+  now: Date,
+): Promise<SettleResult> {
+  const clientId = payment.clientId;
+  const amount = Number(payment.gross);
+  let newBal = 0;
+  try {
+    await prisma.$transaction(async tx => {
+      await guardedConfirm(tx); // resurrectable → CONFIRMED (idempotent; 0 rows → AlreadySettled)
+      // Detach AND re-kind as a deposit: the money did NOT pay the order, so it
+      // becomes a genuine balance credit — identical to a real deposit
+      // (kind=TOPUP, orderId=null). Flipping kind keeps the schema invariant and
+      // makes every kind-keyed surface (admin payment Type, the refund-button
+      // gate, client billing label) treat it as the deposit it now is.
+      await tx.payment.update({ where: { id: payment.id }, data: { orderId: null, kind: 'TOPUP' } });
+      newBal = await creditBalance(tx, clientId, amount); // atomic (P1-1)
+      await tx.balanceLedgerEntry.create({
+        data: { userId: clientId, op: 'TOPUP', amount, balanceAfter: newBal, refPaymentId: payment.id, note: `Late renewal charge for order ${orderId} — credited to balance (${via})` },
+      });
+      const invoiceId = await nextInvoiceId();
+      await tx.invoice.create({ data: { id: invoiceId, paymentId: payment.id, orderId: null, clientId, amount } });
+      await tx.notification.create({
+        data: { id: notifId(), userId: clientId, title: `Your ${money(amount)} payment for ${orderId} was added to your balance (new balance ${money(newBal)}) — renew it from your balance`, kind: 'SUCCESS', link: `/orders/${orderId}` },
+      });
+      await tx.log.create({
+        data: { actorId: null, action: 'PAYMENT.CONFIRM', objectType: 'PAYMENT', objectId: payment.id, detail: `Resurrected renewal charge for ${orderId} confirmed via ${via} — credited ${money(amount)} to balance (order NOT auto-extended; approach A)` },
+      });
+    });
+  } catch (e) {
+    if (e instanceof AlreadySettled) return { ok: true, already: true };
+    throw e;
+  }
+  // Order-aware email (not the generic deposit mail): tell the client this was
+  // their late renewal payment credited to balance, not an unsolicited top-up.
+  await sendEmail({ to: payment.client.email, ...lateRenewalCreditedEmail(money(amount), money(newBal), orderId) });
+  return { ok: true, kind: 'deposit' };
 }
 
 // IPN told us the charge died (expired / failed / refunded before credit).

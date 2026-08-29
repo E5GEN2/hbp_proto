@@ -1,6 +1,8 @@
 # Dependabot — automated dependency-update PRs + security alerts.
-# Security updates for known advisories are opened automatically (regardless of
-# the schedule); the weekly cadence keeps everything else current.
+# Security updates for known advisories are opened automatically; the weekly
+# cadence keeps everything else current. Tuned to cut first-run noise: major
+# bumps of the framework/runtime packages are MANUAL migrations (not auto-PRs),
+# and minor/patch + action bumps are grouped.
 version: 2
 updates:
   # Application dependencies (pnpm / npm ecosystem).
@@ -15,14 +17,49 @@ updates:
       - dependencies
       - security
     groups:
-      # Batch low-risk patch/minor bumps into one PR to cut noise; majors and
-      # security fixes still come as their own PRs.
+      # One PR for all low-risk minor/patch bumps; majors and security fixes
+      # still come as their own PRs.
       minor-and-patch:
         update-types:
           - minor
           - patch
+    ignore:
+      # Major bumps of these are breaking migrations we do deliberately (with
+      # testing), not blind auto-PRs — they created most of the first-run noise
+      # (next 14->16, prisma 5->7, zod 3->4, tailwind 3->4, ts 5->6, etc.).
+      # NOTE: minor/patch security fixes for these are still proposed; only the
+      # MAJOR version-updates are suppressed. Framework advisories that require a
+      # major (e.g. the Next 15 line) are tracked as their own migration PR and
+      # remain visible via the pnpm-audit gate and the Security tab.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next-auth"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "zod"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "bcryptjs"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/*"
+        update-types: ["version-update:semver-major"]
 
-  # Keep the GitHub Actions in these workflows patched too (supply-chain).
+  # Keep the GitHub Actions in these workflows patched (supply-chain), grouped
+  # into a single PR instead of one-per-action.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -32,3 +69,7 @@ updates:
     labels:
       - ci
       - security
+    groups:
+      actions:
+        patterns:
+          - "*"

@@ -1462,6 +1462,18 @@ export type PlanInput = {
   lowCapacityThresholdPct?: number | null;
 };
 
+// Mass-assignment guard (security audit 2026-08-29): the ONLY Plan columns
+// updatePlan may write — iterate this, not Object.keys(input), so arbitrary JSON
+// can't reach id / createdAt / deletedAt or any other column. `satisfies` keeps
+// it in sync with PlanInput.
+const UPDATE_PLAN_FIELDS = [
+  'name', 'description', 'visibility', 'carrier', 'region', 'pool',
+  'durationDays', 'price', 'currency', 'availableQuota',
+  'protocols', 'rotation', 'traffic', 'active', 'autoProvision',
+  'autoRenewDefault', 'renewalAllowed', 'preRenewalReminderHours',
+  'renewalDiscountPct', 'lowCapacityThresholdPct',
+] as const satisfies readonly (keyof PlanInput)[];
+
 async function nextPlanId(tx: Tx, carrier: string, durationDays: number) {
   // Try human-readable form first: PLAN-VRZN-30D
   const carrierAbbr = carrier.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase();
@@ -1532,7 +1544,7 @@ export async function updatePlan({ planId, input, actor }: { planId: string; inp
 
     const data: any = {};
     const diffs: string[] = [];
-    for (const k of Object.keys(input) as (keyof PlanInput)[]) {
+    for (const k of UPDATE_PLAN_FIELDS) {
       const v = (input as any)[k];
       if (v === undefined) continue;
       const old = (before as any)[k];
@@ -1733,6 +1745,21 @@ export type UpdateClientInput = {
   graceHoursOverride?: number | null; // null = tier default (lib/grace.ts)
 };
 
+// Mass-assignment guard (security audit 2026-08-29, High): the ONLY User columns
+// updateClient may write. UpdateClientInput is a compile-time type and is erased
+// at runtime, so iterating Object.keys(input) let a directly-invoked server
+// action set passwordHash / balance / role / email / emailVerifiedAt /
+// clientDiscountPct from arbitrary JSON. Money and security columns are changed
+// ONLY through their own audited actions (adjustBalance → BalanceLedgerEntry, the
+// password reset/change path, setClientDiscount with its 1..99 validation).
+// Never add such a column here. `satisfies` keeps this in sync with the type.
+const UPDATE_CLIENT_FIELDS = [
+  'name', 'telegram', 'country', 'tier', 'risk', 'riskNote',
+  'preferredCarrier', 'preferredRegion',
+  'emailRenewal', 'emailIncidents', 'emailMarketing', 'telegramAll',
+  'preRenewalReminderHours', 'graceHoursOverride',
+] as const satisfies readonly (keyof UpdateClientInput)[];
+
 export async function updateClient({
   userId, input, actor,
 }: { userId: string; input: UpdateClientInput; actor: Actor }) {
@@ -1741,7 +1768,7 @@ export async function updateClient({
     if (!before || before.role !== 'CLIENT') throw new Error('Client not found');
     const data: any = {};
     const diffs: string[] = [];
-    for (const k of Object.keys(input) as (keyof UpdateClientInput)[]) {
+    for (const k of UPDATE_CLIENT_FIELDS) {
       const v = (input as any)[k];
       if (v === undefined) continue;
       const old = (before as any)[k];

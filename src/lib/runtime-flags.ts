@@ -1,11 +1,15 @@
 import { prisma } from './prisma';
 
-// Mock payment methods (card checkout, card deposit) stay enabled by default on
-// this prototype deployment. Set ALLOW_MOCK_PAYMENTS=false on the service before
-// opening the portal to real clients — the card paths self-confirm without a
-// processor and would hand out proxies/balance for free.
+// Mock payment methods (card checkout, card deposit) self-confirm with NO
+// processor and would hand out proxies/balance for free, so they are FAIL-CLOSED
+// (security audit M1): OFF by default and NEVER in production. An absent, empty,
+// removed, or misspelled env var therefore DISABLES them. (Previously this was
+// fail-open — `!== 'false'` — so dropping the var silently ENABLED free
+// payments.) Opt in explicitly, and only outside production, for local/dev
+// testing: ALLOW_MOCK_PAYMENTS=true with NODE_ENV != production.
 export function mockPaymentsAllowed() {
-  return process.env.ALLOW_MOCK_PAYMENTS !== 'false';
+  if (process.env.NODE_ENV === 'production') return false;
+  return process.env.ALLOW_MOCK_PAYMENTS === 'true';
 }
 
 // Settings → System Flags → "Freeze new orders" (SystemSetting key 'freezeNewOrders').

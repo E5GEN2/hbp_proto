@@ -79,10 +79,9 @@ async function main() {
   console.log('');
   console.log('✅ Clean complete.');
   console.log('');
-  console.log('Admin credentials still work:');
-  console.log('  admin@hbp.local / admin1234   (super)');
-  console.log('  ops@hbp.local / admin1234     (ops)');
-  console.log('  support@hbp.local / admin1234 (support)');
+  console.log('Admin accounts are unchanged (admin@hbp.local / ops@hbp.local /');
+  console.log('support@hbp.local). Sign in with the password set at seed time');
+  console.log('(SEED_ADMIN_PASSWORD, or the value the seed script printed).');
   console.log('');
   console.log('Next: log in as admin → /admin/plans/new → create your first plan.');
 }

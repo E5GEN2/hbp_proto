@@ -45,13 +45,18 @@ pnpm dev
 
 App is at http://localhost:3000.
 
-### Demo credentials
-| Role | Email | Password |
-|---|---|---|
-| Client | `demo@example.com` | `demo1234` |
-| Super admin | `admin@hbp.local` | `admin1234` |
-| Ops admin | `ops@hbp.local` | `admin1234` |
-| Support admin | `support@hbp.local` | `admin1234` |
+### Demo accounts
+
+The seed creates these accounts. Passwords are **not** hardcoded: set
+`SEED_ADMIN_PASSWORD` and `SEED_CLIENT_PASSWORD` before seeding, or let the seed
+generate strong random ones and print them once when it runs.
+
+| Role | Email |
+|---|---|
+| Client | `demo@example.com` |
+| Super admin | `admin@hbp.local` |
+| Ops admin | `ops@hbp.local` |
+| Support admin | `support@hbp.local` |
 
 ---
 
@@ -84,7 +89,7 @@ App is at http://localhost:3000.
    ```
    ⚠️ The seed script wipes & re-creates data. Don't run it on production after real data lands.
 
-6. **Verify** — open the Railway URL, log in as `admin@hbp.local / admin1234`.
+6. **Verify** — open the Railway URL, log in as `admin@hbp.local` (password from the seed step above).
 
 ### Notes for deploy
 - `package.json` has `engines.node: >=20`. Railway respects this and picks Node 20+.

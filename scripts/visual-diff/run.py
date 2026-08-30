@@ -29,8 +29,8 @@ DIFF_DIR     = Path(__file__).parent / "diff"
 THRESHOLD    = 0.98  # ≥98% match required
 
 CHROME   = os.environ.get("CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-EMAIL    = "demo@example.com"
-PASSWORD = "demo1234"
+EMAIL    = os.environ.get("DEMO_EMAIL", "demo@example.com")
+PASSWORD = os.environ.get("DEMO_PASSWORD", "")  # set DEMO_PASSWORD — no hardcoded cred
 
 CLIENT_ROUTES = [
     ("dashboard",          "dashboard"),

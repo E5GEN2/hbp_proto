@@ -1,5 +1,6 @@
 import { PrismaClient, type CatalogKind, type NotificationKind, type CapacityState, type OrderStatus, type PaymentStatus, type UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -101,6 +102,15 @@ async function main() {
 
   // ── USERS ────────────────────────────────────────────────────────────
   const hash = (pw: string) => bcrypt.hashSync(pw, 10);
+  // No hardcoded credentials in this (public) repo. Seed passwords come from env
+  // (SEED_ADMIN_PASSWORD / SEED_CLIENT_PASSWORD); if unset, a strong random one
+  // is generated and printed once at the end of this script.
+  const seedPw = (envKey: string) => {
+    const v = process.env[envKey];
+    return v && v.length >= 8 ? v : crypto.randomBytes(9).toString('base64url');
+  };
+  const adminPw = seedPw('SEED_ADMIN_PASSWORD');
+  const clientPw = seedPw('SEED_CLIENT_PASSWORD');
 
   // Admins
   const admins = [
@@ -111,7 +121,7 @@ async function main() {
   ];
   for (const a of admins) {
     await prisma.user.create({
-      data: { ...a, passwordHash: hash('admin1234'), country: 'US', emailVerifiedAt: new Date() },
+      data: { ...a, passwordHash: hash(adminPw), country: 'US', emailVerifiedAt: new Date() },
     });
   }
 
@@ -121,7 +131,7 @@ async function main() {
       id: 'USR-0001',
       name: 'Demo User',
       email: 'demo@example.com',
-      passwordHash: hash('demo1234'),
+      passwordHash: hash(clientPw),
       emailVerifiedAt: new Date(),
       role: 'CLIENT',
       country: 'US',
@@ -146,7 +156,7 @@ async function main() {
         id: c.id,
         name: c.name,
         email: c.email,
-        passwordHash: hash('demo1234'),
+        passwordHash: hash(clientPw),
         emailVerifiedAt: new Date(),
         role: 'CLIENT',
         tier: c.tier,
@@ -635,10 +645,11 @@ async function main() {
   });
 
   console.log('✅ Seed complete');
-  console.log('   Demo client:  demo@example.com / demo1234');
-  console.log('   Super admin:  admin@hbp.local / admin1234');
-  console.log('   Ops admin:    ops@hbp.local / admin1234');
-  console.log('   Support adm:  support@hbp.local / admin1234');
+  console.log(`   Demo client:  demo@example.com / ${clientPw}`);
+  console.log(`   Super admin:  admin@hbp.local / ${adminPw}`);
+  console.log(`   Ops admin:    ops@hbp.local / ${adminPw}`);
+  console.log(`   Support adm:  support@hbp.local / ${adminPw}`);
+  console.log('   (set SEED_ADMIN_PASSWORD / SEED_CLIENT_PASSWORD to pin these)');
 }
 
 main()

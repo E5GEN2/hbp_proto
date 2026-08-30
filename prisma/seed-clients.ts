@@ -8,6 +8,13 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+
+// No hardcoded credentials in this (public) repo. Test-client password comes from
+// SEED_CLIENT_PASSWORD; if unset, a strong random one is generated and printed.
+const clientPw = process.env.SEED_CLIENT_PASSWORD && process.env.SEED_CLIENT_PASSWORD.length >= 8
+  ? process.env.SEED_CLIENT_PASSWORD
+  : crypto.randomBytes(9).toString('base64url');
 
 const prisma = new PrismaClient();
 
@@ -29,17 +36,17 @@ async function main() {
 
   const clients = [
     {
-      name: 'Demo Client', email: 'demo@example.com', password: 'demo1234',
+      name: 'Demo Client', email: 'demo@example.com', password: clientPw,
       tier: 'STANDARD' as const, country: 'US', telegram: null,
       balance: 0, acquisition: 'organic',
     },
     {
-      name: 'Jordan Lee', email: 'jordan@example.com', password: 'demo1234',
+      name: 'Jordan Lee', email: 'jordan@example.com', password: clientPw,
       tier: 'PRO' as const, country: 'US', telegram: 'jordanlee',
       balance: 250, acquisition: 'campaign-launch',
     },
     {
-      name: 'Yuki Tanaka', email: 'yuki@example.com', password: 'demo1234',
+      name: 'Yuki Tanaka', email: 'yuki@example.com', password: clientPw,
       tier: 'VIP' as const, country: 'JP', telegram: 'yukit',
       balance: 500, acquisition: 'referral',
     },

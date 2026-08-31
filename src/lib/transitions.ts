@@ -2478,6 +2478,13 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     const freshOrd = await tx.order.findUnique({ where: { id: orderId }, select: { status: true, expiresAt: true, activatedAt: true, exception: true } });
     if (!freshOrd) throw new Error('Order not found');
     if (freshOrd.status === 'CANCELLED') throw new Error('Order was cancelled — renewal aborted');
+    // Peer-writer double-extend guard: if a concurrent renewal (auto-renew from a
+    // top-up, or a double-click) moved expiresAt since our snapshot, extending
+    // from the fresh base would stack a second term + charge. Refuse under the
+    // lock (the tx rolls back); the client reloads to see the new expiry.
+    if (freshOrd.expiresAt?.getTime() !== o.expiresAt?.getTime()) {
+      throw new Error("This order's expiry just changed — reload and renew from its current date.");
+    }
 
     // EXPIRED order → its proxies were released to the pool at expiry, so a
     // plain term shift left the client charged, ACTIVE and holding ZERO

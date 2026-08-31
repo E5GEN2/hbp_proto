@@ -531,6 +531,16 @@ async function handleRenewal({ renewOf, userId, userBalance, paymentMethod, coin
       select: { id: true },
     });
     if (parkedNow) throw new Error('RENEWAL_RACE');
+    // Peer-writer double-extend guard: a balance renewal (auto-renew from a
+    // top-up, another rail, or a stale form) may have moved expiresAt between the
+    // pre-tx snapshot and this row lock — the pending-charge guard above can't see
+    // a CONFIRMED balance renewal. Extending on top (instant) or minting a crypto
+    // charge that extends at settle would stack a second term. Refuse under the
+    // lock (no charge is created); the client reloads to see the new expiry.
+    const lockedExpiry = await tx.order.findUnique({ where: { id: order.id }, select: { expiresAt: true } });
+    if (lockedExpiry?.expiresAt?.getTime() !== order.expiresAt?.getTime()) {
+      throw new Error("This order's expiry just changed — reload and renew from its current date.");
+    }
     await tx.payment.create({
       data: {
         id: paymentId,

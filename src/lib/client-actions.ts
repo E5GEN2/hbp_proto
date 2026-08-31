@@ -12,6 +12,7 @@ import { npEnabled, npCreatePayment, npCoin, CRYPTO_MIN_USD, type NpDirectPaymen
 import { sendEmail, passwordChangedEmail } from './email';
 import { passwordPolicyError } from './password-policy';
 import { creditBalance, roundCents } from './balance';
+import { retryAutoRenewAfterTopUp } from './auto-renew';
 import { money } from './money';
 import { nextPaymentId, nextInvoiceId } from './id';
 import * as T from './transitions';
@@ -227,6 +228,10 @@ export const depositAction = guarded(async function depositAction({ amount: rawA
               detail: `Deposit ${method} · ${money(amount)}` },
     });
   });
+
+  // An instant (already-credited) top-up may cover a grace-window order whose
+  // auto-renew failed for lack of funds — retry immediately, not on the 24h sweep.
+  if (isInstant) await retryAutoRenewAfterTopUp(clientId);
 
   bust();
   return {

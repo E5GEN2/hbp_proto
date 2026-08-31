@@ -144,6 +144,12 @@ export async function runSweep(): Promise<SweepResult> {
             await sendEmail({ to: o.client.email, ...autoRenewedEmail(o.id, fmtDate(outcome.newExpiry), outcome.via) });
             continue; // extended — stays ACTIVE
           }
+          if (outcome.alreadyRenewed) {
+            // Renewed concurrently (e.g. by a balance top-up trigger) since the
+            // snapshot — a no-op, not a failure: don't count it, stomp the
+            // bucket/timestamp, or email the client a "top up" warning.
+            continue;
+          }
           autoRenewFailed++;
           const firstFail = !o.autoRenewLastAttemptAt;
           await prisma.order.update({

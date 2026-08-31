@@ -14,15 +14,19 @@ import { fmtDate } from './date';
 import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
 import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from './renewal';
+import { sendEmail, autoRenewedEmail } from './email';
 import type { Prisma } from '@prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
 
 export type AutoRenewOutcome =
   | { renewed: true; newExpiry: Date; via: string }
-  | { renewed: false; reason: string };
+  | { renewed: false; reason: string; alreadyRenewed?: boolean };
 
 class AutoRenewFail extends Error {}
+// A benign non-failure: another writer (the sweep, or a concurrent top-up retry)
+// already renewed this order since the snapshot — nothing to do, not a failure.
+class AlreadyRenewed extends AutoRenewFail {}
 
 function notifId() {
   return `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -73,6 +77,12 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
       if (!freshOrd || freshOrd.status !== 'ACTIVE') {
         throw new AutoRenewFail(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);
+      }
+      // Idempotency: renew-on-top-up and the sweep can both target one order.
+      // Only an order still PAST its expiry is due; if a concurrent renewal
+      // already pushed expiresAt into the future, skip — never stack a 2nd term.
+      if (freshOrd.expiresAt && freshOrd.expiresAt.getTime() > now.getTime()) {
+        throw new AlreadyRenewed('order already renewed (no longer past due) — no charge attempted');
       }
       // Anchor on the ORIGINAL expiry so an auto-renew that fires slightly
       // after the due instant (the sweep runs on a tick) produces a contiguous,
@@ -175,9 +185,44 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       });
     });
   } catch (e) {
+    if (e instanceof AlreadyRenewed) return { renewed: false, reason: e.message, alreadyRenewed: true };
     if (e instanceof AutoRenewFail) return { renewed: false, reason: e.message };
     throw e;
   }
 
   return { renewed: true, newExpiry, via };
+}
+
+// Immediately retry auto-renew for a client's orders that are past their expiry
+// but still ACTIVE (their grace window) with auto-renew on — called right after a
+// balance TOP-UP commits. Without this a client who tops up mid-grace waits for
+// the throttled sweep retry (AUTORENEW_RETRY_MS = 24h) and, if their grace window
+// is shorter, the order expires despite the client now having funds (the ORD-50006
+// case). Best-effort: the 5-minute sweep stays the backstop; a per-order failure
+// (still short, or a concurrent renewal) does not block the others. attemptAutoRenew
+// carries all the guards (FOR UPDATE, pending-charge, balance, not-due idempotency),
+// so calling it here alongside the sweep is race-safe and can't double-extend.
+export async function retryAutoRenewAfterTopUp(clientId: string): Promise<void> {
+  // Fully best-effort: this runs AFTER a balance credit has already committed, so
+  // nothing here (not even the scan) may surface as a caller-visible failure —
+  // the 5-minute sweep is the backstop. Errors are logged, not thrown.
+  try {
+    const now = new Date();
+    const due = await prisma.order.findMany({
+      where: { clientId, status: 'ACTIVE', autoRenew: true, expiresAt: { lte: now } },
+      include: { plan: true, client: true },
+    });
+    for (const o of due) {
+      try {
+        const outcome = await attemptAutoRenew(o);
+        if (outcome.renewed) {
+          await sendEmail({ to: o.client.email, ...autoRenewedEmail(o.id, fmtDate(outcome.newExpiry), outcome.via) });
+        }
+      } catch (e) {
+        console.error('[auto-renew] retry-after-top-up failed for order', o.id, e);
+      }
+    }
+  } catch (e) {
+    console.error('[auto-renew] retry-after-top-up scan failed for client', clientId, e);
+  }
 }

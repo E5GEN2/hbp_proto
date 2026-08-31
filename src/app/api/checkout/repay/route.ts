@@ -226,6 +226,18 @@ export async function POST(req: Request) {
   // Flat crypto floor (NP per-coin minimums are unreliable) — see CRYPTO_MIN_USD.
   if (total < CRYPTO_MIN_USD) return NextResponse.json({ error: `Minimum crypto payment is $${CRYPTO_MIN_USD}.` }, { status: 400 });
 
+  // Peer-writer double-extend guard (renewal re-issue): if the order was renewed
+  // since this recovery card loaded (a balance renewal from a top-up, or another
+  // rail), minting a fresh crypto renewal charge would extend it a SECOND time at
+  // settle — repay is the fourth renewal originator and lacked this guard. Fast
+  // reject here before minting an NP address; the in-tx lock below is authoritative.
+  if (!isNewOrder) {
+    const freshExp = await prisma.order.findUnique({ where: { id: order.id }, select: { expiresAt: true } });
+    if (freshExp?.expiresAt?.getTime() !== order.expiresAt?.getTime()) {
+      return NextResponse.json({ error: "This order's expiry just changed — reload and renew from its current date.", renewed: true }, { status: 409 });
+    }
+  }
+
   const paymentId = await nextPaymentId();
 
   let npPay: NpDirectPayment;
@@ -250,15 +262,27 @@ export async function POST(req: Request) {
         where: { orderId: order.id, status: 'MANUAL_REVIEW' }, select: { id: true },
       });
       if (parked) throw new Error('REPAY_REVIEW');
-      // Retire the lapsed AWAITING charge first (frees the partial unique
-      // index slot). Guarded update: if an IPN or a concurrent repay already
-      // flipped it, count 0 → somebody else owns this recovery — back off.
+      // Retire the lapsed AWAITING charge FIRST (frees the partial unique index
+      // slot). This also fixes the lock order: retiring locks the PAYMENT row, so
+      // repay acquires payment-then-order — matching settle-payment's renewal
+      // branch (payment via guardedConfirm, then order), which avoids an ABBA
+      // deadlock with a concurrent settle of this same charge. Guarded update: if
+      // an IPN or a concurrent repay already flipped it, count 0 → back off.
       if (awaiting) {
         const flipped = await tx.payment.updateMany({
           where: { id: awaiting.id, status: 'AWAITING' },
           data: { status: 'FAILED' },
         });
         if (flipped.count === 0) throw new Error('REPAY_RACE');
+      }
+      // THEN the peer-writer double-extend guard under the order row lock (renewal
+      // re-issue only): refuse if the order was renewed between the fast check
+      // above and here (mirrors place/route.ts + clientRenewOrder). Rolls back the
+      // retirement above with the tx, so no charge is created.
+      if (!isNewOrder) {
+        await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+        const lockedExp = await tx.order.findUnique({ where: { id: order.id }, select: { expiresAt: true } });
+        if (lockedExp?.expiresAt?.getTime() !== order.expiresAt?.getTime()) throw new Error('REPAY_RENEWED');
       }
       await tx.payment.create({
         data: {
@@ -302,6 +326,14 @@ export async function POST(req: Request) {
     }
     if (e?.message === 'REPAY_RACE' || e?.code === 'P2002') {
       return NextResponse.json({ error: 'A payment is already awaiting confirmation for this order.' }, { status: 409 });
+    }
+    if (e?.message === 'REPAY_RENEWED') {
+      return NextResponse.json({ error: "This order's expiry just changed — reload and renew from its current date.", renewed: true }, { status: 409 });
+    }
+    if (e?.code === 'P2034') {
+      // Write conflict / deadlock (self-healing) — ask the client to retry rather
+      // than surfacing a 500; by then a concurrent settle has likely completed.
+      return NextResponse.json({ error: 'This payment is being processed — try again in a moment.' }, { status: 409 });
     }
     throw e;
   }

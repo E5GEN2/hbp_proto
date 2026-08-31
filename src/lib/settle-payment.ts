@@ -14,6 +14,7 @@ import { sendAdminTelegram, adminNewOrderAlert, adminCryptoAttentionAlert } from
 import { appUrl } from './app-url';
 import { isResurrectable, RESURRECTABLE_STATUSES } from './crypto-window';
 import { renewalBase, consumeRenewalDiscountCycle } from './renewal';
+import { retryAutoRenewAfterTopUp } from './auto-renew';
 import { applyCustomExpiry } from './new-order-policy';
 
 export type SettleResult =
@@ -97,6 +98,9 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
       throw e;
     }
     await sendEmail({ to: clientEmail, ...depositConfirmedEmail(money(amount), money(newBal)) });
+    // A top-up may cover a grace-window order whose auto-renew failed for lack of
+    // funds — retry it now instead of waiting for the throttled 24h sweep retry.
+    await retryAutoRenewAfterTopUp(clientId);
     return { ok: true, kind: 'deposit' };
   }
 
@@ -440,6 +444,9 @@ async function creditRenewalChargeToBalance(
   // Order-aware email (not the generic deposit mail): tell the client this was
   // their late renewal payment credited to balance, not an unsolicited top-up.
   await sendEmail({ to: payment.client.email, ...lateRenewalCreditedEmail(money(amount), money(newBal), orderId) });
+  // These funds landed on the client's balance — a grace-window order elsewhere
+  // may now be renewable; retry immediately (best-effort).
+  await retryAutoRenewAfterTopUp(payment.clientId);
   return { ok: true, kind: 'deposit' };
 }
 

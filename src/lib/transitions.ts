@@ -17,6 +17,7 @@ import { sendTelegram, sendAdminTelegram, adminNewOrderAlert, flushTelegram, typ
 import { sendEmail, incidentEmail, proxiesReadyEmail, escapeHtml } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
+import { retryAutoRenewAfterTopUp } from './auto-renew';
 import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMoney, applyCustomExpiry } from './new-order-policy';
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from './grace';
@@ -63,6 +64,7 @@ export async function markPaymentPaid({
 }: { paymentId: string; actor: Actor; source?: string; externalRef?: string }) {
   // Built inside the tx, sent after commit (no HTTP inside $transaction).
   let adminAlert: string | null = null;
+  let toppedUpClientId: string | null = null; // set when this confirm credited a balance top-up
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const telegramOutbox: TelegramOutbox = [];
   const result = await prisma.$transaction(async tx => {
@@ -298,6 +300,7 @@ export async function markPaymentPaid({
       await notify(tx, pay.clientId,
         `Deposit of ${money(amount)} added to your balance · new bal ${money(newBal)}`,
         'SUCCESS', '/billing');
+      toppedUpClientId = pay.clientId; // retry grace-order auto-renew post-commit
     }
 
     await log(tx, actor.id, 'PAYMENT.CONFIRM', 'PAYMENT', paymentId,
@@ -308,6 +311,9 @@ export async function markPaymentPaid({
   if (adminAlert) await sendAdminTelegram(adminAlert);
   for (const e of emailOutbox) await sendEmail(e);
   await flushTelegram(telegramOutbox);
+  // A confirmed deposit credited the client's balance — a grace-window order
+  // whose auto-renew failed for lack of funds may now be renewable; retry now.
+  if (toppedUpClientId) await retryAutoRenewAfterTopUp(toppedUpClientId);
   return result;
 }
 
@@ -1598,7 +1604,7 @@ export async function adjustBalance({
   // Normalize the admin-typed amount ONCE — helper and ledger row must see
   // the identical 2dp value or SUM(ledger) drifts from balance (review find).
   delta = delta >= 0 ? roundCents(delta) : -roundCents(-delta);
-  return prisma.$transaction(async tx => {
+  const res = await prisma.$transaction(async tx => {
     const u = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!u) throw new Error('User not found');
     // Atomic (P1-1): the negative-result guard rides the debit UPDATE itself.
@@ -1629,6 +1635,10 @@ export async function adjustBalance({
       `${delta >= 0 ? '+' : '-'}${money(Math.abs(delta))} · ${reason}${note ? ' · ' + note : ''} → balance=${money(newBalance)}`);
     return { ok: true, newBalance };
   });
+  // A positive adjustment is a top-up — a grace-window order whose auto-renew
+  // failed for lack of funds may now be renewable; retry immediately.
+  if (delta > 0) await retryAutoRenewAfterTopUp(userId);
+  return res;
 }
 
 export async function blockClient({
@@ -2468,6 +2478,13 @@ export async function clientRenewOrder({ orderId, clientId }: { orderId: string;
     const freshOrd = await tx.order.findUnique({ where: { id: orderId }, select: { status: true, expiresAt: true, activatedAt: true, exception: true } });
     if (!freshOrd) throw new Error('Order not found');
     if (freshOrd.status === 'CANCELLED') throw new Error('Order was cancelled — renewal aborted');
+    // Peer-writer double-extend guard: if a concurrent renewal (auto-renew from a
+    // top-up, or a double-click) moved expiresAt since our snapshot, extending
+    // from the fresh base would stack a second term + charge. Refuse under the
+    // lock (the tx rolls back); the client reloads to see the new expiry.
+    if (freshOrd.expiresAt?.getTime() !== o.expiresAt?.getTime()) {
+      throw new Error("This order's expiry just changed — reload and renew from its current date.");
+    }
 
     // EXPIRED order → its proxies were released to the pool at expiry, so a
     // plain term shift left the client charged, ACTIVE and holding ZERO

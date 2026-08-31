@@ -362,7 +362,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <h4>Retention</h4>
     <p>Operational metadata is retained only as long as needed for billing reconciliation and abuse prevention, then purged. You may request deletion of your account data at any time.</p>
     <h4>Your choices</h4>
-    <p>You can access, correct, or delete your account information, and opt out of non-essential email. Reach us at <a href="${TELEGRAM_SUPPORT_URL}" target="_blank" rel="noopener">@US5Gwetrust</a> on Telegram.</p>
+    <p>You can access, correct, or delete your account information, and opt out of non-essential email. Reach us at <a href="${TELEGRAM_SUPPORT_URL}" target="_blank" rel="noopener">@USodatai</a> on Telegram.</p>
     <h4>Contact</h4>
     <p>Questions about this policy can be sent to our support channel. We reply in minutes, not days.</p>
   </div>

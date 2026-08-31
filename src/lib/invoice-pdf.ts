@@ -120,7 +120,7 @@ export async function buildInvoicePdf(inv: InvoiceWithRelations): Promise<Uint8A
   // ── Footer ───────────────────────────────────────────────────────────────
   const footY = 72;
   page.drawLine({ start: { x: left, y: footY + 18 }, end: { x: right, y: footY + 18 }, thickness: 0.7, color: LINE });
-  page.drawText(`${BRAND_FULL} · ${appUrl().replace(/^https?:\/\//, '')} · Telegram @US5Gwetrust`, {
+  page.drawText(`${BRAND_FULL} · ${appUrl().replace(/^https?:\/\//, '')} · Telegram @USodatai`, {
     x: left, y: footY, size: 8.5, font, color: MUTED,
   });
   page.drawText('Generated from the admin panel', {

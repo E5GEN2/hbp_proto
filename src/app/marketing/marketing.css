@@ -292,18 +292,30 @@
   .mkt .nav__promo { display: none; }
   .mkt .nav-wrap { top: 8px; }
   .mkt .topbar { gap: 12px; }
-  .mkt .topbar__logo { padding: 4px 14px 4px 12px !important; height: auto !important; }
+  /* One rule for both pills on phones: hug the content, equal 12px inset on each
+     side. The logo carries an inline `width: 230px` (desktop) that was never
+     released here — the svg shrinks but the pill didn't, leaving dead space (or
+     clipping the wordmark on narrow phones); `width: auto` lets it hug the svg. */
+  .mkt .topbar__logo { width: auto !important; padding: 4px 12px !important; height: auto !important; }
   .mkt .topbar__logo svg { height: 32px !important; }
   /* shrink the nav pill to its content so it sits compactly at the right (topbar is
      space-between) instead of a wide pill with the links hugging one edge. */
-  .mkt .nav { flex: 0 0 auto; padding: 4px 6px 4px 16px !important; gap: 14px !important; height: auto !important; }
+  .mkt .nav { flex: 0 0 auto; padding: 4px 12px !important; gap: 12px !important; height: auto !important; }
+  .mkt .nav__links { gap: 12px; } /* desktop 26px left the icon floating far from the CTA */
+  /* Optical alignment: the Telegram glyph sits ~7px inside its 32px tap box, so with
+     equal padding the pill looked heavier on the left (measured 19.8px vs 13px). Pull
+     the icon left by its own internal air; the tap target and the pill's uniform
+     padding are untouched. */
+  .mkt .nav__links a.nav__icon { margin-left: -7px; }
   .mkt .nav__links a:not(.nav__cta):not(.nav__icon) { display:none; }
   .mkt .nav__links a.nav__cta { width: auto !important; padding: 8px 14px !important; }
 }
 @media (max-width: 480px) {
   .mkt .topbar__logo svg { height: 28px !important; }
+  /* same uniform rule, tighter: both pills hug content with a 10px inset */
   .mkt .topbar__logo { padding: 4px 10px !important; }
-  .mkt .nav { padding: 4px 6px 4px 12px !important; gap: 10px !important; }
+  .mkt .nav { padding: 4px 10px !important; gap: 10px !important; }
+  .mkt .nav__links { gap: 10px; }
 }
 /* ============ HERO ============ */
 .mkt .hero {
@@ -655,6 +667,14 @@
 .mkt #plans .pullbox__meta { gap: 8px; }
 .mkt #plans .pullbox__meta .row { padding: 10px 0; }
 .mkt #plans .pullbox__meta .row .num { min-width: 92px; }
+/* `.mkt #plans .pullbox` above re-sets 2 columns with id-level specificity. The
+   ≤900px single-column collapse has the same specificity but sits EARLIER in the
+   file, so source order let the desktop rule win on phones and the meta column
+   ran off-screen. Re-collapse it here, AFTER the desktop rule, so order resolves
+   in the mobile rule's favour. */
+@media (max-width: 900px) {
+  .mkt #plans .pullbox { grid-template-columns: 1fr; }
+}
 /* ============ CTA STRIP ============ */
 .mkt .cta-strip {
   margin-top: 64px;

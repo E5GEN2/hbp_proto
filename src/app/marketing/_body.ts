@@ -33,8 +33,8 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
 <!-- ============ NAV ============ -->
 <div class="nav-wrap">
   <div class="topbar rise" data-d="1">
-    <a class="topbar__logo" href="#" aria-label="@@BRAND_FULL@@" style="border-radius: 999px; padding: 2px 12px 2px 8px; height: 56px; width: 230px">
-      <svg viewBox="6 40 570 120" style="height: 46px; width: auto">
+    <a class="topbar__logo" href="#" aria-label="@@BRAND_FULL@@" style="border-radius: 999px; padding: 2px 12px; height: 56px; width: 230px">
+      <svg viewBox="25 40 549 120" style="height: 46px; width: auto">
         <use href="#cometMark"></use>
         <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" stroke-width="1" opacity="0.2"></line>
         <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">@@BRAND_WORDMARK@@</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827" style="line-height: 1.6"> proxies</tspan></text>
@@ -327,7 +327,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
 <!-- ============ FOOTER ============ -->
 <footer class="foot">
   <div class="foot__mark">
-    <svg viewBox="6 40 570 120">
+    <svg viewBox="25 40 549 120">
       <use href="#cometMark"></use>
       <line x1="208" y1="64" x2="208" y2="136" stroke="#0A0F1D" stroke-width="1" opacity="0.2"></line>
       <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">@@BRAND_WORDMARK@@</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827"> proxies</tspan></text>

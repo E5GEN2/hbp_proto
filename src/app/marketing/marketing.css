@@ -302,6 +302,11 @@
      space-between) instead of a wide pill with the links hugging one edge. */
   .mkt .nav { flex: 0 0 auto; padding: 4px 12px !important; gap: 12px !important; height: auto !important; }
   .mkt .nav__links { gap: 12px; } /* desktop 26px left the icon floating far from the CTA */
+  /* Optical alignment: the Telegram glyph sits ~7px inside its 32px tap box, so with
+     equal padding the pill looked heavier on the left (measured 19.8px vs 13px). Pull
+     the icon left by its own internal air; the tap target and the pill's uniform
+     padding are untouched. */
+  .mkt .nav__links a.nav__icon { margin-left: -7px; }
   .mkt .nav__links a:not(.nav__cta):not(.nav__icon) { display:none; }
   .mkt .nav__links a.nav__cta { width: auto !important; padding: 8px 14px !important; }
 }

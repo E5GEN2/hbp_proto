@@ -753,6 +753,9 @@
   transition: color .2s var(--ease), border-color .2s var(--ease), background-color .2s var(--ease);
 }
 .mkt .legal-modal__close:hover { color: var(--ink); border-color: var(--ink); background: rgba(17,24,39,.04); }
+/* Neutral focus ring — the native <dialog> focuses this button on open; the UA
+   default is a jarring blue. Tie it to the ink/hair palette instead. */
+.mkt .legal-modal__close:focus-visible { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17,24,39,.12); }
 .mkt .legal-modal__body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -782,8 +785,9 @@
 .mkt .soldout-modal { width: min(460px, calc(100vw - 40px)); max-height: none; }
 .mkt .soldout-modal .legal-modal__body { overflow: visible; }
 .mkt .soldout-modal__cta { margin-top: 18px; display: flex; }
-/* the body's link underline is for prose links — not the CTA button */
-.mkt .soldout-modal .legal-modal__body .soldout-modal__cta a { text-decoration: none; }
+/* The body's link color/underline is for prose links — the gold CTA button
+   keeps .btn--gold's white text (this scoped rule outranks .legal-modal__body a). */
+.mkt .soldout-modal .legal-modal__body .soldout-modal__cta a { text-decoration: none; color: #fff; }
 
 /* ── Responsiveness fix (addition — not in the source design) ──
    The design's hero <h1> carries an inline `margin: 14px 334px 0px` for the

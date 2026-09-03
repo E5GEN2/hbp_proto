@@ -333,6 +333,11 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
       <text x="232" y="118" font-family="Source Sans 3, sans-serif" font-size="50"><tspan font-weight="600" letter-spacing="1" fill="#111827">@@BRAND_WORDMARK@@</tspan><tspan font-weight="400" letter-spacing="0" fill="#111827"> proxies</tspan></text>
     </svg>
   </div>
+  <div class="foot__contacts">
+    <span class="foot__contacts-h">Contacts</span>
+    <span class="foot__contacts-name">Cresittel (HK) Limited</span>
+    <a href="mailto:hk@cresittel.com">hk@cresittel.com</a>
+  </div>
   <div class="foot__end">
     <span>© 2026</span>
     <div class="foot__links">

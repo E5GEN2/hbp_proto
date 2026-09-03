@@ -402,7 +402,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
   <div class="legal-modal__body">
     <p class="legal-modal__meta">Operating company</p>
     <h4>Cresittel (HK) Limited</h4>
-    <p>Email: <a href="mailto:hk@cresittel.com">hk@cresittel.com</a></p>
+    <p><a href="mailto:hk@cresittel.com">hk@cresittel.com</a></p>
   </div>
 </dialog>
 

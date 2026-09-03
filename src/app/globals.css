@@ -1211,6 +1211,45 @@ table.dt { table-layout: fixed; }
 @keyframes bd-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
+/* ===== Sold-out modal — mirror the marketing site's legal/sold-out modal =====
+   Owner ask: this window should look like the site. Values mirror the marketing
+   tokens (marketing.css): --surface #FAF8F4, --hair #C9C2B5, --hair-soft
+   rgba(201,194,181,.55), --ink #111827, --ink-soft #1F2A3F, --slate #8190A1,
+   --gold #B58A4A / --gold-hover #9A7339. Scoped to this one modal (.soldout-site)
+   so every other portal modal keeps the standard chrome. */
+.modal.soldout-site {
+  background: #FAF8F4;
+  border: 1px solid #C9C2B5;
+  border-radius: 18px;
+  box-shadow: 0 40px 90px -34px rgba(17, 24, 39, .45);
+  overflow: hidden;
+}
+.modal-backdrop:has(.soldout-site) {
+  background: rgba(17, 24, 39, .42);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.modal.soldout-site .modal-header { padding: 24px 28px; border-bottom: 1px solid rgba(201, 194, 181, .55); }
+.modal.soldout-site .modal-title { font-size: 24px; font-weight: 600; letter-spacing: -.01em; line-height: 1.15; color: #111827; }
+.modal.soldout-site .modal-close {
+  width: 34px; height: 34px; padding: 0; border-radius: 999px;
+  border: 1px solid #C9C2B5; background: transparent; color: #8190A1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; line-height: 1;
+  transition: color .2s ease, border-color .2s ease, background-color .2s ease;
+}
+.modal.soldout-site .modal-close:hover { color: #111827; border-color: #111827; background: rgba(17, 24, 39, .04); }
+/* Neutral focus ring (not the UA blue) — ui/Modal moves focus into the dialog on open. */
+.modal.soldout-site .modal-close:focus-visible { outline: none; border-color: #111827; box-shadow: 0 0 0 3px rgba(17, 24, 39, .12); }
+.modal.soldout-site .modal-body { padding: 24px 28px 0; font-size: 15px; line-height: 1.65; color: #1F2A3F; }
+.modal.soldout-site .modal-footer { padding: 18px 28px 28px; border-top: none; justify-content: flex-start; }
+.modal.soldout-site .soldout-site__cta {
+  background: #B58A4A; color: #fff; border: none;
+  border-radius: 999px; padding: 14px 22px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+}
+.modal.soldout-site .soldout-site__cta:hover { background: #9A7339; }
+
 /* ===== Avatar ===== */
 .avatar {
   width: 28px; height: 28px;

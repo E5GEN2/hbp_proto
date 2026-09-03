@@ -9,9 +9,13 @@ export type ModalProps = {
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
   closeOnBackdrop?: boolean;
+  /** Extra class on the .modal card — lets a caller restyle its own chrome
+      (e.g. the sold-out modal mirrors the marketing site) without touching
+      the shared modal used everywhere else. */
+  className?: string;
 };
 
-export function Modal({ open, onClose, title, children, footer, size = 'md', closeOnBackdrop = true }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = 'md', closeOnBackdrop = true, className }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
   // onClose can be a fresh closure every parent render (many callers inline it,
   // and some rerender on each keystroke). Read it through a ref so the focus/
@@ -80,7 +84,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
     <div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined}>
       <div
         ref={ref}
-        className={`modal ${size === 'lg' ? 'lg' : ''}`}
+        className={`modal ${size === 'lg' ? 'lg' : ''} ${className ?? ''}`}
         style={{ width: `min(92vw, ${width}px)`, outline: 'none' }}
         onClick={e => e.stopPropagation()}
         role="dialog"

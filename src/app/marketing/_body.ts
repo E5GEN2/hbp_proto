@@ -338,6 +338,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <div class="foot__links">
       <a href="#" data-legal="privacy-modal">Privacy</a>
       <a href="#" data-legal="terms-modal">Terms</a>
+      <a href="#" data-legal="contacts-modal">Contacts</a>
     </div>
   </div>
 </footer>
@@ -390,6 +391,18 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <p>The service is provided "as is." To the extent permitted by law, our total liability is limited to the amount you paid for the plan in question.</p>
     <h4>Changes</h4>
     <p>We may update these terms; material changes will be reflected by the date above. Continued use after an update constitutes acceptance.</p>
+  </div>
+</dialog>
+
+<dialog class="legal-modal" id="contacts-modal" aria-labelledby="contacts-title">
+  <div class="legal-modal__head">
+    <h3 id="contacts-title">Contacts</h3>
+    <button type="button" class="legal-modal__close" aria-label="Close">×</button>
+  </div>
+  <div class="legal-modal__body">
+    <p class="legal-modal__meta">Operating company</p>
+    <h4>Cresittel (HK) Limited</h4>
+    <p><a href="mailto:hk@cresittel.com">hk@cresittel.com</a></p>
   </div>
 </dialog>
 

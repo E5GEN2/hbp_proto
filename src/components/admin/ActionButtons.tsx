@@ -13,6 +13,7 @@ import { EditProxyModal, type EditProxyInitial } from './modals/EditProxyModal';
 import { RiskModal } from './modals/RiskModal';
 import { BlockClientModal } from './modals/BlockClientModal';
 import { CancelOrderModal } from './modals/CancelOrderModal';
+import { CloseWithoutRefundModal } from './modals/CloseWithoutRefundModal';
 import { SuspendOrderModal } from './modals/SuspendOrderModal';
 import { ExtendOrderModal } from './modals/ExtendOrderModal';
 
@@ -77,6 +78,16 @@ export function CancelOrderButton({ orderId, wasPaid = false, assignmentCount = 
     <>
       <button className="btn danger" onClick={() => setOpen(true)}>Cancel order</button>
       <CancelOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} wasPaid={wasPaid} assignmentCount={assignmentCount} />
+    </>
+  );
+}
+
+export function CloseWithoutRefundButton({ orderId, isCancelled, hasClientRequest }: { orderId: string; isCancelled: boolean; hasClientRequest: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>Close without refund</button>
+      <CloseWithoutRefundModal open={open} onClose={() => setOpen(false)} orderId={orderId} isCancelled={isCancelled} hasClientRequest={hasClientRequest} />
     </>
   );
 }

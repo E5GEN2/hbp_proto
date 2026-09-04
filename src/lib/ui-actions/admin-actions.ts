@@ -8,6 +8,7 @@ export const markPaidAction = unwrapAction(S.markPaidAction);
 export const initiateRefundAction = unwrapAction(S.initiateRefundAction);
 export const completeRefundAction = unwrapAction(S.completeRefundAction);
 export const cancelOrderAction = unwrapAction(S.cancelOrderAction);
+export const closeWithoutRefundAction = unwrapAction(S.closeWithoutRefundAction);
 export const suspendOrderAction = unwrapAction(S.suspendOrderAction);
 export const resumeOrderAction = unwrapAction(S.resumeOrderAction);
 export const extendOrderAction = unwrapAction(S.extendOrderAction);

@@ -431,68 +431,145 @@ export async function completeRefund({
    ORDERS
    ════════════════════════════════════════════════════════════════════════ */
 
-export async function cancelOrder({
-  orderId, actor, reason,
-}: { orderId: string; actor: Actor; reason: string }) {
+/** Refund handling when a PAID order is cancelled (owner ask 2026-09-04):
+    'review' (default — previous behaviour) raises the refund-pending signal for
+    finance; 'none' closes the case with NO refund — the charge stays ours. */
+export type CancelRefundMode = 'review' | 'none';
+
+/** The cross-cutting "close without refund" resolution. The order's refund
+    obligation is resolved as WAIVED — no money moves: any client refund
+    REQUEST is declined (the payment goes back to CONFIRMED — it was received
+    and stays received), the refund-pending signal is cleared so the order
+    leaves the Exceptions queue / bell, and one audit line lands on the order.
+    Shared by cancelOrder(refund:'none') AND closeWithoutRefund so both entry
+    points behave identically. Refuses while a refund is IN PROGRESS — money may
+    already be on its way; complete it (with proof) instead. */
+async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: string) {
+  const pays = await tx.payment.findMany({ where: { orderId }, select: { id: true, status: true } });
+  if (pays.some(p => p.status === 'REFUND_IN_PROGRESS')) {
+    throw new Error('A refund is already in progress on this order — complete it (with proof) before closing without refund.');
+  }
+  // Decline any client request. Status-guarded: a concurrent initiateRefund
+  // (REFUND_REQUESTED → REFUND_IN_PROGRESS) must not be regressed to CONFIRMED.
+  const declined = await tx.payment.updateMany({
+    where: { orderId, status: 'REFUND_REQUESTED' },
+    data: { status: 'CONFIRMED' },
+  });
+  const kept = pays.filter(p => ['CONFIRMED', 'PAID', 'REFUND_REQUESTED'].includes(p.status)).length;
+  const ord = await tx.order.findUnique({ where: { id: orderId }, select: { exception: true, clientId: true } });
+  if (ord?.exception === 'REFUND_PENDING') {
+    await tx.order.update({ where: { id: orderId }, data: { exception: null, excInfo: null } });
+  }
+  if (declined.count > 0 && ord) {
+    await notify(tx, ord.clientId,
+      `Refund request for ${orderId} was declined · ${reason}`,
+      'WARNING', `/orders/${orderId}`);
+  }
+  await log(tx, actor.id, 'ORDER.REFUND_WAIVED', 'ORDER', orderId,
+    `Closed without refund by ${actor.name ?? actor.id} · ${reason} · ${kept} ${kept === 1 ? 'payment' : 'payments'} kept`
+    + (declined.count ? ` · ${declined.count} client refund ${declined.count === 1 ? 'request' : 'requests'} declined` : ''));
+  return { declinedRequests: declined.count, keptPayments: kept };
+}
+
+async function cancelOrderInTx(tx: Tx, { orderId, actor, reason, refund = 'review' }: {
+  orderId: string; actor: Actor; reason: string; refund?: CancelRefundMode;
+}) {
+  const ord = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { assignments: { where: { releasedAt: null } } },
+  });
+  if (!ord) throw new Error('Order not found');
+  if (ord.status === 'CANCELLED') throw new Error('Already cancelled');
+
+  const now = new Date();
+  const wasPaid = ['PAID', 'CONFIRMED'].includes(ord.paymentStatus);
+  const noRefund = wasPaid && refund === 'none';
+
+  // Release every active assignment
+  for (const a of ord.assignments) {
+    await tx.assignment.update({
+      where: { id: a.id },
+      data: { releasedAt: now, reason: 'CANCEL', reasonDetail: reason },
+    });
+    // Reset health too — a cancelled order may hold a FAULTY+OFFLINE proxy
+    // (heal-in-place); without this it lands AVAILABLE+OFFLINE, invisible to
+    // auto-fill and mis-bucketed by the health widget (the coherence invariant).
+    await tx.proxy.update({
+      where: { id: a.proxyId },
+      data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
+    });
+  }
+
+  await tx.order.update({
+    where: { id: orderId },
+    data: {
+      status: 'CANCELLED',
+      cancelledAt: now,
+      cancelledReason: reason,
+      autoRenew: false,
+      renewalBucket: null,
+      customExpiresAt: null, // a pending custom expiry dies with the order
+      // Paid + refund review (default): raise refund-pending so finance can
+      // close the loop. Paid + no refund: the case is closed right here (waived
+      // below) — no open signal survives a closed case. Unpaid: the charge dies
+      // with the order — snapshot/feed must not keep showing "Awaiting".
+      exception: wasPaid ? (noRefund ? null : 'REFUND_PENDING') : ord.exception,
+      ...(noRefund ? { excInfo: null } : {}),
+      ...(wasPaid ? {} : { paymentStatus: 'CANCELLED' as const }),
+    },
+  });
+  if (!wasPaid) {
+    await tx.payment.updateMany({
+      where: { orderId, status: { in: ['AWAITING', 'PENDING'] } },
+      data: { status: 'CANCELLED' },
+    });
+  }
+
+  await notify(tx, ord.clientId,
+    `Order ${ord.id} was cancelled · ${reason}`,
+    'WARNING',
+    `/orders/${ord.id}`,
+  );
+
+  await log(tx, actor.id, 'ORDER.CANCEL', 'ORDER', orderId,
+    `Cancelled by ${actor.name ?? actor.id} · ${reason} · ${ord.assignments.length} ${ord.assignments.length === 1 ? 'proxy' : 'proxies'} released`
+    + (noRefund ? ' · no refund' : wasPaid ? ' · refund review queued' : ''));
+
+  // The cross-cutting option: identical resolution to closeWithoutRefund.
+  if (noRefund) await waiveRefundInTx(tx, orderId, actor, reason);
+
+  return { ok: true, noRefund };
+}
+
+export async function cancelOrder(args: { orderId: string; actor: Actor; reason: string; refund?: CancelRefundMode }) {
+  return prisma.$transaction(async tx => cancelOrderInTx(tx, args));
+}
+
+/** The "close without refund" entry point for an order already in refund
+    review (exception REFUND_PENDING — from a paid cancel or a client refund
+    request). Not yet cancelled → cancels it first (releasing proxies) with
+    refund:'none'; already cancelled → just resolves the obligation as waived.
+    Either way the SAME waiver runs, so it is indistinguishable from
+    Cancel → "No refund". */
+export async function closeWithoutRefund({ orderId, actor, reason }: { orderId: string; actor: Actor; reason: string }) {
+  if (!reason?.trim()) throw new Error('Reason required');
   return prisma.$transaction(async tx => {
     const ord = await tx.order.findUnique({
       where: { id: orderId },
-      include: { assignments: { where: { releasedAt: null } } },
+      select: { status: true, exception: true, payments: { where: { status: 'REFUND_REQUESTED' }, select: { id: true } } },
     });
     if (!ord) throw new Error('Order not found');
-    if (ord.status === 'CANCELLED') throw new Error('Already cancelled');
-
-    const now = new Date();
-    const wasPaid = ['PAID', 'CONFIRMED'].includes(ord.paymentStatus);
-
-    // Release every active assignment
-    for (const a of ord.assignments) {
-      await tx.assignment.update({
-        where: { id: a.id },
-        data: { releasedAt: now, reason: 'CANCEL', reasonDetail: reason },
-      });
-      // Reset health too — a cancelled order may hold a FAULTY+OFFLINE proxy
-      // (heal-in-place); without this it lands AVAILABLE+OFFLINE, invisible to
-      // auto-fill and mis-bucketed by the health widget (the coherence invariant).
-      await tx.proxy.update({
-        where: { id: a.proxyId },
-        data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
-      });
+    if (ord.exception !== 'REFUND_PENDING' && ord.payments.length === 0) {
+      throw new Error('Nothing to close — no refund is pending on this order.');
     }
-
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: now,
-        cancelledReason: reason,
-        autoRenew: false,
-        renewalBucket: null,
-        customExpiresAt: null, // a pending custom expiry dies with the order
-        // If paid, raise refund-pending so finance can close the loop.
-        // If not, the charge dies with the order — snapshot/feed must not
-        // keep showing "Awaiting" on a cancelled order.
-        exception: wasPaid ? 'REFUND_PENDING' : ord.exception,
-        ...(wasPaid ? {} : { paymentStatus: 'CANCELLED' as const }),
-      },
-    });
-    if (!wasPaid) {
-      await tx.payment.updateMany({
-        where: { orderId, status: { in: ['AWAITING', 'PENDING'] } },
-        data: { status: 'CANCELLED' },
-      });
+    // Live order → cancel it (releasing proxies) with the no-refund mode.
+    // Terminal order (CANCELLED / EXPIRED) → only resolve the obligation: an
+    // expired order ran its course and must not be re-labelled CANCELLED.
+    if (ord.status !== 'CANCELLED' && ord.status !== 'EXPIRED') {
+      return cancelOrderInTx(tx, { orderId, actor, reason: reason.trim(), refund: 'none' });
     }
-
-    await notify(tx, ord.clientId,
-      `Order ${ord.id} was cancelled · ${reason}`,
-      'WARNING',
-      `/orders/${ord.id}`,
-    );
-
-    await log(tx, actor.id, 'ORDER.CANCEL', 'ORDER', orderId,
-      `Cancelled by ${actor.name ?? actor.id} · ${reason} · ${ord.assignments.length} ${ord.assignments.length === 1 ? 'proxy' : 'proxies'} released`);
-
-    return { ok: true };
+    const r = await waiveRefundInTx(tx, orderId, actor, reason.trim());
+    return { ok: true, noRefund: true, ...r };
   });
 }
 

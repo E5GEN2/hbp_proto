@@ -66,9 +66,16 @@ export const completeRefundAction = guarded(async function completeRefundAction(
   return r;
 });
 
-export const cancelOrderAction = guarded(async function cancelOrderAction(orderId: string, reason: string) {
+export const cancelOrderAction = guarded(async function cancelOrderAction(orderId: string, reason: string, refund: T.CancelRefundMode = 'review') {
   const actor = await getAdminActor();
-  const r = await T.cancelOrder({ orderId, actor, reason });
+  const r = await T.cancelOrder({ orderId, actor, reason, refund });
+  bust();
+  return r;
+});
+
+export const closeWithoutRefundAction = guarded(async function closeWithoutRefundAction(orderId: string, reason: string) {
+  const actor = await getAdminActor();
+  const r = await T.closeWithoutRefund({ orderId, actor, reason });
   bust();
   return r;
 });

@@ -14,6 +14,7 @@ import { RiskModal } from './modals/RiskModal';
 import { BlockClientModal } from './modals/BlockClientModal';
 import { CancelOrderModal } from './modals/CancelOrderModal';
 import { CloseWithoutRefundModal } from './modals/CloseWithoutRefundModal';
+import { DeclineRefundRequestModal } from './modals/DeclineRefundRequestModal';
 import { SuspendOrderModal } from './modals/SuspendOrderModal';
 import { ExtendOrderModal } from './modals/ExtendOrderModal';
 
@@ -88,6 +89,16 @@ export function CloseWithoutRefundButton({ orderId, isTerminal, hasClientRequest
     <>
       <button className="btn" onClick={() => setOpen(true)}>Close without refund</button>
       <CloseWithoutRefundModal open={open} onClose={() => setOpen(false)} orderId={orderId} isTerminal={isTerminal} hasClientRequest={hasClientRequest} />
+    </>
+  );
+}
+
+export function DeclineRefundRequestButton({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}>Decline request</button>
+      <DeclineRefundRequestModal open={open} onClose={() => setOpen(false)} orderId={orderId} />
     </>
   );
 }

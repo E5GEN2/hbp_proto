@@ -445,7 +445,7 @@ export type CancelRefundMode = 'review' | 'none';
     points behave identically. Refuses while a refund is IN PROGRESS or funds sit
     in MANUAL REVIEW — money may be moving, or arrived and is not yet accepted;
     complete / settle that payment first so parked funds are never hidden. */
-async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: string) {
+async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: string, mode: 'close' | 'decline' = 'close') {
   // Lock the order's payments FIRST (payments → order, the same order settle
   // takes) so the status read below is authoritative: a concurrent
   // initiateRefund / settle waits here and then sees the waived state, instead
@@ -472,7 +472,7 @@ async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: st
       'WARNING', `/orders/${orderId}`);
   }
   await log(tx, actor.id, 'ORDER.REFUND_WAIVED', 'ORDER', orderId,
-    `Closed without refund by ${actor.name ?? actor.id} · ${reason} · ${kept} ${kept === 1 ? 'payment' : 'payments'} kept`
+    `${mode === 'decline' ? 'Refund request declined' : 'Closed without refund'} by ${actor.name ?? actor.id}${mode === 'decline' ? ' · order continues' : ''} · ${reason} · ${kept} ${kept === 1 ? 'payment' : 'payments'} kept`
     + (declined.count ? ` · ${declined.count} client refund ${declined.count === 1 ? 'request' : 'requests'} declined` : ''));
   return { declinedRequests: declined.count, keptPayments: kept };
 }
@@ -583,6 +583,31 @@ export async function closeWithoutRefund({ orderId, actor, reason }: { orderId: 
     }
     const r = await waiveRefundInTx(tx, orderId, actor, reason.trim());
     return { ok: true, noRefund: true, ...r };
+  });
+}
+
+/** Decline a client's refund request and KEEP serving the order (owner ask
+    2026-09-04, follow-up). Same waiver as closeWithoutRefund — no money
+    moves, the request is declined, the refund-pending signal clears, the
+    client is notified — but the order itself is untouched: no cancel, proxies
+    and credentials stay. Live orders only; a terminal order has nothing left
+    to serve and uses closeWithoutRefund. */
+export async function declineRefundRequest({ orderId, actor, reason }: { orderId: string; actor: Actor; reason: string }) {
+  if (!reason?.trim()) throw new Error('Reason required');
+  return prisma.$transaction(async tx => {
+    const ord = await tx.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, exception: true, payments: { where: { status: 'REFUND_REQUESTED' }, select: { id: true } } },
+    });
+    if (!ord) throw new Error('Order not found');
+    if (ord.status === 'CANCELLED' || ord.status === 'EXPIRED') {
+      throw new Error('This order is no longer being served — use "Close without refund" instead.');
+    }
+    if (ord.exception !== 'REFUND_PENDING' && ord.payments.length === 0) {
+      throw new Error('Nothing to decline — no refund request is pending on this order.');
+    }
+    const r = await waiveRefundInTx(tx, orderId, actor, reason.trim(), 'decline');
+    return { ok: true, kept: true, ...r };
   });
 }
 

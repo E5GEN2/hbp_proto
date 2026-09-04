@@ -442,12 +442,18 @@ export type CancelRefundMode = 'review' | 'none';
     and stays received), the refund-pending signal is cleared so the order
     leaves the Exceptions queue / bell, and one audit line lands on the order.
     Shared by cancelOrder(refund:'none') AND closeWithoutRefund so both entry
-    points behave identically. Refuses while a refund is IN PROGRESS — money may
-    already be on its way; complete it (with proof) instead. */
+    points behave identically. Refuses while a refund is IN PROGRESS or funds sit
+    in MANUAL REVIEW — money may be moving, or arrived and is not yet accepted;
+    complete / settle that payment first so parked funds are never hidden. */
 async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: string) {
+  // Lock the order's payments FIRST (payments → order, the same order settle
+  // takes) so the status read below is authoritative: a concurrent
+  // initiateRefund / settle waits here and then sees the waived state, instead
+  // of landing REFUND_IN_PROGRESS on an order whose signal we just cleared.
+  await tx.$queryRaw`SELECT id FROM payments WHERE "orderId" = ${orderId} FOR UPDATE`;
   const pays = await tx.payment.findMany({ where: { orderId }, select: { id: true, status: true } });
-  if (pays.some(p => p.status === 'REFUND_IN_PROGRESS')) {
-    throw new Error('A refund is already in progress on this order — complete it (with proof) before closing without refund.');
+  if (pays.some(p => p.status === 'REFUND_IN_PROGRESS' || p.status === 'MANUAL_REVIEW')) {
+    throw new Error('A refund is in progress or funds are under verification (manual review) on this order — complete or settle that payment before closing without refund.');
   }
   // Decline any client request. Status-guarded: a concurrent initiateRefund
   // (REFUND_REQUESTED → REFUND_IN_PROGRESS) must not be regressed to CONFIRMED.
@@ -480,10 +486,17 @@ async function cancelOrderInTx(tx: Tx, { orderId, actor, reason, refund = 'revie
   });
   if (!ord) throw new Error('Order not found');
   if (ord.status === 'CANCELLED') throw new Error('Already cancelled');
+  // No-refund path: lock the order's payments before ANY write so this tx takes
+  // payments → order (settle's order) and never inverts against a concurrent
+  // settle on one of them.
+  if (refund === 'none') await tx.$queryRaw`SELECT id FROM payments WHERE "orderId" = ${orderId} FOR UPDATE`;
 
   const now = new Date();
   const wasPaid = ['PAID', 'CONFIRMED'].includes(ord.paymentStatus);
-  const noRefund = wasPaid && refund === 'none';
+  // Keyed on INTENT, not on order.paymentStatus: a comp (FREE) or override
+  // order can carry a CONFIRMED renewal payment under a refund request, so
+  // REFUND_PENDING may sit on an order whose paymentStatus is not PAID/CONFIRMED.
+  const noRefund = refund === 'none' && (wasPaid || ord.exception === 'REFUND_PENDING');
 
   // Release every active assignment
   for (const a of ord.assignments) {
@@ -513,7 +526,7 @@ async function cancelOrderInTx(tx: Tx, { orderId, actor, reason, refund = 'revie
       // close the loop. Paid + no refund: the case is closed right here (waived
       // below) — no open signal survives a closed case. Unpaid: the charge dies
       // with the order — snapshot/feed must not keep showing "Awaiting".
-      exception: wasPaid ? (noRefund ? null : 'REFUND_PENDING') : ord.exception,
+      exception: noRefund ? null : (wasPaid ? 'REFUND_PENDING' : ord.exception),
       ...(noRefund ? { excInfo: null } : {}),
       ...(wasPaid ? {} : { paymentStatus: 'CANCELLED' as const }),
     },

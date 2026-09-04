@@ -68,6 +68,7 @@ export const completeRefundAction = guarded(async function completeRefundAction(
 
 export const cancelOrderAction = guarded(async function cancelOrderAction(orderId: string, reason: string, refund: T.CancelRefundMode = 'review') {
   const actor = await getAdminActor();
+  if (refund !== 'review' && refund !== 'none') throw new Error(`Invalid refund mode: ${String(refund)}`);
   const r = await T.cancelOrder({ orderId, actor, reason, refund });
   bust();
   return r;

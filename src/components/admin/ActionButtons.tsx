@@ -82,12 +82,12 @@ export function CancelOrderButton({ orderId, wasPaid = false, assignmentCount = 
   );
 }
 
-export function CloseWithoutRefundButton({ orderId, isCancelled, hasClientRequest }: { orderId: string; isCancelled: boolean; hasClientRequest: boolean }) {
+export function CloseWithoutRefundButton({ orderId, isTerminal, hasClientRequest }: { orderId: string; isTerminal: boolean; hasClientRequest: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button className="btn" onClick={() => setOpen(true)}>Close without refund</button>
-      <CloseWithoutRefundModal open={open} onClose={() => setOpen(false)} orderId={orderId} isCancelled={isCancelled} hasClientRequest={hasClientRequest} />
+      <CloseWithoutRefundModal open={open} onClose={() => setOpen(false)} orderId={orderId} isTerminal={isTerminal} hasClientRequest={hasClientRequest} />
     </>
   );
 }

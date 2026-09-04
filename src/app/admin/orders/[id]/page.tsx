@@ -239,7 +239,7 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   // the same place as Refund, never while a refund is already in progress.
   const hasClientRequest = order.payments.some(p => p.status === 'REFUND_REQUESTED');
   const closeNoRefundBtn = order.exception === 'REFUND_PENDING' && !inProgressPay
-    ? <CloseWithoutRefundButton key="norefund" orderId={order.id} isCancelled={isCancelled} hasClientRequest={hasClientRequest} />
+    ? <CloseWithoutRefundButton key="norefund" orderId={order.id} isTerminal={isCancelled || isExpired} hasClientRequest={hasClientRequest} />
     : null;
 
   // The refund affordances ride the exception, not the status branch: a

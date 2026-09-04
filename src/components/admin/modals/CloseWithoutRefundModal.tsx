@@ -7,14 +7,15 @@ import { closeWithoutRefundAction } from '@/lib/ui-actions/admin-actions';
 // The cross-cutting "no refund" resolution for an order already in refund
 // review (owner ask 2026-09-04). Runs the SAME backend waiver as Cancel →
 // "No refund", so the audit line, client notice and queue exit are identical.
+// isTerminal: CANCELLED / EXPIRED orders are only waived — never re-labelled.
 export function CloseWithoutRefundModal({
-  open, onClose, orderId, isCancelled, hasClientRequest,
-}: { open: boolean; onClose: () => void; orderId: string; isCancelled: boolean; hasClientRequest: boolean }) {
+  open, onClose, orderId, isTerminal, hasClientRequest,
+}: { open: boolean; onClose: () => void; orderId: string; isTerminal: boolean; hasClientRequest: boolean }) {
   const router = useRouter();
   const toast = useToast();
 
   const impact = [
-    ...(isCancelled ? [] : ['The order is cancelled: active proxies return to the pool, credentials revoked, auto-renew off']),
+    ...(isTerminal ? [] : ['The order is cancelled: active proxies return to the pool, credentials revoked, auto-renew off']),
     'No money moves — the payment stays confirmed and the charge stays ours',
     'Refund-pending signal cleared: the order leaves the Refund review queue and the bell',
     ...(hasClientRequest ? ['The client’s refund request is declined and they are notified'] : []),

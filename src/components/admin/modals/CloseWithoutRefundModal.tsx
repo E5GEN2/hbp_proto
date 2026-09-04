@@ -18,7 +18,7 @@ export function CloseWithoutRefundModal({
     ...(isTerminal ? [] : ['The order is cancelled: active proxies return to the pool, credentials revoked, auto-renew off']),
     'No money moves — the payment stays confirmed and the charge stays ours',
     'Refund-pending signal cleared: the order leaves the Refund review queue and the bell',
-    ...(hasClientRequest ? ['The client’s refund request is declined and they are notified'] : []),
+    ...(hasClientRequest ? ['The client’s refund request is declined and they are notified — your reason is included in that notice'] : []),
     'Finance can still refund later from the payment itself if that changes',
   ];
 

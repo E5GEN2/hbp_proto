@@ -238,12 +238,17 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   // The cross-cutting "no refund" exit (owner ask 2026-09-04): resolvable from
   // the same place as Refund, never while a refund is already in progress.
   const hasClientRequest = order.payments.some(p => p.status === 'REFUND_REQUESTED');
-  const closeNoRefundBtn = order.exception === 'REFUND_PENDING' && !inProgressPay
+  // Parked (MANUAL_REVIEW) funds must be settled or refunded first — the server
+  // refuses the waiver, so don't offer it.
+  const hasParkedFunds = order.payments.some(p => p.status === 'MANUAL_REVIEW');
+  const canWaive = order.exception === 'REFUND_PENDING' && !inProgressPay && !hasParkedFunds;
+  const closeNoRefundBtn = canWaive
     ? <CloseWithoutRefundButton key="norefund" orderId={order.id} isTerminal={isCancelled || isExpired} hasClientRequest={hasClientRequest} />
     : null;
-  // "Decline the request, keep serving" — live orders only (a terminal order has
-  // nothing left to serve; it gets Close without refund instead).
-  const declineBtn = order.exception === 'REFUND_PENDING' && !inProgressPay && !(isCancelled || isExpired)
+  // "Decline the request, keep serving" — live orders with an ACTUAL client
+  // request only (a terminal order has nothing left to serve; a bare
+  // refund-pending signal with no request is closed, not declined).
+  const declineBtn = canWaive && hasClientRequest && !(isCancelled || isExpired)
     ? <DeclineRefundRequestButton key="decline" orderId={order.id} />
     : null;
 

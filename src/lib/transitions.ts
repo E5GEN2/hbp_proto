@@ -445,15 +445,30 @@ export type CancelRefundMode = 'review' | 'none';
     points behave identically. Refuses while a refund is IN PROGRESS or funds sit
     in MANUAL REVIEW — money may be moving, or arrived and is not yet accepted;
     complete / settle that payment first so parked funds are never hidden. */
-async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: string, mode: 'close' | 'decline' = 'close') {
+async function waiveRefundInTx(
+  tx: Tx, orderId: string, actor: Actor, reason: string,
+  mode: 'close' | 'decline' = 'close',
+  opts: { requireOpen?: boolean } = {},
+) {
   // Lock the order's payments FIRST (payments → order, the same order settle
   // takes) so the status read below is authoritative: a concurrent
   // initiateRefund / settle waits here and then sees the waived state, instead
   // of landing REFUND_IN_PROGRESS on an order whose signal we just cleared.
   await tx.$queryRaw`SELECT id FROM payments WHERE "orderId" = ${orderId} FOR UPDATE`;
   const pays = await tx.payment.findMany({ where: { orderId }, select: { id: true, status: true } });
+  const verb = mode === 'decline' ? 'declining the request' : 'closing without refund';
   if (pays.some(p => p.status === 'REFUND_IN_PROGRESS' || p.status === 'MANUAL_REVIEW')) {
-    throw new Error('A refund is in progress or funds are under verification (manual review) on this order — complete or settle that payment before closing without refund.');
+    throw new Error(`A refund is in progress or funds are under verification (manual review) on this order — complete or settle that payment before ${verb}.`);
+  }
+  const ord = await tx.order.findUnique({ where: { id: orderId }, select: { exception: true, clientId: true } });
+  if (!ord) throw new Error('Order not found');
+  // Standalone entry points (Decline / Close on a terminal order) must find an
+  // OPEN case under the lock — otherwise two admins resolving together both
+  // "succeed" and write duplicate audit lines. The cancel path skips this: it
+  // has already nulled the exception in this same tx.
+  const openRequests = pays.filter(p => p.status === 'REFUND_REQUESTED').length;
+  if (opts.requireOpen && ord.exception !== 'REFUND_PENDING' && openRequests === 0) {
+    throw new Error('Already resolved by another admin — reload to see the current state.');
   }
   // Decline any client request. Status-guarded: a concurrent initiateRefund
   // (REFUND_REQUESTED → REFUND_IN_PROGRESS) must not be regressed to CONFIRMED.
@@ -462,11 +477,10 @@ async function waiveRefundInTx(tx: Tx, orderId: string, actor: Actor, reason: st
     data: { status: 'CONFIRMED' },
   });
   const kept = pays.filter(p => ['CONFIRMED', 'PAID', 'REFUND_REQUESTED'].includes(p.status)).length;
-  const ord = await tx.order.findUnique({ where: { id: orderId }, select: { exception: true, clientId: true } });
-  if (ord?.exception === 'REFUND_PENDING') {
+  if (ord.exception === 'REFUND_PENDING') {
     await tx.order.update({ where: { id: orderId }, data: { exception: null, excInfo: null } });
   }
-  if (declined.count > 0 && ord) {
+  if (declined.count > 0) {
     await notify(tx, ord.clientId,
       `Refund request for ${orderId} was declined · ${reason}`,
       'WARNING', `/orders/${orderId}`);
@@ -581,7 +595,7 @@ export async function closeWithoutRefund({ orderId, actor, reason }: { orderId: 
     if (ord.status !== 'CANCELLED' && ord.status !== 'EXPIRED') {
       return cancelOrderInTx(tx, { orderId, actor, reason: reason.trim(), refund: 'none' });
     }
-    const r = await waiveRefundInTx(tx, orderId, actor, reason.trim());
+    const r = await waiveRefundInTx(tx, orderId, actor, reason.trim(), 'close', { requireOpen: true });
     return { ok: true, noRefund: true, ...r };
   });
 }
@@ -603,10 +617,10 @@ export async function declineRefundRequest({ orderId, actor, reason }: { orderId
     if (ord.status === 'CANCELLED' || ord.status === 'EXPIRED') {
       throw new Error('This order is no longer being served — use "Close without refund" instead.');
     }
-    if (ord.exception !== 'REFUND_PENDING' && ord.payments.length === 0) {
-      throw new Error('Nothing to decline — no refund request is pending on this order.');
+    if (ord.payments.length === 0) {
+      throw new Error('Nothing to decline — no client refund request is pending on this order. If only the refund-pending signal remains, use "Close without refund".');
     }
-    const r = await waiveRefundInTx(tx, orderId, actor, reason.trim(), 'decline');
+    const r = await waiveRefundInTx(tx, orderId, actor, reason.trim(), 'decline', { requireOpen: true });
     return { ok: true, kept: true, ...r };
   });
 }

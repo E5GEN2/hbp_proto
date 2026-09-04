@@ -17,7 +17,7 @@ export function DeclineRefundRequestModal({
     'The order keeps running — proxies, credentials and auto-renew untouched',
     'No money moves — the payment stays confirmed and the charge stays ours',
     'Refund-pending signal cleared: the order leaves the Refund review queue and the bell',
-    'The client is notified that their refund request was declined',
+    'The client is notified that their refund request was declined — your reason is included in that notice',
     'Finance can still refund later from the payment itself if that changes',
   ];
 
@@ -26,7 +26,7 @@ export function DeclineRefundRequestModal({
       open={open} onClose={onClose}
       title="Decline refund request"
       entityLabel={`Order · ${orderId}`}
-      message="Refuse the client’s refund request and continue serving the order. The reason is audited on the order."
+      message="Refuse the client’s refund request and continue serving the order. The reason is shown to the client and audited on the order."
       impact={impact}
       requireReason
       confirmLabel="Decline request"

@@ -68,7 +68,7 @@ Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the po
 - Renewal during grace = plain extension (keeps the proxies); renewal after release re-provisions fresh ones.
 
 ### 8. Order cancelled
-- Path: `ACTIVE` and `PROVISIONING`-with-proxies orders cancel **suspend-first** (canon) — Suspend, then Cancel appears; NEW / proxyless-PROVISIONING / SUSPENDED orders cancel directly.
+- Path: Cancel is offered directly on every non-terminal status, including `ACTIVE` and `PROVISIONING`-with-proxies (owner ask 2026-09-04: cancel at any moment); Suspend remains the reversible alternative. For a PAID order the cancel dialog asks how to handle the refund — **Queue for refund review** (raises `REFUND_PENDING`) or **No refund** (closes the case with no refund; same waiver as the *Close without refund* button on an order already in refund review).
 - All assignments closed; proxies → `AVAILABLE + HEALTHY` (credentials rotated) — including a formerly FAULTY proxy (no AVAILABLE+OFFLINE leak).
 - Order → `CANCELLED`; History tab (per-client) records the released assignments with reason.
 - A **paid** cancel raises `exception = REFUND_PENDING` → see §12.

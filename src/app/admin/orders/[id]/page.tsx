@@ -9,7 +9,7 @@ import { fmtAdminStamp } from '@/lib/date';
 import { loadTierGraceHours } from '@/lib/grace';
 import { orderTimeSignal, timeSignalChip, msToShort } from '@/lib/order-signals';
 import { SignalChip } from '@/components/admin/SignalChip';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton, CompleteRefundButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton, CompleteRefundButton, CloseWithoutRefundButton, DeclineRefundRequestButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -31,7 +31,7 @@ const EXC_BANNER: Record<string, { title: string; tone: string; desc: string }> 
   RENEWAL_NOT_EXTENDED: { title: 'Renewal paid but not extended', tone: 'violet', desc: 'A renewal payment confirmed but the expiry date did not advance. Extend manually to match the paid period.' },
   RENEWAL_FAULTY_PROXY: { title: 'Renewed with faulty proxy', tone: 'violet', desc: 'Renewal completed (period extended) but at least one proxy on this order is currently faulty/offline. Run Replace to swap it for a healthy proxy from the pool.' },
   REPLACEMENT_PENDING: { title: 'Replacement requested, not done', tone: '', desc: 'The assigned proxy was marked faulty but no replacement has been issued. Pick a new proxy from the pool.' },
-  REFUND_PENDING: { title: 'Refund review queued', tone: '', desc: 'The order was cancelled while paid. Finance must close the loop with a refund decision before the case is resolved.' },
+  REFUND_PENDING: { title: 'Refund review queued', tone: '', desc: 'The order was cancelled while paid, or the client asked for a refund. Finance closes the loop: refund, decline the request (order continues), or close without refund.' },
 };
 
 // Payment statuses that warrant a header chip. Clean PAID/CONFIRMED/FREE
@@ -235,9 +235,26 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     ? <RefundButton key="refund" paymentId={refundablePay.id} amount={Number(refundablePay.gross)} />
     : null;
 
-  // The refund affordance rides the exception, not the status branch: a
+  // The cross-cutting "no refund" exit (owner ask 2026-09-04): resolvable from
+  // the same place as Refund, never while a refund is already in progress.
+  const hasClientRequest = order.payments.some(p => p.status === 'REFUND_REQUESTED');
+  // Parked (MANUAL_REVIEW) funds must be settled or refunded first — the server
+  // refuses the waiver, so don't offer it.
+  const hasParkedFunds = order.payments.some(p => p.status === 'MANUAL_REVIEW');
+  const canWaive = order.exception === 'REFUND_PENDING' && !inProgressPay && !hasParkedFunds;
+  const closeNoRefundBtn = canWaive
+    ? <CloseWithoutRefundButton key="norefund" orderId={order.id} isTerminal={isCancelled || isExpired} hasClientRequest={hasClientRequest} />
+    : null;
+  // "Decline the request, keep serving" — live orders with an ACTUAL client
+  // request only (a terminal order has nothing left to serve; a bare
+  // refund-pending signal with no request is closed, not declined).
+  const declineBtn = canWaive && hasClientRequest && !(isCancelled || isExpired)
+    ? <DeclineRefundRequestButton key="decline" orderId={order.id} />
+    : null;
+
+  // The refund affordances ride the exception, not the status branch: a
   // REFUND_PENDING signal must be resolvable wherever its link lands.
-  const withRefund = (base: ReactNode[]) => (refundBtn ? [refundBtn, ...base] : base);
+  const withRefund = (base: ReactNode[]) => [...(refundBtn ? [refundBtn] : []), ...(declineBtn ? [declineBtn] : []), ...(closeNoRefundBtn ? [closeNoRefundBtn] : []), ...base];
 
   let actions: ReactNode[];
   if (isCancelled) actions = withRefund([noteBtn]);                            // terminal — extend/resume invalid
@@ -246,8 +263,8 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
   // Assign rides the deficit, not the status branch: a partially-assigned
   // PROVISIONING order (owner report, ORD-86071) and an ACTIVE order that
   // lost a proxy both need a top-up path — showAssign gates on qtyNeeded>0.
-  else if (isActive) actions = withRefund([...(showAssign ? [assignBtn] : []), extendBtn, noteBtn, suspendBtn]);  // cancel via suspend-first (canon)
-  else if (isProv && hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, suspendBtn]);
+  else if (isActive) actions = withRefund([...(showAssign ? [assignBtn] : []), extendBtn, noteBtn, suspendBtn, cancelBtn]);  // cancel at any moment (owner ask 2026-09-04); suspend stays the reversible option
+  else if (isProv && hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, suspendBtn, cancelBtn]);
   else if (isProv && !hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]);
   else actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]); // NEW / AWAITING / PENDING_RENEWAL
 

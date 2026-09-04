@@ -66,9 +66,24 @@ export const completeRefundAction = guarded(async function completeRefundAction(
   return r;
 });
 
-export const cancelOrderAction = guarded(async function cancelOrderAction(orderId: string, reason: string) {
+export const cancelOrderAction = guarded(async function cancelOrderAction(orderId: string, reason: string, refund: T.CancelRefundMode = 'review') {
   const actor = await getAdminActor();
-  const r = await T.cancelOrder({ orderId, actor, reason });
+  if (refund !== 'review' && refund !== 'none') throw new Error(`Invalid refund mode: ${String(refund)}`);
+  const r = await T.cancelOrder({ orderId, actor, reason, refund });
+  bust();
+  return r;
+});
+
+export const closeWithoutRefundAction = guarded(async function closeWithoutRefundAction(orderId: string, reason: string) {
+  const actor = await getAdminActor();
+  const r = await T.closeWithoutRefund({ orderId, actor, reason });
+  bust();
+  return r;
+});
+
+export const declineRefundRequestAction = guarded(async function declineRefundRequestAction(orderId: string, reason: string) {
+  const actor = await getAdminActor();
+  const r = await T.declineRefundRequest({ orderId, actor, reason });
   bust();
   return r;
 });

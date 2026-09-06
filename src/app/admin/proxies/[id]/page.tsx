@@ -89,12 +89,14 @@ export default async function AdminProxyDetail({ params }: { params: { id: strin
               </div>
             </div>
 
-            {/* Whitelist — Stage 1.5 (per handoff decisions); read-only */}
+            {/* Whitelist — Stage 1.5 (per handoff decisions); read-only. The list is
+                stored only — NOT enforced at the proxy yet (owner decision 2026-09-06:
+                label it honestly until enforcement ships). */}
             <div className="panel">
-              <div className="panel-header"><span className="panel-title">Whitelist</span></div>
+              <div className="panel-header"><span className="panel-title">Whitelist<span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not enforced yet</span></span></div>
               {proxy.whitelist.length === 0 ? (
                 <div className="kv">
-                  <div className="kv-row"><span className="kv-val muted" style={{ textAlign: 'left' }}>No IP restrictions — all source IPs allowed.</span></div>
+                  <div className="kv-row"><span className="kv-val muted" style={{ textAlign: 'left' }}>No IPs listed. The allowlist is not enforced yet — the proxy accepts all source IPs regardless.</span></div>
                 </div>
               ) : (
                 <div className="kv">

@@ -19,7 +19,7 @@ export function WhitelistPanel({
     start(async () => {
       try {
         const r = await addWhitelistIpAction(proxyId, ip);
-        toast('IP whitelisted', r.ip ?? ip, 'success'); // canonical stored form
+        toast('IP saved', r.ip ?? ip, 'success'); // canonical stored form
         setOpen(false);
         setIp('');
         router.refresh();
@@ -42,8 +42,15 @@ export function WhitelistPanel({
       <div className="panel-header">
         <span className="panel-title">
           Whitelist <span className="mono" style={{ marginLeft: 6, color: 'var(--muted)' }}>{entries.length}/5</span>
+          <span className="chip muted" style={{ marginLeft: 8, verticalAlign: 'middle' }}>Not enforced yet</span>
         </span>
         {!full && <button className="panel-action" onClick={() => setOpen(true)}>+ Add IP</button>}
+      </div>
+      {/* Honest interim (owner decision 2026-09-06): the list is stored and
+          audited, but nothing enforces it at the proxy yet — say so where a
+          client would otherwise assume protection. */}
+      <div className="t-note" style={{ padding: '10px 20px 0' }}>
+        Saved, not enforced yet — this proxy still accepts any IP with its login and password. Enforcement is on the roadmap.
       </div>
       {entries.length === 0 ? (
         <div className="empty" style={{ padding: '24px 20px' }}>
@@ -70,7 +77,7 @@ export function WhitelistPanel({
         </>}
       >
         <div className="t-note" style={{ marginBottom: 10 }}>
-          When whitelisting is enforced at the gateway, only the IPs you list here will be able to use this proxy.
+          Not enforced yet: the list is saved for when IP allowlisting goes live. Until then this proxy accepts any IP with its login and password.
         </div>
         <label className="form-label">IP address (IPv4 / IPv6, optional /CIDR)</label>
         <input className="form-input mono" value={ip} onChange={e => setIp(e.target.value)} placeholder="203.0.113.42 or 2001:db8::/32" autoFocus />

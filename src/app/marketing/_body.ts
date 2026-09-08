@@ -287,7 +287,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
           <span>Which protocols do you support?</span>
           <svg class="faq__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="12" x2="18" y2="12"></line><line x1="12" y1="6" x2="12" y2="18"></line></svg>
         </summary>
-        <div class="faq__body">HTTP, HTTPS, and SOCKS5. Authenticate by user/password or by allowlisting your client IP — switch any time from the dashboard.</div>
+        <div class="faq__body">HTTP, HTTPS, and SOCKS5, authenticated by user/password. IP allowlisting is on the roadmap.</div>
       </details>
 
       <details class="faq__item">

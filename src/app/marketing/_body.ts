@@ -338,6 +338,7 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <div class="foot__links">
       <a href="#" data-legal="privacy-modal">Privacy</a>
       <a href="#" data-legal="terms-modal">Terms</a>
+      <a href="#" data-legal="refund-modal">Refund policy</a>
       <a href="#" data-legal="contacts-modal">Contacts</a>
     </div>
   </div>
@@ -391,6 +392,27 @@ const TEMPLATE = `<!-- ============ SHARED LOGO MARK ============ -->
     <p>The service is provided "as is." To the extent permitted by law, our total liability is limited to the amount you paid for the plan in question.</p>
     <h4>Changes</h4>
     <p>We may update these terms; material changes will be reflected by the date above. Continued use after an update constitutes acceptance.</p>
+  </div>
+</dialog>
+
+<dialog class="legal-modal" id="refund-modal" aria-labelledby="refund-title">
+  <div class="legal-modal__head">
+    <h3 id="refund-title">Refund Policy</h3>
+    <button type="button" class="legal-modal__close" aria-label="Close">×</button>
+  </div>
+  <div class="legal-modal__body">
+    <p class="legal-modal__meta">Last updated — September 2026</p>
+    <p>This policy describes when and how @@BRAND_FULL@@ refunds a purchase. It applies to every plan bought through our website or client portal and supplements our Terms of Service.</p>
+    <h4>Our guarantee</h4>
+    <p>If an issue on our side prevents you from properly using the proxies you paid for — for example, proxies that are not delivered, do not connect, or remain unavailable for a substantial part of your term — and we cannot resolve it within a reasonable time, you are entitled to a <strong>100% refund</strong> of the affected order.</p>
+    <h4>Change of mind</h4>
+    <p>If a plan does not fit your workflow, you may request a full refund within 24 hours of purchase, no questions asked. Requests made after 24 hours are considered case by case.</p>
+    <h4>What is not covered</h4>
+    <p>Refunds are not issued for circumstances outside our control, including restrictions or blocks imposed by third-party websites and services, your own network or software configuration, or use that violates our Terms of Service. We may decline a request where an order has been used in breach of our acceptable-use rules.</p>
+    <h4>How to request a refund</h4>
+    <p>Contact us on Telegram at <a href="${TELEGRAM_SUPPORT_URL}" target="_blank" rel="noopener">@USodatai</a> with your order number and a short description of the issue. We aim to respond within one business day.</p>
+    <h4>How refunds are paid</h4>
+    <p>Approved refunds are returned to your original payment method or, at your choice, credited to your account balance. Processing typically takes up to 5 business days; cryptocurrency refunds are sent to the wallet address you provide.</p>
   </div>
 </dialog>
 

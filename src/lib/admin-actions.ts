@@ -102,6 +102,13 @@ export const resumeOrderAction = guarded(async function resumeOrderAction(orderI
   return r;
 });
 
+export const endOrderNowAction = guarded(async function endOrderNowAction(orderId: string, reason: string) {
+  const actor = await getAdminActor();
+  const r = await T.endOrderNow({ orderId, actor, reason });
+  bust();
+  return r;
+});
+
 export const extendOrderAction = guarded(async function extendOrderAction(orderId: string, additionalDays?: number) {
   const actor = await getAdminActor();
   const r = await T.extendOrder({ orderId, actor, additionalDays, paymentMethod: 'comp' });

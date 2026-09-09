@@ -6,10 +6,11 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { loadTierGraceHours } from '@/lib/grace';
+import { loadTierGraceHours, effectiveGraceHours } from '@/lib/grace';
 import { orderTimeSignal, timeSignalChip, msToShort } from '@/lib/order-signals';
+import { endOrderNowGate } from '@/lib/end-order';
 import { SignalChip } from '@/components/admin/SignalChip';
-import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, ReplaceProxyButton, RefundButton, CompleteRefundButton, CloseWithoutRefundButton, DeclineRefundRequestButton } from '@/components/admin/ActionButtons';
+import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, EndOrderNowButton, ReplaceProxyButton, RefundButton, CompleteRefundButton, CloseWithoutRefundButton, DeclineRefundRequestButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
 import { AddNoteToolbar } from '@/components/admin/toolbars/AddNoteToolbar';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
@@ -197,6 +198,28 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     ? { danger: 'var(--danger)', warning: 'var(--warning)', violet: 'var(--violet)', success: 'var(--success)', muted: 'var(--muted)' }[timeSignal.tone]
     : undefined;
 
+  // "End order now" (owner ask 2026-09-05, ORD-21399): the SAME pure gate the
+  // server transition enforces — past due, ACTIVE / EXPIRED-in-grace /
+  // SUSPENDED; an expired order whose proxies are already released has nothing
+  // left to end and hides it. The grace stamp comes from the live clock (the
+  // time-signal helper is silent on SUSPENDED by design, so compute it here).
+  const endGate = endOrderNowGate(
+    { status: order.status, expiresAt: order.expiresAt, liveAssignments: activeAssignments, renewalNotExtended: order.exception === 'RENEWAL_NOT_EXTENDED' },
+    nowMs,
+  );
+  const graceEndMs = order.expiresAt ? order.expiresAt.getTime() + effectiveGraceHours(order.client, tierGrace) * 3_600_000 : null;
+  // Two different fates for a charge in flight (review find): a STAMPED
+  // renewal charge (renewalDiscountApplied non-null — the same test auto-renew
+  // / clientRenewOrder use) still AWAITING settles later into a fresh term;
+  // funds parked in MANUAL_REVIEW resurrect as a balance credit (approach A)
+  // and never extend the order.
+  const renewalInFlight = order.payments.some(p => p.status === 'AWAITING' && p.renewalDiscountApplied !== null) ? 'awaiting' as const
+    : order.payments.some(p => p.status === 'MANUAL_REVIEW') ? 'review' as const
+    : null;
+  const endNow = endGate.ok
+    ? [<EndOrderNowButton key="endnow" orderId={order.id} status={order.status as 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'} liveProxies={activeAssignments} autoRenewOn={order.status === 'SUSPENDED' ? (order.autoRenewBeforeSuspend ?? false) : order.autoRenew} graceUntil={graceEndMs !== null && nowMs <= graceEndMs ? fmtAdminStamp(new Date(graceEndMs)) : null} renewalInFlight={renewalInFlight} exception={order.exception} />]
+    : [];
+
   // ─── Header actions (canon grouping, gated to backend-supported moves) ─
   const status = order.status;
   const isCancelled = status === 'CANCELLED';
@@ -215,7 +238,9 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
     <OrderDetailActions key="assign" orderId={order.id} qtyNeeded={qtyNeeded} />
   );
   const extendBtn = <ExtendButton key="ext" orderId={order.id} currentQty={order.qty} currentDuration={order.plan.durationDays} currentExpiry={order.expiresAt} />;
-  const suspendBtn = <SuspendButton key="susp" orderId={order.id} />;
+  // pastDue steers a past-due order to End order now inside the Suspend dialog
+  // (Suspend = live disputes only; a suspended order is sweep-blind).
+  const suspendBtn = <SuspendButton key="susp" orderId={order.id} pastDue={endGate.ok} />;
   const resumeBtn = <ResumeButton key="res" orderId={order.id} />;
   const cancelBtn = <CancelOrderButton key="cancel" orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />;
 
@@ -258,12 +283,12 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
 
   let actions: ReactNode[];
   if (isCancelled) actions = withRefund([noteBtn]);                            // terminal — extend/resume invalid
-  else if (isExpired) actions = withRefund([extendBtn, noteBtn]);              // renew
-  else if (isSuspended) actions = withRefund([resumeBtn, noteBtn, cancelBtn]);
+  else if (isExpired) actions = withRefund([extendBtn, ...endNow, noteBtn]);   // renew · end now (proxies still bound in grace)
+  else if (isSuspended) actions = withRefund([resumeBtn, ...endNow, noteBtn, cancelBtn]); // end now = the past-due rescue (never Suspend → Cancel)
   // Assign rides the deficit, not the status branch: a partially-assigned
   // PROVISIONING order (owner report, ORD-86071) and an ACTIVE order that
   // lost a proxy both need a top-up path — showAssign gates on qtyNeeded>0.
-  else if (isActive) actions = withRefund([...(showAssign ? [assignBtn] : []), extendBtn, noteBtn, suspendBtn, cancelBtn]);  // cancel at any moment (owner ask 2026-09-04); suspend stays the reversible option
+  else if (isActive) actions = withRefund([...(showAssign ? [assignBtn] : []), extendBtn, ...endNow, noteBtn, suspendBtn, cancelBtn]);  // cancel at any moment (owner ask 2026-09-04); suspend stays the reversible option; end now only once past due
   else if (isProv && hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, suspendBtn, cancelBtn]);
   else if (isProv && !hasProxy) actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]);
   else actions = withRefund([...(showAssign ? [assignBtn] : []), noteBtn, cancelBtn]); // NEW / AWAITING / PENDING_RENEWAL
@@ -306,6 +331,13 @@ export default async function AdminOrderDetail({ params }: { params: { id: strin
             <div className="exc-banner-body">
               <div className="exc-banner-title">Manual action required · rotate proxy credentials</div>
               <div className="exc-banner-desc">Credentials are hidden from the client, but the proxy is still assigned and the client may have already copied them. Rotate the password and regenerate the IP-rotation link on the upstream now — this is not automated.</div>
+              {/* A suspended order is invisible to the sweep (ACTIVE/EXPIRED
+                  only): once past due it would keep its proxy bound forever.
+                  Point at the honest exit instead of the Suspend → Cancel
+                  workaround (owner report, ORD-21399). */}
+              {endGate.ok && (
+                <div className="exc-banner-desc" style={{ marginTop: 6 }}>This order is also past due. To finish it, use <strong>End order now</strong> — it ends as Expired (not Cancelled) and returns the proxy to the pool with the rotation stamps. Suspend is for live disputes, not for ending an expired order.</div>
+              )}
             </div>
           </div>
         )}

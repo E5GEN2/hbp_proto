@@ -426,6 +426,10 @@ export default async function CheckoutPage({ searchParams }: {
   // Renewal branch — terms come from the ORIGINAL order (its plan may even be
   // retired from the public catalog); the server enforces the same rule.
   let renewalOrder: OrderWithPlan | null = null;
+  // Open assignments on the renewed order: 0 once they were released (grace
+  // ended, or an admin ended the order early) — the renewal then re-provisions
+  // fresh proxies with a new term instead of extending the current ones.
+  let renewalLive = 0;
   if (searchParams.renewOf) {
     renewalOrder = await prisma.order.findUnique({ where: { id: searchParams.renewOf }, include: { plan: true } });
     if (!renewalOrder || renewalOrder.clientId !== session!.user.id) {
@@ -438,6 +442,7 @@ export default async function CheckoutPage({ searchParams }: {
     // which is EXPIRED throughout grace).
     const tierGrace = await loadTierGraceHours();
     const renewLive = await prisma.assignment.count({ where: { orderId: renewalOrder.id, releasedAt: null } });
+    renewalLive = renewLive;
     const renewPastGrace = renewalClosed(renewalOrder.expiresAt, renewLive, me, tierGrace, Date.now());
     if (renewalOrder.status === 'CANCELLED' || renewalOrder.status === 'PENDING_RENEWAL' || !renewalOrder.plan.renewalAllowed || renewPastGrace) {
       // "Buy again" points at a NEW checkout of the same plan terms (no
@@ -557,8 +562,19 @@ export default async function CheckoutPage({ searchParams }: {
   const allSoldOut = !renewalOrder && planSummaries.every(p => p.available === 0);
 
   // Hint banner copy
+  // Honest about what the payment buys (review find): with the proxies still
+  // bound (in grace) it extends the current term; after a release it
+  // re-provisions fresh proxies on a new term — the same rule the order page,
+  // the bell and the admin's End-order dialog state.
+  // Re-provisioning happens only for an EXPIRED order (the server's rule at
+  // every renewal entry point); an ACTIVE order that lost its proxies gets the
+  // plain contiguous extension, so it must promise neither.
   const headerHint = renewalOrder
-    ? `Renewing ${renewalOrder.id} — paying extends this order's term; your proxies stay the same.`
+    ? renewalOrder.status === 'EXPIRED' && renewalLive === 0
+      ? `Renewing ${renewalOrder.id} — its proxies were released; paying provisions fresh proxies and starts a new term from now.`
+      : renewalLive > 0
+        ? `Renewing ${renewalOrder.id} — paying extends this order's term; your proxies stay the same.`
+        : `Renewing ${renewalOrder.id} — paying extends this order's term.`
     : null;
 
   const crumbs = renewalOrder

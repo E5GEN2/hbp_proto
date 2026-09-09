@@ -93,6 +93,7 @@ export function ConfirmAction({
             onChange={e => setReason(e.target.value)}
             placeholder="Required — audited in the activity log"
             rows={3}
+            maxLength={500}
             autoFocus
           />
         </div>

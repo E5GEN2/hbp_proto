@@ -8,7 +8,7 @@ coherence fix (PR #104).
 
 ## State model (invariants)
 
-**Order.status:** `NEW` → `PROVISIONING` → `ACTIVE` → `EXPIRED` / `CANCELLED` / `SUSPENDED`.
+**Order.status:** `NEW` → `PROVISIONING` → `ACTIVE` → `EXPIRED` / `CANCELLED` / `SUSPENDED`. `SUSPENDED` → `ACTIVE`/`PROVISIONING` (Resume), `EXPIRED` (End order now — past due only, §7) or `CANCELLED`.
 
 **Proxy.status:** `AVAILABLE` · `ASSIGNED` · `RELEASED` · `FAULTY` · `MAINTENANCE`.
 **Proxy.health:** `HEALTHY` · `DEGRADED` · `OFFLINE`.
@@ -63,12 +63,13 @@ Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the po
 - Guard: if no healthy candidate exists, the action fails with a clear message (nothing is released).
 
 ### 7. Order expires
-- Sweep: past `expiresAt` → `EXPIRED`; **proxies kept through the grace window** (client keeps using them). After grace ends → assignments closed (reason `ORDER_EXPIRED`), proxies → `AVAILABLE + HEALTHY` (credentials rotated).
-- Client: "expired — proxies keep working until {graceEnd}; renew to keep them", then "grace ended, proxies released".
-- Renewal during grace = plain extension (keeps the proxies); renewal after release re-provisions fresh ones.
+- Grace has two forms, both decided by the **clock** (`expiresAt` + the client's grace hours, `lib/grace.ts`): **(A) auto-renew ON** — the sweep tries the balance charge first and, when it fails, keeps the order `ACTIVE` (bucket `GRACE`) retrying every 24h until grace ends, then expires it; **(B) auto-renew OFF** — past `expiresAt` → `EXPIRED` at once. In both forms **proxies are kept through the grace window** (client keeps using them). After grace ends → assignments closed (reason `ORDER_EXPIRED`), proxies → `AVAILABLE + HEALTHY` (credentials rotated). Expiry never touches the auto-renew preference.
+- Client: "expired — proxies keep working until {graceEnd}; renew to keep them" (or the auto-renew-failed variants), then "grace ended, proxies released".
+- Renewal during grace = plain extension (keeps the proxies); renewal after release re-provisions fresh ones (a new term from the renewal).
+- **Admin: End order now** (order page; owner ask 2026-09-05, ORD-21399) — for a **past-due** order in `ACTIVE` (form A), `EXPIRED` (form B, proxies still bound) or `SUSPENDED` (the rescue of the old Suspend → Cancel workaround): the grace-end outcome on the admin's clock — order → `EXPIRED`, all assignments closed (reason `ORDER_EXPIRED`, «Ended by admin · reason»), proxies → `AVAILABLE + HEALTHY` with the rotation markers stamped (the upstream rotation itself stays the manual step it is after any release; the suspended rescue carries the duty recorded at suspension into the log and the dialog). The auto-renew preference is kept (inert while expired, applies again after a renewal; the suspended rescue restores it like Resume would). No refund signal (the term ran out; an open refund case stays with finance). Provisioning duties (`PAID_NOT_PROVISIONED` / `REPLACEMENT_PENDING` / `RENEWAL_FAULTY_PROXY`) clear with the term; refused while `RENEWAL_NOT_EXTENDED` (apply the paid renewal first). Bucket = the sweep's own classification (`GRACE` while the clock is inside grace, `EXPIRED` past it), so the ended order sits on Renewals → *In grace* with the live «In grace» chip until grace ends — coherent with the clock; the next tick re-buckets nothing (it flips to `EXPIRED` at grace end like any expired order). Client: bell "expired on {date}[ — its proxies were released]; Renew / Start a new order to get fresh proxies"; form A additionally gets the sweep's own «term ended» email (the client held an emailed «proxies keep working until {graceEnd}» promise), the suspended rescue an incident email (if enabled), form B the bell only — like the sweep. Renew (re-provision) stays open while the grace clock runs, then Buy again. Not offered before expiry (that is a Cancel, with the refund question) nor on an expired order whose proxies are already released (already the end state).
 
 ### 8. Order cancelled
-- Path: Cancel is offered directly on every non-terminal status, including `ACTIVE` and `PROVISIONING`-with-proxies (owner ask 2026-09-04: cancel at any moment); Suspend remains the reversible alternative. For a PAID order the cancel dialog asks how to handle the refund — **Queue for refund review** (raises `REFUND_PENDING`) or **No refund** (closes the case with no refund; same waiver as the *Close without refund* button on an order already in refund review).
+- Path: Cancel is offered directly on every non-terminal status, including `ACTIVE` and `PROVISIONING`-with-proxies (owner ask 2026-09-04: cancel at any moment); Suspend remains the reversible alternative for a live dispute. A **past-due** order is finished with **End order now** (§7) — never cancelled or suspended to end it. For a PAID order the cancel dialog asks how to handle the refund — **Queue for refund review** (raises `REFUND_PENDING`) or **No refund** (closes the case with no refund; same waiver as the *Close without refund* button on an order already in refund review).
 - All assignments closed; proxies → `AVAILABLE + HEALTHY` (credentials rotated) — including a formerly FAULTY proxy (no AVAILABLE+OFFLINE leak).
 - Order → `CANCELLED`; History tab (per-client) records the released assignments with reason.
 - A **paid** cancel raises `exception = REFUND_PENDING` → see §12.
@@ -80,6 +81,7 @@ Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the po
 
 ### 10. Order suspended
 - Order → `SUSPENDED`; proxies reserved (stay `ASSIGNED`), but **hidden from the client portal** (access withdrawn). Maintenance on such a proxy does not notify the client.
+- Suspend is for **live disputes** (a reversible pause), **not for ending an expired order**: a suspended order is invisible to the sweep (it walks `ACTIVE`/`EXPIRED` only), so its proxy would stay bound forever with no security reset. A past-due suspended order gets **End order now** (§7: → `EXPIRED`, proxies released) — never Suspend → Cancel, which shows the client the wrong status.
 
 ### 11. Auto-backfill (Settings → Flags: "Auto-fill under-provisioned orders from pool")
 - When ON, each sweep tops up every deficit order — `ACTIVE` **and** `PROVISIONING` — from `AVAILABLE+HEALTHY` pool proxies (pool-first). **Zero-proxy orders are served first** (a client with nothing beats topping 4/5 up), then oldest-first. FAULTY proxies are never auto-touched — a slot held by a faulty proxy stays with it for heal-in-place; that deficit resolves via **Replace / Mark healthy**, not backfill. When OFF (default), deficits wait for manual Assign/Replace.

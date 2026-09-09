@@ -50,3 +50,26 @@ Add richer filtering to the data tables in both portals — e.g.:
 - filter by **proxy status** (Available / Assigned / Faulty / Maintenance / …),
 - sort/filter by **date added** (Newest / Oldest),
 - and equivalent per-table dimensions where useful.
+
+## "End order now" — row action on Renewals → In grace (Phase 2)
+
+Phase 1 (2026-09-08) ships **End order now** on the admin order page only
+(`endOrderNow` transition, gate in `src/lib/end-order.ts`). The Renewals board
+has no per-row action column — its grace/expired views expose a single-select
+**Revive** in the bulk bar (`RenewalsBulkTable.tsx`). Phase 2 = a matching
+single-select **End order now** button there for `view === 'grace'` (and the
+past-grace-held rows of `expired`), reusing `endOrderNowAction` + the same
+modal; the server gate already refuses non-past-due rows with a readable
+message. Not a multi-select bulk action (each end is a deliberate,
+reason-audited call).
+
+## Known peer-writer windows on the money paths (declined 2026-09-08, "rabbit hole B")
+
+`markPaymentPaid` (renewal branch) and `settleAwaitingPayment` (crypto renewal
+branch) read the order with a plain `findUnique` — no orders `FOR UPDATE` — and
+then write a plain extension keyed on id. A concurrent `endOrderNow` / cancel
+committed between that read and the write is overwritten as `ACTIVE` with 0
+proxies (ms window, admin-triggered on one side). `extendOrder`, `suspendOrder`,
+`resumeOrder` and `endOrderNow` take the order row lock first (family A) and
+show the fix; the money paths keep their payment-first lock order and are left
+as-is until the payment layer is revisited (marked in code at both reads).

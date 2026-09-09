@@ -17,6 +17,7 @@ import { CloseWithoutRefundModal } from './modals/CloseWithoutRefundModal';
 import { DeclineRefundRequestModal } from './modals/DeclineRefundRequestModal';
 import { SuspendOrderModal } from './modals/SuspendOrderModal';
 import { ExtendOrderModal } from './modals/ExtendOrderModal';
+import { EndOrderNowModal, type EndOrderNowModalProps } from './modals/EndOrderNowModal';
 
 function useAction<T extends (...args: any[]) => Promise<any>>(fn: T) {
   const [pending, start] = useTransition();
@@ -103,12 +104,12 @@ export function DeclineRefundRequestButton({ orderId }: { orderId: string }) {
   );
 }
 
-export function SuspendButton({ orderId }: { orderId: string }) {
+export function SuspendButton({ orderId, pastDue = false }: { orderId: string; pastDue?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button className="btn danger" onClick={() => setOpen(true)}>Suspend</button>
-      <SuspendOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} />
+      <SuspendOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} pastDue={pastDue} />
     </>
   );
 }
@@ -123,6 +124,17 @@ export function ResumeButton({ orderId }: { orderId: string }) {
         {pending ? '…' : 'Resume'}
       </button>
       {err && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{err}</span>}
+    </>
+  );
+}
+
+// Past-due orders only — the page hides it via the shared endOrderNowGate.
+export function EndOrderNowButton(props: Omit<EndOrderNowModalProps, 'open' | 'onClose'>) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn danger" onClick={() => setOpen(true)}>End order now</button>
+      <EndOrderNowModal open={open} onClose={() => setOpen(false)} {...props} />
     </>
   );
 }

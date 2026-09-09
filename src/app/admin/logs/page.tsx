@@ -13,7 +13,7 @@ const PER_PAGE = 20;
 const LOG_ACTION_CHIP: Record<string, string> = {
   'ORDER.CREATE': 'new', 'ORDER.ACTIVATE': 'active', 'ORDER.AUTO_EXPIRE': 'expired',
   'ORDER.EXPIRE': 'expired', 'ORDER.SUSPEND': 'suspended', 'ORDER.RESUME': 'active',
-  'ORDER.CANCEL': 'suspended', 'ORDER.EXTEND': 'active',
+  'ORDER.CANCEL': 'suspended', 'ORDER.EXTEND': 'active', 'ORDER.RELEASE': 'released',
   'PAYMENT.CONFIRM': 'paid', 'PAYMENT.PENDING': 'pending', 'PAYMENT.FAILED': 'failed',
   'PAYMENT.REFUND': 'replacement', 'PAYMENT.REFUND_REQUEST': 'replacement',
   'PROXY.ASSIGN': 'assigned', 'PROXY.MARK_FAULTY': 'faulty', 'PROXY.REGISTER': 'provisioning',

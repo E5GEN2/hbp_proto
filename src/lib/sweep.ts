@@ -150,12 +150,27 @@ export async function runSweep(): Promise<SweepResult> {
             // bucket/timestamp, or email the client a "top up" warning.
             continue;
           }
-          autoRenewFailed++;
+          if (outcome.notActive) {
+            // Left ACTIVE since the snapshot (admin cancel / suspend / "End
+            // order now") — nothing to charge and nothing to announce: a
+            // "top up and we'll retry" notice about an order that just ended
+            // would be false, and the bucket/timestamp stomp below would
+            // write onto a row the admin has already settled.
+            continue;
+          }
           const firstFail = !o.autoRenewLastAttemptAt;
-          await prisma.order.update({
-            where: { id: o.id },
+          // Guarded on status AND the snapshot expiry: the attempt above ran
+          // (and failed) under its own lock, so an admin cancel / suspend /
+          // "End order now" — or a client renewal, which keeps ACTIVE and only
+          // moves expiresAt — can land between its return and this write.
+          // Never stamp a settled or renewed row, and never tell the client to
+          // top up for an order that just ended or was just paid for.
+          const stamped = await prisma.order.updateMany({
+            where: { id: o.id, status: 'ACTIVE', expiresAt: o.expiresAt! },
             data: { autoRenewLastAttemptAt: new Date(now), ...(inGrace ? { renewalBucket: 'GRACE' as const } : {}) },
           });
+          if (stamped.count === 0) continue;
+          autoRenewFailed++;
           await log('ORDER.AUTORENEW_FAIL', 'ORDER', o.id,
             `Auto-renew failed · ${outcome.reason}${inGrace ? ` · in grace until ${new Date(graceEnd).toISOString()}` : ''}`);
           if (inGrace) {
@@ -181,14 +196,18 @@ export async function runSweep(): Promise<SweepResult> {
       }
 
       const bucket = targetBucket({ expiresAt: o.expiresAt, renewalBucket: o.renewalBucket, graceHours: effectiveGraceHours(o.client, tierGrace) }, now);
-      await prisma.$transaction(async tx => {
-        const fresh = await tx.order.findUnique({ where: { id: o.id }, select: { status: true } });
-        if (fresh?.status !== 'ACTIVE') return; // renewed/cancelled since the read
-        await tx.order.update({
-          where: { id: o.id },
-          data: { status: 'EXPIRED', renewalBucket: bucket },
-        });
+      // Guarded flip (no plain re-read) on status AND the snapshot expiry: an
+      // admin cancel / suspend / "End order now" that landed between the
+      // snapshot and here must not be overwritten, and a renewal — which keeps
+      // the order ACTIVE and only moves expiresAt — must not be expired with a
+      // stale-clock bucket. Neither may be followed by an "expired" notice +
+      // email + log for an order that did not expire HERE (the old re-read
+      // returned early from its tx but still notified and logged below).
+      const flipped = await prisma.order.updateMany({
+        where: { id: o.id, status: 'ACTIVE', expiresAt: o.expiresAt! },
+        data: { status: 'EXPIRED', renewalBucket: bucket },
       });
+      if (flipped.count === 0) continue; // renewed / cancelled / ended since the read
       expired++;
       // Honest next-step per grace: with a window the proxies keep working
       // until graceEnd (renew keeps THEM); without one they release on the
@@ -226,24 +245,40 @@ export async function runSweep(): Promise<SweepResult> {
         const graceEnd = o.expiresAt!.getTime() + effectiveGraceHours(o.client, tierGrace) * 3_600_000;
         if (now < graceEnd) continue; // still inside grace — proxies stay bound
         const releasedAt = new Date(now);
+        // Guarded on releasedAt: an admin "End order now" / Cancel / per-proxy
+        // Release can close the same assignment between the snapshot and here
+        // — never re-stamp its reason, never re-pool a proxy the admin left
+        // RELEASED, and never announce a release that did not happen here.
+        let n = 0;
         await prisma.$transaction(async tx => {
+          // Order row FIRST (the lock every renewal path takes): a contiguous
+          // renewal committed since the snapshot keeps the assignments OPEN
+          // and only moves the expiry — the releasedAt guard below cannot see
+          // it. Re-check the committed row under the lock and leave a renewed
+          // (or otherwise changed) order alone; an in-flight renewal holding
+          // the lock finishes first and is then seen.
+          const held = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM orders WHERE id = ${o.id} AND status = 'EXPIRED' AND "expiresAt" = ${o.expiresAt} FOR UPDATE`;
+          if (held.length === 0) return;
           for (const a of o.assignments) {
-            await tx.assignment.update({
-              where: { id: a.id },
+            const r = await tx.assignment.updateMany({
+              where: { id: a.id, releasedAt: null },
               data: { releasedAt, reason: 'ORDER_EXPIRED', reasonDetail: 'Auto-released after grace window' },
             });
+            if (r.count === 0) continue;
+            n++;
             await tx.proxy.update({
               where: { id: a.proxyId },
               data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: releasedAt, passwordRotatedAt: releasedAt, ipRotatedAt: releasedAt },
             });
           }
         });
-        released += o.assignments.length;
+        if (n === 0) continue; // all closed concurrently — nothing happened here
+        released += n;
         await notify(o.clientId,
           `Order ${o.id}: the grace period ended and its proxies were released. Renew to get fresh proxies.`,
           'INFO', `/orders/${o.id}`);
         await log('ORDER.RELEASE', 'ORDER', o.id,
-          `Auto-released ${o.assignments.length} ${o.assignments.length === 1 ? 'proxy' : 'proxies'} after grace · pool restored, credentials/IP rotation markers stamped`);
+          `Auto-released ${n} ${n === 1 ? 'proxy' : 'proxies'} after grace · pool restored, credentials/IP rotation markers stamped`);
       }
     }
 

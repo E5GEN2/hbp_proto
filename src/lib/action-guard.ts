@@ -24,6 +24,10 @@ export function guarded<A extends unknown[], R>(fn: (...args: A) => Promise<R>) 
       // those must keep propagating for Next to handle them.
       if (typeof e?.digest === 'string' && e.digest.startsWith('NEXT_')) throw e;
       console.error(`[action:${fn.name || 'anonymous'}]`, e);
+      // Write conflict / deadlock between two writers on the same rows —
+      // Postgres aborted this side, the other change landed; a reload shows
+      // the winner. Prisma's raw text is nothing an admin can act on.
+      if (e?.code === 'P2034') return { __actionError: 'Another change to this record landed at the same time — reload and try again.' };
       return { __actionError: e?.message || 'Something went wrong' };
     }
   };

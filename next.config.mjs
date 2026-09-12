@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // No next/image in this app; the /_next/image optimizer is closed at the
+  // edge (src/middleware.ts) because of GHSA-2xp9-vwfh-vxw4 (AVIF RCE in
+  // sharp/libheif, unpatched on the Next 14 line). unoptimized keeps a future
+  // <Image> from routing through it. Remove with the Next 15 migration.
+  images: { unoptimized: true },
   experimental: {
     serverActions: { bodySizeLimit: '2mb' },
     // Boot hook for the lifecycle sweep loop (src/instrumentation.ts)

@@ -21,7 +21,8 @@ const PAY_EVENT: Record<string, string> = {
 // Canon Clients .dt anchor scheme: 360px Client + 164px Client ID + 240px Last
 // event = 764px fixed; middle cols share the slack by --w weights (col-total 9).
 
-export default async function AdminClientsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminClientsPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const view = searchParams.status ?? 'all';
   const tier = searchParams.tier ?? '';

@@ -56,7 +56,8 @@ function txBucket(status: string): TxTab | null {
   return null;
 }
 
-export default async function BillingPage({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function BillingPage(props: { searchParams: Promise<{ tab?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const tab = (['all', 'confirmed', 'awaiting', 'refunded'].includes(searchParams.tab ?? '')

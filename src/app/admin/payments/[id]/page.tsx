@@ -21,7 +21,8 @@ const CONFIRMABLE = ['AWAITING', 'PENDING', 'FAILED', 'MANUAL_REVIEW'];
 const REFUNDABLE = ['CONFIRMED', 'PAID', 'REFUND_REQUESTED', 'MANUAL_REVIEW'];
 const REFUND_COMPLETABLE = ['REFUND_IN_PROGRESS'];
 
-export default async function PaymentDetail({ params }: { params: { id: string } }) {
+export default async function PaymentDetail(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAdmin();
   const p = await prisma.payment.findUnique({
     where: { id: params.id },

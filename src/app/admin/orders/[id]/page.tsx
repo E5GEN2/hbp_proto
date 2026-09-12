@@ -46,7 +46,8 @@ const STATE_LABEL: Record<Step['state'], string> = { done: 'Done', current: 'Cur
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
-export default async function AdminOrderDetail({ params }: { params: { id: string } }) {
+export default async function AdminOrderDetail(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAdmin();
   const order = await prisma.order.findUnique({
     where: { id: params.id },

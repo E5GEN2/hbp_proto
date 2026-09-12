@@ -36,14 +36,17 @@ function toPanelData(p: { id: string; payCurrency: string | null; payAmount: any
 
 type OrderWithPlan = Prisma.OrderGetPayload<{ include: { plan: true } }>;
 
-export default async function CheckoutPage({ searchParams }: {
-  searchParams: {
-    duration?: string; qty?: string; autoExtend?: string; location?: string; step?: string;
-    kind?: string; amount?: string; returnTo?: string;
-    resume?: string; renewOf?: string; ref?: string;
-    success?: string; renewed?: string;
-  };
-}) {
+export default async function CheckoutPage(
+  props: {
+    searchParams: Promise<{
+      duration?: string; qty?: string; autoExtend?: string; location?: string; step?: string;
+      kind?: string; amount?: string; returnTo?: string;
+      resume?: string; renewOf?: string; ref?: string;
+      success?: string; renewed?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   const me = await prisma.user.findUnique({ where: { id: session!.user.id } });
   if (!me) return null;

@@ -34,7 +34,8 @@ function bucketWhere(view: string, nowMs: number): any {
   }
 }
 
-export default async function AdminRenewalsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminRenewalsPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const view = searchParams.view ?? '24h';
   const q = searchParams.q?.trim() ?? '';

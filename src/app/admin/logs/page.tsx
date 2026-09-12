@@ -56,7 +56,8 @@ function renderDetail(s: string | null) {
     i % 2 === 1 ? <span key={i} className="mono">{part}</span> : part);
 }
 
-export default async function AdminLogsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminLogsPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const t = searchParams.type ?? 'all';
   const q = searchParams.q?.trim() ?? '';

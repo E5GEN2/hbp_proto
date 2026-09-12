@@ -5,7 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';
 import { ProxiesList, type ProxyRow } from '@/components/client/ProxiesList';
 
-export default async function ClientProxiesPage({ searchParams }: { searchParams: { q?: string; carrier?: string } }) {
+export default async function ClientProxiesPage(props: { searchParams: Promise<{ q?: string; carrier?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });

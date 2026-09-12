@@ -14,7 +14,8 @@ import { fmtAdminStamp, daysLeft } from '@/lib/date';
 
 const cap = (s: string) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '');
 
-export default async function ClientProxyDetail({ params }: { params: { id: string } }) {
+export default async function ClientProxyDetail(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   const proxy = await prisma.proxy.findUnique({
     where: { id: params.id },

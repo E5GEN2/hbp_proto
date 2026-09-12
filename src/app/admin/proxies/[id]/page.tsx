@@ -11,7 +11,8 @@ import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
-export default async function AdminProxyDetail({ params }: { params: { id: string } }) {
+export default async function AdminProxyDetail(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAdmin();
   const proxy = await prisma.proxy.findUnique({
     where: { id: params.id },

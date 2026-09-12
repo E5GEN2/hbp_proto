@@ -195,6 +195,11 @@ export async function settleAwaitingPayment(paymentId: string, via: string, opts
 
       // Fresh in-tx re-read (review find): `order` predates this tx — extend
       // from the CURRENT expiry or a concurrent renewal's period gets eaten.
+      // KNOWN, declined 2026-09-08 ("rabbit hole B"): no orders FOR UPDATE here
+      // (this tx locks payment-first) — a concurrent endOrderNow / cancel
+      // between this read and the plain extend below is written back as
+      // ACTIVE with 0 proxies (ms window); extendOrder shows the lock that
+      // closes it. See PHASE2_BACKLOG.md.
       const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
       if (!freshOrd) throw new Error(`Order ${order.id} vanished during settle`);
       // Cancelled between the pre-tx read and here → roll back rather than

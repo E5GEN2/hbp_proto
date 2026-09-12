@@ -14,7 +14,7 @@ import { renewalBase, renewalPricing, consumeRenewalDiscountCycle, orderRenewalD
 import { fmtDate } from './date';
 import { money } from './money';
 import { sendTelegram, sendAdminTelegram, adminNewOrderAlert, flushTelegram, type TelegramOutbox } from './telegram';
-import { sendEmail, incidentEmail, proxiesReadyEmail, escapeHtml } from './email';
+import { sendEmail, incidentEmail, proxiesReadyEmail, escapeHtml, autoRenewFailedExpiredEmail } from './email';
 import { appUrl } from './app-url';
 import { creditBalance, debitBalance, roundCents, InsufficientBalance } from './balance';
 import { retryAutoRenewAfterTopUp } from './auto-renew';
@@ -22,6 +22,7 @@ import { isInstantMethod, assertNewOrderBounds, resolveCustomExpiry, newOrderMon
 import { passwordPolicyError, generateTempPassword } from './password-policy';
 import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from './grace';
 import { targetBucket } from './order-signals';
+import { endOrderNowGate, endOrderPlan, endOrderClientNotice, END_ORDER_NOW_STATUSES, END_ORDER_REASON_MAX } from './end-order';
 import bcrypt from 'bcryptjs';
 import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
 
@@ -120,6 +121,10 @@ export async function markPaymentPaid({
         // renewal branch (review: a cancel committing between the two reads
         // would otherwise stamp "renewed" onto a dead order). The throw rolls
         // back the CONFIRMED flip and invoice.
+        // KNOWN, declined 2026-09-08 ("rabbit hole B"): no orders FOR UPDATE here —
+        // a concurrent endOrderNow / cancel between this read and the plain
+        // extend below is written back as ACTIVE with 0 proxies (ms window,
+        // admin-only trigger); extendOrder shows the lock that closes it.
         const freshOrd = await tx.order.findUnique({ where: { id: ord.id }, select: { status: true, expiresAt: true, exception: true, activatedAt: true } });
         if (!freshOrd) throw new Error(`Order ${ord.id} vanished during mark-paid`);
         if (freshOrd.status === 'CANCELLED') {
@@ -628,6 +633,11 @@ export async function declineRefundRequest({ orderId, actor, reason }: { orderId
 export async function suspendOrder({ orderId, actor, reason }: { orderId: string; actor: Actor; reason: string }) {
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const result = await prisma.$transaction(async tx => {
+    // Order row FIRST (family A — the lock End order now / Extend / every
+    // renewal path takes): a suspend racing one of them must read the
+    // committed state, not a stale snapshot it then overwrites (review find:
+    // lost update — a just-ended order re-labelled SUSPENDED with 0 proxies).
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
     const ord = await tx.order.findUnique({
       where: { id: orderId },
       include: { client: { select: { email: true, emailIncidents: true } } },
@@ -635,8 +645,8 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
     if (!ord) throw new Error('Order not found');
     if (ord.status !== 'ACTIVE' && ord.status !== 'PROVISIONING') throw new Error(`Cannot suspend from status ${ord.status}`);
 
-    await tx.order.update({
-      where: { id: orderId },
+    const flip = await tx.order.updateMany({
+      where: { id: orderId, status: { in: ['ACTIVE', 'PROVISIONING'] } },
       data: {
         status: 'SUSPENDED',
         autoRenewBeforeSuspend: ord.autoRenew,
@@ -649,6 +659,7 @@ export async function suspendOrder({ orderId, actor, reason }: { orderId: string
         renewalBucket: null,
       },
     });
+    if (flip.count === 0) throw new Error('This order just changed — reload to see its current state.');
     // Proxies stay reserved (per the prototype contract)
     await tx.assignment.updateMany({
       where: { orderId, releasedAt: null },
@@ -677,6 +688,11 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   const tierGrace = await loadTierGraceHours();
   const result = await prisma.$transaction(async tx => {
+    // Order row FIRST (family A): a resume racing End order now must not read a
+    // stale SUSPENDED snapshot and write it back as ACTIVE on top of the
+    // committed end (review find: resurrected order with 0 proxies and
+    // auto-renew restored — the next sweep tick would try to charge it).
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
     const ord = await tx.order.findUnique({
       where: { id: orderId },
       include: {
@@ -689,8 +705,8 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
 
     // If proxies are still reserved and were paid, resume to ACTIVE; else PROVISIONING
     const intact = ord.assignments.length >= ord.qty && (ord.paymentStatus === 'PAID' || ord.paymentStatus === 'CONFIRMED');
-    await tx.order.update({
-      where: { id: orderId },
+    const flip = await tx.order.updateMany({
+      where: { id: orderId, status: 'SUSPENDED' },
       data: {
         status: intact ? 'ACTIVE' : 'PROVISIONING',
         autoRenew: ord.autoRenewBeforeSuspend ?? false,
@@ -704,6 +720,7 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
           : null,
       },
     });
+    if (flip.count === 0) throw new Error('This order just changed — reload to see its current state.');
     await tx.assignment.updateMany({
       where: { orderId, releasedAt: null },
       data: { suspendedAt: null },
@@ -728,10 +745,134 @@ export async function resumeOrder({ orderId, actor }: { orderId: string; actor: 
   return result;
 }
 
+/** Admin ends a PAST-DUE order right now — the end state the sweep reaches on
+    its own at grace end (step 1 → 1b: EXPIRED, proxies released with the
+    security-reset stamps), on the admin's clock instead of the grace clock.
+    Owner ask 2026-09-05 (ORD-21399): the old workaround Suspend → Cancel showed
+    the client the wrong status AND stranded the proxy (the sweep only walks
+    ACTIVE/EXPIRED, so a SUSPENDED order kept it bound forever). Eligibility is
+    the pure gate in lib/end-order.ts, shared with the order page: past due,
+    ACTIVE / EXPIRED-in-grace / SUSPENDED (the rescue); the write plan and the
+    client copy live there too. Money is untouched — no refund signal is raised
+    (the term ran out; a REFUND_PENDING case already open stays open for
+    finance) and the client gets the sweep's standard expiry notice: Renew
+    (fresh proxies) while the clock is inside grace, then Buy again. Suspend
+    remains the tool for live disputes. */
+export async function endOrderNow({ orderId, actor, reason }: { orderId: string; actor: Actor; reason: string }) {
+  if (!reason?.trim()) throw new Error('Reason required');
+  const why = reason.trim();
+  if (why.length > END_ORDER_REASON_MAX) throw new Error(`Reason must be ${END_ORDER_REASON_MAX} characters or fewer`);
+  const tierGrace = await loadTierGraceHours();
+  const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
+  const result = await prisma.$transaction(async tx => {
+    // Order row FIRST (order → assignments → proxies — the order suspend /
+    // resume / auto-renew / re-provision take): the FOR UPDATE makes a second
+    // admin, or the sweep's auto-renew attempt, wait and then SEE the ended
+    // state instead of acting on a stale read. No payments are touched.
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+    const ord = await tx.order.findUnique({
+      where: { id: orderId },
+      include: {
+        assignments: { where: { releasedAt: null } },
+        client: { select: { email: true, emailIncidents: true, tier: true, graceHoursOverride: true } },
+      },
+    });
+    if (!ord) throw new Error('Order not found');
+    const now = new Date();
+    const gate = endOrderNowGate(
+      { status: ord.status, expiresAt: ord.expiresAt, liveAssignments: ord.assignments.length, renewalNotExtended: ord.exception === 'RENEWAL_NOT_EXTENDED' },
+      now.getTime(),
+    );
+    if (!gate.ok) throw new Error(gate.reason);
+    const plan = endOrderPlan({ status: ord.status, autoRenew: ord.autoRenew, autoRenewBeforeSuspend: ord.autoRenewBeforeSuspend, exception: ord.exception });
+
+    // Release every live assignment — reason ORDER_EXPIRED + the security-reset
+    // stamps sweep 1b / cancelOrder use (rotation MARKERS: the upstream
+    // rotation itself stays the manual step it is after any release). Guarded
+    // on releasedAt: a concurrent release (sweep 1b at grace end, a per-proxy
+    // admin Release) is never double-stamped.
+    let released = 0;
+    for (const a of ord.assignments) {
+      const r = await tx.assignment.updateMany({
+        where: { id: a.id, releasedAt: null },
+        // suspendedAt: the rescue path closes rows suspend stamped — clear it
+        // like Resume does so a closed row never reads as "paused".
+        data: { releasedAt: now, reason: 'ORDER_EXPIRED', reasonDetail: `Ended by admin · ${why}`, suspendedAt: null },
+      });
+      if (r.count === 0) continue;
+      released++;
+      await tx.proxy.update({
+        where: { id: a.proxyId },
+        data: { status: 'AVAILABLE', health: 'HEALTHY', currentOrderId: null, securityResetAt: now, passwordRotatedAt: now, ipRotatedAt: now },
+      });
+    }
+    // Post-wait truth (review find): the guarded releases above may have waited
+    // on a concurrent sweep 1b / per-proxy Release that closed every row first
+    // — an EXPIRED order with nothing left to release IS the end state, and
+    // "ending" it again would only duplicate the client's bell and the audit
+    // line. ACTIVE / SUSPENDED still need the status flip even with 0 rows.
+    if (ord.status === 'EXPIRED' && released === 0) throw new Error('Already ended — this order is expired and its proxies were released.');
+
+    // Bucket = what the sweep classifier computes right now (GRACE while the
+    // clock is still inside grace, EXPIRED past it): step 2 re-buckets every
+    // EXPIRED order each tick, so writing anything else would only flip-flop.
+    // The live clock (orderTimeSignal / renewalClosed) is what the chips and
+    // the client's Renew-vs-Buy-again decision read anyway.
+    const bucket = targetBucket({ expiresAt: ord.expiresAt, renewalBucket: ord.renewalBucket, graceHours: effectiveGraceHours(ord.client, tierGrace) }, now.getTime());
+    const inGrace = bucket === 'GRACE';
+    const flip = await tx.order.updateMany({
+      where: { id: orderId, status: { in: END_ORDER_NOW_STATUSES } },
+      data: {
+        status: 'EXPIRED',
+        renewalBucket: bucket,
+        autoRenew: plan.autoRenew,
+        // Suspend residue: nothing will resume this order.
+        autoRenewBeforeSuspend: null,
+        credentialsBeforeSuspend: null,
+        ...(plan.clearDuty ? { exception: null, excInfo: null } : {}),
+      },
+    });
+    if (flip.count === 0) throw new Error('This order just changed — reload to see its current state.');
+
+    await notify(tx, ord.clientId, endOrderClientNotice(ord.id, fmtDate(ord.expiresAt), released, inGrace), 'WARNING', `/orders/${ord.id}`);
+    if (plan.emailMode === 'autoRenewExpired') {
+      // Service-loss notice — transactional, ungated (P1-4), the sweep's own
+      // form-A give-up template: the client was emailed that the proxies keep
+      // working until grace end, and this action cuts that short.
+      emailOutbox.push({ to: ord.client.email, ...autoRenewFailedExpiredEmail(ord.id) });
+    } else if (plan.emailMode === 'incident' && ord.client.emailIncidents) {
+      emailOutbox.push({ to: ord.client.email, ...incidentEmail(
+        `Order ${ord.id} has ended`,
+        [`Your order <strong>${ord.id}</strong> has ended — its term expired on ${fmtDate(ord.expiresAt)}${released > 0 ? ' and its proxies were released' : ''}.`,
+         inGrace ? 'You can renew it from the order page to get fresh proxies.' : 'Start a new order to get fresh proxies.'],
+        `/orders/${ord.id}`, 'View order') });
+    }
+    await log(tx, actor.id, 'ORDER.EXPIRE', 'ORDER', orderId,
+      `Ended by ${actor.name ?? actor.id} · ${why} · from ${ord.status} · was due ${ord.expiresAt!.toISOString()} · bucket=${bucket ?? '—'}`
+      + (plan.autoRenewRestored ? ' · auto-renew preference restored from suspension (inert while expired)' : plan.autoRenew ? ' · auto-renew preference kept (inert while expired)' : '')
+      + (plan.clearDuty ? ` · ${ord.exception} cleared` : '')
+      + (plan.rotationDuty && released > 0 ? ' · ROTATE proxy password + IP-rotation link on the upstream manually (duty carried over from the suspension)' : ''));
+    if (released > 0) {
+      await log(tx, actor.id, 'ORDER.RELEASE', 'ORDER', orderId,
+        `Released ${released} ${released === 1 ? 'proxy' : 'proxies'} to pool · ended by admin · credentials/IP rotation markers stamped`);
+    }
+    return { ok: true, released, from: ord.status };
+  });
+  // External HTTP after the commit — never inside the transaction.
+  for (const e of emailOutbox) await sendEmail(e);
+  return result;
+}
+
 export async function extendOrder({
   orderId, actor, additionalDays, paymentMethod,
 }: { orderId: string; actor: Actor; additionalDays?: number; paymentMethod?: 'comp' | 'balance' | 'invoice' }) {
   return prisma.$transaction(async tx => {
+    // Order row FIRST (the lock every renewal / assign / end path takes): the
+    // snapshot below is then authoritative. Without it a concurrent "End order
+    // now" (or Cancel) commits between the read and the update at the bottom,
+    // and the stale `status` written there resurrects the just-ended order as
+    // ACTIVE with zero proxies (same peer-writer class as the renewal guards).
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
     const ord = await tx.order.findUnique({ where: { id: orderId }, include: { plan: true } });
     if (!ord) throw new Error('Order not found');
     // Server-side mirror of the UI gate (the button renders for ACTIVE/EXPIRED
@@ -1785,14 +1926,18 @@ export async function blockClient({
     if (suspendActiveOrders) {
       const active = await tx.order.findMany({ where: { clientId: userId, status: 'ACTIVE' } });
       for (const o of active) {
-        await tx.order.update({
-          where: { id: o.id },
+        // Status-guarded (review find, same lost-update class as suspend /
+        // resume): an order ended or cancelled between the findMany snapshot
+        // and here must not be re-labelled SUSPENDED with its proxies gone.
+        const flip = await tx.order.updateMany({
+          where: { id: o.id, status: 'ACTIVE' },
           // renewalBucket: null — same bucket hygiene as suspendOrder/
           // cancelOrder (review find: this third SUSPENDED writer kept
           // minting stale-bucket rows, and a later resume would re-classify
           // from the stale sticky instead of a clean slate).
           data: { status: 'SUSPENDED', autoRenewBeforeSuspend: o.autoRenew, autoRenew: false, renewalBucket: null },
         });
+        if (flip.count === 0) continue;
         suspended++;
       }
     }

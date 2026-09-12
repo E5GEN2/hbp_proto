@@ -12,6 +12,7 @@ export const closeWithoutRefundAction = unwrapAction(S.closeWithoutRefundAction)
 export const declineRefundRequestAction = unwrapAction(S.declineRefundRequestAction);
 export const suspendOrderAction = unwrapAction(S.suspendOrderAction);
 export const resumeOrderAction = unwrapAction(S.resumeOrderAction);
+export const endOrderNowAction = unwrapAction(S.endOrderNowAction);
 export const extendOrderAction = unwrapAction(S.extendOrderAction);
 export const setOrderRenewalDiscountAction = unwrapAction(S.setOrderRenewalDiscountAction);
 export const assignProxyAction = unwrapAction(S.assignProxyAction);

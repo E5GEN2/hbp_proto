@@ -21,12 +21,16 @@ export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; 
 
 export type AutoRenewOutcome =
   | { renewed: true; newExpiry: Date; via: string }
-  | { renewed: false; reason: string; alreadyRenewed?: boolean };
+  | { renewed: false; reason: string; alreadyRenewed?: boolean; notActive?: boolean };
 
 class AutoRenewFail extends Error {}
 // A benign non-failure: another writer (the sweep, or a concurrent top-up retry)
 // already renewed this order since the snapshot — nothing to do, not a failure.
 class AlreadyRenewed extends AutoRenewFail {}
+// Likewise benign: the order left ACTIVE since the snapshot (admin cancel /
+// suspend / "End order now") — the sweep must not treat it as a payment
+// failure (grace bucket stomp, "top up and we'll retry" notice).
+class NotActive extends AutoRenewFail {}
 
 function notifId() {
   return `n${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -76,7 +80,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
       if (parkedNow) throw new AutoRenewFail(`renewal payment ${parkedNow.id} appeared concurrently — no charge attempted`);
       const freshOrd = await tx.order.findUnique({ where: { id: order.id }, select: { status: true, expiresAt: true, exception: true } });
       if (!freshOrd || freshOrd.status !== 'ACTIVE') {
-        throw new AutoRenewFail(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);
+        throw new NotActive(`order is ${freshOrd ? freshOrd.status.toLowerCase() : 'gone'} — no charge attempted`);
       }
       // Idempotency: renew-on-top-up and the sweep can both target one order.
       // Only an order still PAST its expiry is due; if a concurrent renewal
@@ -186,6 +190,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
     });
   } catch (e) {
     if (e instanceof AlreadyRenewed) return { renewed: false, reason: e.message, alreadyRenewed: true };
+    if (e instanceof NotActive) return { renewed: false, reason: e.message, notActive: true };
     if (e instanceof AutoRenewFail) return { renewed: false, reason: e.message };
     throw e;
   }

@@ -1,0 +1,34 @@
+# Quality gate — type-check, lint and the assertion suites on every PR and push
+# to main. Lint lives here on purpose: next.config.mjs sets
+# eslint.ignoreDuringBuilds so a rule change can never fail a production deploy.
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck · lint · tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      # postinstall runs `prisma generate` (needs the network for the engine).
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test

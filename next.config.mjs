@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Lint runs in CI (`pnpm lint`, .github/workflows/quality.yml) — a rule change
+  // must never fail a production build.
+  eslint: { ignoreDuringBuilds: true },
   // No next/image in this app; the /_next/image optimizer is closed at the
   // edge (src/middleware.ts) as unused attack surface (it carried an RCE
   // advisory in the sharp/libheif decode path, GHSA-2xp9-vwfh-vxw4, patched

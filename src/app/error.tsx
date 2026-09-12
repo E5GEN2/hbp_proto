@@ -25,6 +25,7 @@ export default function RouteError({
       </p>
       <div className="err-actions">
         <button type="button" className="btn primary lg" onClick={() => window.location.reload()}>Try again</button>
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- hard navigation on purpose: the route tree just failed, a client transition may fail the same way */}
         <a href="/" className="btn lg">Go home</a>
       </div>
       {error?.digest && <span className="err-digest">Error reference: {error.digest}</span>}

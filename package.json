@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "prisma migrate deploy && next start -p ${PORT:-3000}",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "test": "for f in scripts/test-*.ts; do pnpm exec tsx \"$f\" || exit 1; done",
     "typecheck": "next typegen && tsc --noEmit",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
@@ -35,6 +36,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.20.1",
     "@types/react": "^19.3.0",

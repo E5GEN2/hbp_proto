@@ -228,8 +228,6 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
   const isSuspended = status === 'SUSPENDED';
   const isActive = status === 'ACTIVE';
   const isProv = status === 'PROVISIONING';
-  const paidLike = paid;
-  const fullyAssigned = activeAssignments >= (order.qty || 1);
   // hasProxy (>=1 open assignment) mirrors the server gate — partial manual
   // delivery is legitimate (bulk path always allowed it); fullyAssigned would
   // point the step text at a button that never renders (review find).

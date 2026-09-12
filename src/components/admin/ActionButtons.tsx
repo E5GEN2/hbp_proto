@@ -115,7 +115,6 @@ export function SuspendButton({ orderId, pastDue = false }: { orderId: string; p
 }
 
 export function ResumeButton({ orderId }: { orderId: string }) {
-  const router = useRouter();
   const toast = useToast();
   const { call, pending, err } = useAction(A.resumeOrderAction);
   return (

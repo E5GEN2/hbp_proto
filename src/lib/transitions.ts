@@ -24,7 +24,7 @@ import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from './grace'
 import { targetBucket } from './order-signals';
 import { endOrderNowGate, endOrderPlan, endOrderClientNotice, END_ORDER_NOW_STATUSES, END_ORDER_REASON_MAX } from './end-order';
 import bcrypt from 'bcryptjs';
-import type { Prisma, LogObjectType, NotificationKind, OrderException, OrderStatus, PaymentStatus, ProxyStatus, ProxyHealth } from '@prisma/client';
+import type { Prisma, LogObjectType, NotificationKind, OrderException } from '@prisma/client';
 
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string; name?: string };
@@ -1405,7 +1405,6 @@ export async function replaceProxy({ orderId, proxyId, actor, newProxyId, reason
       },
     });
     if (!assignment) throw new Error('That proxy is not currently assigned to this order');
-    const old = assignment.proxy;
     const ord = assignment.order;
     // Capture whether this order carried a client-raised replacement request:
     // the deficit reconciler now leaves those alone, so the admin's Replace

@@ -12,7 +12,7 @@ import { ClientDiscountPanel } from '@/components/admin/ClientDiscountPanel';
 import { EntityNotesPanel } from '@/components/admin/EntityNotesPanel';
 import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 import { PAY_CHIP, PAY_LABEL } from '@/lib/payment-display';
-import { loadTierGraceHours, effectiveGraceHours, DEFAULT_TIER_GRACE_HOURS } from '@/lib/grace';
+import { loadTierGraceHours, effectiveGraceHours } from '@/lib/grace';
 import { orderTimeSignal, timeSignalChip } from '@/lib/order-signals';
 
 const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();

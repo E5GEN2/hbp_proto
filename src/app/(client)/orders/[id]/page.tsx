@@ -118,7 +118,7 @@ export default async function ClientOrderDetail(props: { params: Promise<{ id: s
               </span>
               <div className="exc-banner-body">
                 <div className="exc-banner-title">Replacement in progress</div>
-                <div className="exc-banner-desc">{liveProxies} of {order.qty} proxies are currently attached to this order. We're arranging a replacement for the {order.qty - liveProxies === 1 ? 'other one' : 'others'} — no action needed on your side.</div>
+                <div className="exc-banner-desc">{liveProxies} of {order.qty} proxies are currently attached to this order. We&apos;re arranging a replacement for the {order.qty - liveProxies === 1 ? 'other one' : 'others'} — no action needed on your side.</div>
               </div>
             </div>
           )}

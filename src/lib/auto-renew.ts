@@ -60,7 +60,7 @@ export async function attemptAutoRenew(order: OrderForAutoRenew): Promise<AutoRe
   const paymentId = await nextPaymentId();
   const now = new Date();
   let newExpiry = now; // real value assigned in-tx from the FRESH expiry base
-  let via = 'balance';
+  const via = 'balance';
 
   try {
     await prisma.$transaction(async tx => {

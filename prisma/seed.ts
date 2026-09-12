@@ -1,12 +1,10 @@
-import { PrismaClient, type CatalogKind, type NotificationKind, type CapacityState, type OrderStatus, type PaymentStatus, type UserRole } from '@prisma/client';
+import { PrismaClient, type CatalogKind, type CapacityState, type OrderStatus, type PaymentStatus, type UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
-const now = () => new Date();
 const days = (n: number) => new Date(Date.now() + n * 86_400_000);
-const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
 const past = (n: number) => new Date(Date.now() - n * 86_400_000);
 const pastHours = (n: number) => new Date(Date.now() - n * 3_600_000);
 
@@ -377,7 +375,7 @@ async function main() {
     }
     // Assignments
     if (args.assignProxyIds && args.assignProxyIds.length) {
-      let asnCounter = parseInt(args.id.replace('ORD-', ''), 10);
+      const asnCounter = parseInt(args.id.replace('ORD-', ''), 10);
       for (const pid of args.assignProxyIds) {
         await prisma.assignment.create({
           data: {

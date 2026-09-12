@@ -61,6 +61,7 @@ export default function GlobalError({
             >
               Try again
             </button>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- the root layout failed; only a full navigation can recover */}
             <a
               href="/"
               style={{

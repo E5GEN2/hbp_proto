@@ -415,7 +415,7 @@ async function creditRenewalChargeToBalance(
   orderId: string,
   via: string,
   guardedConfirm: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<void>,
-  now: Date,
+  _now: Date,
 ): Promise<SettleResult> {
   const clientId = payment.clientId;
   const amount = Number(payment.gross);

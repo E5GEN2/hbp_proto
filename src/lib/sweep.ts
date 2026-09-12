@@ -12,7 +12,6 @@ import { applyCustomExpiry } from './new-order-policy';
 // The bucket classifier lives beside the display taxonomy (status revision
 // phase 3) — one set of window boundaries for the queue and the chips.
 import { targetBucket } from './order-signals';
-import type { RenewalBucket } from '@prisma/client';
 
 /**
  * The system's only time-driven job (audit B-1). Idempotent — safe to run at any
@@ -578,7 +577,6 @@ export async function runSweep(): Promise<SweepResult> {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __sweepLoopStarted: boolean | undefined;
 }
 

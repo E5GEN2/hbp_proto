@@ -6,7 +6,9 @@
  *   pnpm tsx prisma/seed-clients.ts
  */
 
-import { PrismaClient } from '@prisma/client';
+import { config as loadEnv } from 'dotenv';
+loadEnv({ quiet: true }); // run directly via tsx: the v7 client does not read .env itself
+import { prisma } from '../src/lib/prisma';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
@@ -16,7 +18,6 @@ const clientPw = process.env.SEED_CLIENT_PASSWORD && process.env.SEED_CLIENT_PAS
   ? process.env.SEED_CLIENT_PASSWORD
   : crypto.randomBytes(9).toString('base64url');
 
-const prisma = new PrismaClient();
 
 async function nextUserId() {
   const rows = await prisma.user.findMany({ where: { id: { startsWith: 'USR-' } }, select: { id: true } });

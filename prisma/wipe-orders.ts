@@ -12,9 +12,10 @@
  *
  *   DATABASE_URL=<railway public url> CONFIRM=YES pnpm tsx prisma/wipe-orders.ts
  */
-import { PrismaClient } from '@prisma/client';
+import { config as loadEnv } from 'dotenv';
+loadEnv({ quiet: true }); // run directly via tsx: the v7 client does not read .env itself
+import { prisma } from '../src/lib/prisma';
 
-const prisma = new PrismaClient();
 
 async function summary() {
   return {

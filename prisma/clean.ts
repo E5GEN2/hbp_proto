@@ -16,9 +16,10 @@
  *   DATABASE_URL=... CONFIRM=YES pnpm tsx prisma/clean.ts   (e.g. for Railway public URL)
  */
 
-import { PrismaClient } from '@prisma/client';
+import { config as loadEnv } from 'dotenv';
+loadEnv({ quiet: true }); // run directly via tsx: the v7 client does not read .env itself
+import { prisma } from '../src/lib/prisma';
 
-const prisma = new PrismaClient();
 
 async function main() {
   if (process.env.CONFIRM !== 'YES') {

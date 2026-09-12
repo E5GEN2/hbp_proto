@@ -22,7 +22,8 @@ const VIEW_STATUS: Record<string, string[]> = {
   manual_review: ['MANUAL_REVIEW'],
 };
 
-export default async function AdminPaymentsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminPaymentsPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const view = searchParams.view ?? 'all';
   const q = searchParams.q?.trim() ?? '';

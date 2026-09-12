@@ -18,7 +18,8 @@ import { orderTimeSignal, timeSignalChip } from '@/lib/order-signals';
 const initials = (name: string) => name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
-export default async function AdminClientDetail({ params }: { params: { id: string } }) {
+export default async function AdminClientDetail(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAdmin();
   const c = await prisma.user.findUnique({
     where: { id: params.id },

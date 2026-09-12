@@ -8,7 +8,8 @@ export const dynamic = 'force-dynamic';
 
 // Admin-only invoice PDF (audit B-8). The client portal deliberately has no
 // invoice surface at launch — this route is the only consumer.
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session || !isAdminRole(session.user.role)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

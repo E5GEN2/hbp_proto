@@ -21,7 +21,8 @@ const EXC_TYPES: { key: string; label: string; enum: string | null }[] = [
   { key: 'refund-pending',        label: 'Refund review',              enum: 'REFUND_PENDING' },
 ];
 
-export default async function AdminOrdersPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminOrdersPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const view = searchParams.view ?? 'all';
   const q = searchParams.q?.trim() ?? '';

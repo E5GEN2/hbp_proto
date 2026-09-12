@@ -62,7 +62,8 @@ const PERMISSIONS: { label: string; super: string; ops: string; support: string 
   { label: 'Manage admin users & roles', super: '✓', ops: '—', support: '—' },
 ];
 
-export default async function AdminSettingsPage({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function AdminSettingsPage(props: { searchParams: Promise<{ tab?: string }> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const tab = searchParams.tab ?? 'providers';
   const [settings, catalogItems, templates, provisioningRules, admins] = await Promise.all([

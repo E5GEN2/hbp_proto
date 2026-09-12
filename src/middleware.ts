@@ -14,13 +14,14 @@ export async function middleware(req: NextRequest) {
   // way here so the edge layer never silently disengages on a case variant.
   const lp = path.toLowerCase();
 
-  // ── Image optimizer closed (GHSA-2xp9-vwfh-vxw4, 2026-09-12) ─────────────
+  // ── Image optimizer closed (2026-09-12) ──────────────────────────────────
   // Nothing in this app renders next/image, yet /_next/image answered 200 for
-  // same-origin urls — an idle sharp/libheif code path carrying an
-  // unauthenticated-RCE advisory (AVIF) that the Next 14 line never gets a
-  // patch for (fixed in 15.5.24+). 404 at the edge, before the route exists;
-  // images.unoptimized in next.config.mjs keeps any future <Image> from
-  // pointing here. Remove both with the Next 15 migration.
+  // same-origin urls — an idle sharp/libheif image-decoding path that has
+  // carried an unauthenticated-RCE advisory before (GHSA-2xp9-vwfh-vxw4, AVIF;
+  // patched upstream since 15.5.24). Kept closed as unused attack surface:
+  // 404 at the edge, before the route exists; images.unoptimized in
+  // next.config.mjs keeps any future <Image> from pointing here. Drop both
+  // only if the app starts optimizing images on purpose.
   if (lp === '/_next/image') return new NextResponse(null, { status: 404 });
 
   // ── Admin gate (security, 2026-08-06 auth leak) ─────────────────────────

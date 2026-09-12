@@ -15,9 +15,12 @@ import { VerifyCard } from './VerifyCard';
 
 export const dynamic = 'force-dynamic';
 
-export default async function VerifyPage({ searchParams }: { searchParams: { token?: string; return?: string; sent?: string } }) {
+export default async function VerifyPage(
+  props: { searchParams: Promise<{ token?: string; return?: string; sent?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
-  const cookieReturn = safeReturn(cookies().get('co_return')?.value);
+  const cookieReturn = safeReturn((await cookies()).get('co_return')?.value);
   const ret = safeReturn(searchParams.return) ?? cookieReturn ?? '/dashboard';
   const token = searchParams.token ?? null;
 

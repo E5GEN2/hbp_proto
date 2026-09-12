@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "prisma migrate deploy && next start -p ${PORT:-3000}",
     "lint": "next lint",
+    "typecheck": "next typegen && tsc --noEmit",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -25,22 +26,22 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
-    "next": "^14.2.18",
+    "next": "^15.5.25",
     "next-auth": "^4.24.15",
     "pdf-lib": "^1.17.1",
     "qrcode-generator": "1.4.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.20.1",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.5.4",
     "eslint": "^9.15.0",
-    "eslint-config-next": "^14.2.18",
+    "eslint-config-next": "^15.5.25",
     "postcss": "^8.4.49",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.15",
@@ -54,21 +55,6 @@
     "overrides": {
       "postcss@<8.5.18": "^8.5.18",
       "nanoid@<3.3.18": "^3.3.18"
-    },
-    "auditConfig": {
-      "//": "Waived Next.js advisories that are only patched in the 15.5.x line. This app is on Next 14; the full fix is the Next 14->15 migration (tracked as a separate PR: SSRF in Server Actions/rewrites, DoS, and the Pages Middleware/Proxy bypass). 2026-09-12, two criticals added: GHSA-p293-qw3h-jr36 (unauthenticated RCE on WINDOWS-hosted servers — this service runs in a Linux container on Railway, not applicable) and GHSA-2xp9-vwfh-vxw4 (unauthenticated RCE in the Image Optimization API via AVIF/libheif — the app renders no next/image; /_next/image is closed at the edge in src/middleware.ts and images.unoptimized is set, so the vulnerable sharp path is unreachable). REMOVE all of these once Next is >= 15.5.24. The audit gate stays at `high`, so any OTHER high/critical advisory still blocks.",
-      "ignoreGhsas": [
-        "GHSA-h25m-26qc-wcjf",
-        "GHSA-q4gf-8mx6-v5v3",
-        "GHSA-8h8q-6873-q5fj",
-        "GHSA-c4j6-fc7j-m34r",
-        "GHSA-36qx-fr4f-26g5",
-        "GHSA-m99w-x7hq-7vfj",
-        "GHSA-89xv-2m56-2m9x",
-        "GHSA-p9j2-gv94-2wf4",
-        "GHSA-p293-qw3h-jr36",
-        "GHSA-2xp9-vwfh-vxw4"
-      ]
     }
   }
 }

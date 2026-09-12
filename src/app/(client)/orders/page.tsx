@@ -7,7 +7,8 @@ import { ClientTopbar } from '@/components/client/Topbar';
 import { OrdersList, type OrderRow } from '@/components/client/OrdersList';
 import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 
-export default async function ClientOrdersPage({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function ClientOrdersPage(props: { searchParams: Promise<{ tab?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });

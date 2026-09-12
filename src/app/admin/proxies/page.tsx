@@ -9,7 +9,8 @@ import { ProxiesBulkTable } from '@/components/admin/ProxiesBulkTable';
 
 const PER_PAGE = 12;
 
-export default async function AdminProxiesPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminProxiesPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const q = searchParams.q?.trim() ?? '';
   const carrier = searchParams.carrier ?? '';

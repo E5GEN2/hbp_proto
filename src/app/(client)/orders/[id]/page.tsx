@@ -13,7 +13,8 @@ import { loadTierGraceHours, renewalClosed } from '@/lib/grace';
 
 
 
-export default async function ClientOrderDetail({ params }: { params: { id: string } }) {
+export default async function ClientOrderDetail(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   const order = await prisma.order.findUnique({
     where: { id: params.id },

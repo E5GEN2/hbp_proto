@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { useEffect, useState } from 'react';
+import { type JSX, useEffect, useState } from 'react';
 import { signalStructural } from '@/lib/nav-history';
 
 // Canon nav icons (prototype.html sidebar) — 24×24, stroke style inherited via .nav-item svg

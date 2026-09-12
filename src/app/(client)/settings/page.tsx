@@ -11,7 +11,8 @@ const TABS = [
   { key: 'notifications', label: 'Notifications' },
 ] as const;
 
-export default async function SettingsPage({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function SettingsPage(props: { searchParams: Promise<{ tab?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
   const me = await prisma.user.findUnique({ where: { id: userId } });

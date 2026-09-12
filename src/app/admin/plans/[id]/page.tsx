@@ -9,7 +9,8 @@ import { EntityActivityWidget } from '@/components/admin/EntityActivityWidget';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminEditPlanPage({ params }: { params: { id: string } }) {
+export default async function AdminEditPlanPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await requireAdmin();
   const plan = await prisma.plan.findUnique({ where: { id: params.id } });
   if (!plan || plan.deletedAt) notFound();

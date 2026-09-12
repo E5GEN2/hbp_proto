@@ -8,7 +8,8 @@ import { PlansBulkTable } from '@/components/admin/PlansBulkTable';
 
 const PER_PAGE = 12;
 
-export default async function AdminPlansPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+export default async function AdminPlansPage(props: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const searchParams = await props.searchParams;
   await requireAdmin();
   const q = searchParams.q?.trim() ?? '';
   const carrier = searchParams.carrier ?? '';

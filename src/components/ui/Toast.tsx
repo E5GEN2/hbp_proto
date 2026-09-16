@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 export type ToastTone = 'default' | 'success' | 'warning' | 'danger' | 'info';

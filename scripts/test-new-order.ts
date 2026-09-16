@@ -7,7 +7,6 @@ import {
   resolveCustomExpiry,
   applyCustomExpiry,
   newOrderMoney,
-  type NewOrderMethod,
 } from '../src/lib/new-order-policy';
 
 let pass = 0, fail = 0;

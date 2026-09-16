@@ -30,7 +30,7 @@
     "next-auth": "^4.24.15",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.0",
-    "qrcode-generator": "1.4.4",
+    "qrcode-generator": "2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^3.23.8"

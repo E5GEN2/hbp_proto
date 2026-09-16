@@ -18,6 +18,10 @@ jobs:
     name: typecheck · lint · tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # prisma.config.ts resolves DATABASE_URL strictly, even for `prisma generate`
+      # (postinstall); nothing in this job connects to it.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6

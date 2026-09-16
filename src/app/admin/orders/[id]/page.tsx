@@ -6,9 +6,9 @@ import { prisma } from '@/lib/prisma';
 import { AdminTopbar } from '@/components/admin/Topbar';
 import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
-import { loadTierGraceHours, effectiveGraceHours } from '@/lib/grace';
+import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from '@/lib/grace';
 import { orderTimeSignal, timeSignalChip, msToShort } from '@/lib/order-signals';
-import { endOrderNowGate } from '@/lib/end-order';
+import { endOrderNowGate, DUTY_EXCEPTIONS } from '@/lib/end-order';
 import { SignalChip } from '@/components/admin/SignalChip';
 import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, EndOrderNowButton, ReplaceProxyButton, RefundButton, CompleteRefundButton, CloseWithoutRefundButton, DeclineRefundRequestButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
@@ -40,9 +40,9 @@ const EXC_BANNER: Record<string, { title: string; tone: string; desc: string }> 
 const ATTENTION_PAY = new Set(['AWAITING', 'PENDING', 'FAILED', 'REFUNDED', 'MANUAL_REVIEW', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS', 'REPLACEMENT']);
 const PROVIDER_AUTO = new Set(['stripe', 'coinbase', 'paypal']);
 
-type Step = { name: string; state: 'done' | 'current' | 'pending' | 'failed' | 'cancelled'; meta: string; mode: 'auto' | 'manual' };
-const STATE_CHIP: Record<Step['state'], string> = { done: 'active', current: 'new', pending: 'expired', failed: 'failed', cancelled: 'expired' };
-const STATE_LABEL: Record<Step['state'], string> = { done: 'Done', current: 'Current', pending: 'Pending', failed: 'Blocked', cancelled: 'Cancelled' };
+type Step = { name: string; state: 'done' | 'current' | 'pending' | 'failed' | 'cancelled' | 'ended' | 'paused'; meta: string; mode: 'auto' | 'manual' };
+const STATE_CHIP: Record<Step['state'], string> = { done: 'active', current: 'new', pending: 'expired', failed: 'failed', cancelled: 'expired', ended: 'expired', paused: 'pending' };
+const STATE_LABEL: Record<Step['state'], string> = { done: 'Done', current: 'Current', pending: 'Pending', failed: 'Blocked', cancelled: 'Cancelled', ended: 'Ended', paused: 'Paused' };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
@@ -74,6 +74,22 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
   // the reconciler) — that case wants Replace, not Assign.
   const showAssign = qtyNeeded > 0 && isPaidSet;
   const wasPaid = order.paymentStatus === 'PAID' || order.paymentStatus === 'CONFIRMED';
+
+  // Live clock + per-tier grace, shared by the provisioning strip, the
+  // time-horizon chip and the End-order gate below.
+  const tierGrace = await loadTierGraceHours();
+  const nowMs = Date.now();
+  const graceEndMs = order.expiresAt ? order.expiresAt.getTime() + effectiveGraceHours(order.client, tierGrace) * 3_600_000 : null;
+  const inGrace = graceEndMs !== null && nowMs <= graceEndMs;
+  // "End order now" (owner ask 2026-09-05, ORD-21399): the SAME pure gate the
+  // server transition enforces — past due, ACTIVE / EXPIRED-in-grace /
+  // SUSPENDED; an expired order whose proxies are already released has nothing
+  // left to end and hides it. The grace stamp comes from the live clock (the
+  // time-signal helper is silent on SUSPENDED by design, so compute it here).
+  const endGate = endOrderNowGate(
+    { status: order.status, expiresAt: order.expiresAt, liveAssignments: activeAssignments, renewalNotExtended: order.exception === 'RENEWAL_NOT_EXTENDED' },
+    nowMs,
+  );
 
   // Resolve assignment actor names (actorId has no FK relation).
   const actorIds = [...new Set(order.assignments.map(a => a.actorId).filter(Boolean))] as string[];
@@ -152,11 +168,50 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
       if (s.state !== 'done') { s.state = 'cancelled'; s.meta = 'Order cancelled'; }
     }
   }
+  // Expired orders: the same rule. Once the proxies went back to the pool
+  // (sweep 1b at grace end, or End order now) the Proxy step read as
+  // "Current · Picking from pool…" with "Next action: Auto-assign proxy" — a
+  // to-do nothing will ever pick up: backfill and auto-renew walk ACTIVE
+  // orders only. Freeze what is unfinished and say what actually happened.
+  const orderExpired = order.status === 'EXPIRED';
+  const orderSuspended = order.status === 'SUSPENDED';
+  if (orderExpired) {
+    // Releases that actually returned a proxy to the pool (reason ORDER_EXPIRED
+    // — sweep 1b and End order now; an admin per-proxy Release or a Replace
+    // quarantines instead) and of THIS term only (at or after its expiry, not
+    // an earlier term the order was re-provisioned through — the page loads
+    // every assignment).
+    const releases = order.assignments.filter((a): a is typeof a & { releasedAt: Date } =>
+      a.releasedAt !== null && order.expiresAt !== null && a.releasedAt >= order.expiresAt && a.reason === 'ORDER_EXPIRED');
+    const lastRelease = releases.reduce<Date | null>((m, a) => (!m || a.releasedAt > m ? a.releasedAt : m), null);
+    for (const s of steps) {
+      // A Blocked row is a still-open exception (the header chip, the banner
+      // and the Exceptions board all report it) — it stays visible.
+      if (s.state === 'done' || s.state === 'failed') continue;
+      s.state = 'ended';
+      s.meta = s.name === 'Proxy' && releases.length && lastRelease
+        ? `Term ended · ${releases.length} ${releases.length === 1 ? 'proxy' : 'proxies'} returned to pool · ${fmtAdminStamp(lastRelease)}`
+        : 'Term ended';
+    }
+  }
+  // Suspended: nothing services an unfinished row while the order is paused
+  // (backfill and Assign walk ACTIVE/PROVISIONING only) — say so instead of
+  // "Picking from pool…"; a Blocked row keeps naming its exception.
+  if (orderSuspended) {
+    for (const s of steps) {
+      if (s.state === 'current' || s.state === 'pending') { s.state = 'paused'; s.meta = 'Paused with the order — resumes on Resume'; }
+    }
+  }
 
   // Panel-level provisioning status chip
   let provClass: string, provLabel: string;
   if (orderCancelled) { provClass = 'expired'; provLabel = 'Cancelled'; }
+  // Suspended: the pipeline is paused with the order — a blocked step cannot
+  // be acted on until Resume (replace / assign gate on ACTIVE), so it is not a
+  // to-do either; the exception chip in the header still says what is wrong.
+  else if (orderSuspended) { provClass = 'pending'; provLabel = 'Paused'; }
   else if (steps.some(s => s.state === 'failed')) { provClass = 'failed'; provLabel = 'Needs attention'; }
+  else if (orderExpired) { provClass = 'expired'; provLabel = 'Expired'; }
   else if (steps.every(s => s.state === 'done')) { provClass = 'active'; provLabel = 'Completed'; }
   else if (manualMode) { provClass = 'pending'; provLabel = 'Manual required'; }
   else if (!paid) { provClass = 'expired'; provLabel = 'Pending'; }
@@ -168,6 +223,40 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
   const failedNonPayment = steps.some(s => s.state === 'failed' && !(manualMode && s.name === 'Payment'));
   if (orderCancelled) {
     nextLabel = 'None — order cancelled';
+  } else if (orderExpired && order.exception && DUTY_EXCEPTIONS.includes(order.exception)) {
+    // A provisioning duty that outlived the term: the sweep never clears it
+    // (End order now does). Name it; do not invent an action that does not
+    // exist on this page once the proxies are gone.
+    nextTone = 'failed';
+    nextLabel = endGate.ok
+      ? `Stale “${EXC_LABEL[order.exception]?.short ?? order.exception}” — term ended; End order now clears it`
+      : `Stale “${EXC_LABEL[order.exception]?.short ?? order.exception}” — term ended, no provisioning duty survives; no Resolve exists here — only Extend rewrites it (by starting a new term)`;
+  } else if ((orderExpired || orderSuspended) && order.exception === 'RENEWAL_NOT_EXTENDED') {
+    // A confirmed renewal was never applied: Extend to the paid period is the
+    // only move — the End-order gate refuses until then (same reason string),
+    // and Renew / Buy again would charge the client a second time.
+    nextTone = 'failed';
+    nextLabel = `Extend to the paid period — ${endGate.ok ? 'a confirmed renewal was never applied' : endGate.reason}`;
+  } else if (orderExpired) {
+    // Mirrors the client's own choice through the codebase's one predicate
+    // (grace.ts renewalClosed = clock AND live count): Renew while the grace
+    // clock runs, still Renew while proxies are held past grace (the release
+    // tick has not run, or auto-release is off), Buy again only once both are
+    // gone; a plan that stopped offering renewals wins over all of it.
+    nextTone = 'completed';
+    const closed = renewalClosed(order.expiresAt, activeAssignments, order.client, tierGrace, nowMs);
+    nextLabel = !order.plan.renewalAllowed
+      ? (closed ? 'None — expired · renewal not offered on this plan · client can Buy again' : 'None — expired · renewal not offered on this plan')
+      : inGrace ? `None — expired · client can Renew until ${fmtAdminStamp(new Date(graceEndMs))}`
+      : !closed ? `None — expired · proxies held past grace · client can still Renew${endGate.ok ? ' — or End order now' : ''}`
+      : 'None — expired · client can Buy again';
+    // An open refund case outlives the term — the header chip, the banner and
+    // the Refund / Close-without-refund buttons already say so; keep the strip
+    // in step.
+    if (order.exception === 'REFUND_PENDING') nextLabel += ' · refund review open (finance)';
+  } else if (orderSuspended) {
+    nextTone = 'attention';
+    nextLabel = endGate.ok ? 'Resume — or End order now (past due)' : 'Resume once the dispute is settled';
   } else if (failedNonPayment) {
     nextTone = 'failed';
     if (order.exception === 'PAID_NOT_PROVISIONED') nextLabel = 'Assign proxy manually — pool empty';
@@ -191,24 +280,12 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
   // Time-horizon layer (status revision phase 1): live clock signal —
   // expiring window / in grace / past grace — next to the lifecycle chip, the
   // same taxonomy the Renewals board queues on. Clicking opens that view.
-  const tierGrace = await loadTierGraceHours();
-  const nowMs = Date.now();
   const timeSignal = orderTimeSignal(order, activeAssignments, order.client, tierGrace, nowMs);
   const timeChip = timeSignalChip(timeSignal);
   const timeToneVar = timeSignal
     ? { danger: 'var(--danger)', warning: 'var(--warning)', violet: 'var(--violet)', success: 'var(--success)', muted: 'var(--muted)' }[timeSignal.tone]
     : undefined;
 
-  // "End order now" (owner ask 2026-09-05, ORD-21399): the SAME pure gate the
-  // server transition enforces — past due, ACTIVE / EXPIRED-in-grace /
-  // SUSPENDED; an expired order whose proxies are already released has nothing
-  // left to end and hides it. The grace stamp comes from the live clock (the
-  // time-signal helper is silent on SUSPENDED by design, so compute it here).
-  const endGate = endOrderNowGate(
-    { status: order.status, expiresAt: order.expiresAt, liveAssignments: activeAssignments, renewalNotExtended: order.exception === 'RENEWAL_NOT_EXTENDED' },
-    nowMs,
-  );
-  const graceEndMs = order.expiresAt ? order.expiresAt.getTime() + effectiveGraceHours(order.client, tierGrace) * 3_600_000 : null;
   // Two different fates for a charge in flight (review find): a STAMPED
   // renewal charge (renewalDiscountApplied non-null — the same test auto-renew
   // / clientRenewOrder use) still AWAITING settles later into a fresh term;
@@ -218,7 +295,7 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
     : order.payments.some(p => p.status === 'MANUAL_REVIEW') ? 'review' as const
     : null;
   const endNow = endGate.ok
-    ? [<EndOrderNowButton key="endnow" orderId={order.id} status={order.status as 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'} liveProxies={activeAssignments} autoRenewOn={order.status === 'SUSPENDED' ? (order.autoRenewBeforeSuspend ?? false) : order.autoRenew} graceUntil={graceEndMs !== null && nowMs <= graceEndMs ? fmtAdminStamp(new Date(graceEndMs)) : null} renewalInFlight={renewalInFlight} exception={order.exception} />]
+    ? [<EndOrderNowButton key="endnow" orderId={order.id} status={order.status as 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'} liveProxies={activeAssignments} autoRenewOn={order.status === 'SUSPENDED' ? (order.autoRenewBeforeSuspend ?? false) : order.autoRenew} graceUntil={inGrace ? fmtAdminStamp(new Date(graceEndMs)) : null} renewalInFlight={renewalInFlight} exception={order.exception} />]
     : [];
 
   // ─── Header actions (canon grouping, gated to backend-supported moves) ─

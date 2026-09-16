@@ -2333,6 +2333,8 @@ html:has(.theme-admin) { --border: #353c4f; }
 .prov-step-row:last-child { background-image: none; }
 .prov-step-row.pending { opacity: .55; }
 .prov-step-row.cancelled { opacity: .55; }
+.prov-step-row.ended     { opacity: .55; }
+.prov-step-row.paused    { opacity: .55; }
 .prov-step-num {
   width: 22px; height: 22px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;

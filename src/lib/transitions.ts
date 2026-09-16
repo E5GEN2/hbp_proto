@@ -856,6 +856,12 @@ export async function endOrderNow({ orderId, actor, reason }: { orderId: string;
       await log(tx, actor.id, 'ORDER.RELEASE', 'ORDER', orderId,
         `Released ${released} ${released === 1 ? 'proxy' : 'proxies'} to pool · ended by admin · credentials/IP rotation markers stamped`);
     }
+    // One event, one name: the sweep records the same clear as
+    // ORDER.EXCEPTION_CLEAR at grace end (step 1b′) — so does the admin end.
+    if (plan.clearDuty) {
+      await log(tx, actor.id, 'ORDER.EXCEPTION_CLEAR', 'ORDER', orderId,
+        `${ord.exception} cleared · ended by admin — the provisioning duty died with the term`);
+    }
     return { ok: true, released, from: ord.status };
   });
   // External HTTP after the commit — never inside the transaction.

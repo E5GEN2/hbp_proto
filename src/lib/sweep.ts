@@ -12,6 +12,7 @@ import { applyCustomExpiry } from './new-order-policy';
 // The bucket classifier lives beside the display taxonomy (status revision
 // phase 3) — one set of window boundaries for the queue and the chips.
 import { targetBucket } from './order-signals';
+import { DUTY_EXCEPTIONS, dutyDiedWithTerm } from './end-order';
 
 /**
  * The system's only time-driven job (audit B-1). Idempotent — safe to run at any
@@ -30,6 +31,10 @@ import { targetBucket } from './order-signals';
  *      (reprovisionRenewedOrder); while proxies are still bound (in grace)
  *      renewal is a plain term extension. Client grace = 0 → release on
  *      the tick after expiry. Kill-switch: autoReleaseAfterGrace flag.
+ *   1b′. Duty exceptions (PAID_NOT_PROVISIONED / REPLACEMENT_PENDING /
+ *      RENEWAL_FAULTY_PROXY) on an EXPIRED order past grace holding no proxies
+ *      are cleared (ORDER.EXCEPTION_CLEAR) — the same rule "End order now"
+ *      applies; nothing could act on them any more.
  *   1c. Pre-renewal reminders: non-auto-renew ACTIVE orders inside their
  *      effective reminder window (client override → plan → global default,
  *      lib/grace.ts) get ONE bell notification + email per term
@@ -67,6 +72,7 @@ export type SweepResult = {
   autoRenewFailed: number;
   backfilled: number;
   reconciled: number;
+  dutiesCleared: number;
   skipped?: boolean;
 };
 
@@ -92,14 +98,14 @@ let running = false;
 
 export async function runSweep(): Promise<SweepResult> {
   const ranAt = new Date().toISOString();
-  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, reconciled: 0, skipped: true };
+  if (running) return { ranAt, expired: 0, released: 0, reminders: 0, bucketUpdates: 0, timedOutPayments: 0, cancelledOrders: 0, autoRenewed: 0, autoRenewFailed: 0, backfilled: 0, reconciled: 0, dutiesCleared: 0, skipped: true };
   running = true;
   const telegramOutbox: { chatId: string | null; text: string }[] = [];
   const emailOutbox: { to: string; subject: string; html: string; text?: string }[] = [];
   try {
     const now = Date.now();
     let expired = 0, released = 0, reminders = 0, bucketUpdates = 0, timedOutPayments = 0, cancelledOrders = 0;
-    let autoRenewed = 0, autoRenewFailed = 0, backfilled = 0, reconciled = 0;
+    let autoRenewed = 0, autoRenewFailed = 0, backfilled = 0, reconciled = 0, dutiesCleared = 0;
 
     // Per-tier grace hours, read once per sweep (client override applied
     // per-order below). Grace is a client attribute now (lib/grace.ts).
@@ -279,6 +285,39 @@ export async function runSweep(): Promise<SweepResult> {
         await log('ORDER.RELEASE', 'ORDER', o.id,
           `Auto-released ${n} ${n === 1 ? 'proxy' : 'proxies'} after grace · pool restored, credentials/IP rotation markers stamped`);
       }
+    }
+
+    // ── 1b′. Duty exceptions die with the term ──────────────────────────────
+    //   PAID_NOT_PROVISIONED / REPLACEMENT_PENDING / RENEWAL_FAULTY_PROXY on an
+    //   EXPIRED order past its grace window that holds no proxies: nothing can
+    //   act on them any more (Assign / Replace gate on ACTIVE / PROVISIONING;
+    //   a renewal re-provisions and recomputes the exception), yet they kept
+    //   counting on the dashboard and the Exceptions board and reading as a
+    //   Blocked step on the order page. "End order now" clears them at the end
+    //   (endOrderPlan.clearDuty); the sweep now does the same at grace end.
+    //   Runs AFTER 1b so the orders it just released are covered in the same
+    //   tick; an order still holding proxies (auto-release off) keeps its duty
+    //   — a contiguous renewal can revive it. Guarded on status + the value.
+    const orphaned = await prisma.order.findMany({
+      where: { status: 'EXPIRED', exception: { in: DUTY_EXCEPTIONS }, assignments: { none: { releasedAt: null } } },
+      include: { client: { select: { tier: true, graceHoursOverride: true } } },
+    });
+    for (const o of orphaned) {
+      if (!dutyDiedWithTerm({ status: o.status, exception: o.exception, liveAssignments: 0, expiresAt: o.expiresAt, graceHours: effectiveGraceHours(o.client, tierGrace) }, now)) continue;
+      // One transaction for the clear and its audit line (End order now parity):
+      // never a cleared duty without the log, never a log without the clear.
+      const cleared = await prisma.$transaction(async tx => {
+        const r = await tx.order.updateMany({
+          where: { id: o.id, status: 'EXPIRED', exception: o.exception },
+          data: { exception: null, excInfo: null },
+        });
+        if (r.count === 0) return false; // renewed / ended / resolved concurrently
+        await tx.log.create({ data: { actorId: null, action: 'ORDER.EXCEPTION_CLEAR', objectType: 'ORDER', objectId: o.id,
+          detail: `${o.exception} cleared by sweep · term ended, grace over, no proxies held — the provisioning duty died with the term` } });
+        return true;
+      });
+      if (!cleared) continue;
+      dutiesCleared++;
     }
 
     // ── 1c. Pre-renewal reminders ────────────────────────────────────────────
@@ -567,7 +606,7 @@ export async function runSweep(): Promise<SweepResult> {
     //   purge cannot touch admin signals.
     await prisma.notification.deleteMany({ where: { createdAt: { lt: new Date(now - 7 * 86_400_000) } } });
 
-    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled, reconciled };
+    return { ranAt, expired, released, reminders, bucketUpdates, timedOutPayments, cancelledOrders, autoRenewed, autoRenewFailed, backfilled, reconciled, dutiesCleared };
   } finally {
     running = false;
     // External HTTP after the DB work — never inside a transaction.
@@ -586,7 +625,7 @@ export function startSweepLoop() {
   const tick = () => {
     runSweep()
       .then(r => {
-        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed || r.backfilled || r.reconciled) {
+        if (r.expired || r.released || r.reminders || r.bucketUpdates || r.timedOutPayments || r.cancelledOrders || r.autoRenewed || r.autoRenewFailed || r.backfilled || r.reconciled || r.dutiesCleared) {
           console.log('[sweep]', JSON.stringify(r));
         }
       })

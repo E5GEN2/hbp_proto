@@ -8,7 +8,7 @@ type Bridge = { type: LogObjectType; id: string };
 // Same shape on every detail page. Shows the latest 30 events; the
 // timeline caps at ~5 rows and scrolls (`.activity-scroll`).
 function dotClass(action: string): string {
-  if (action.endsWith('.NOTE_ADD')) return 'muted';
+  if (action.endsWith('.NOTE_ADD') || action.endsWith('.EXCEPTION_CLEAR')) return 'muted';
   if (action.includes('.CANCEL') || action.includes('FAIL')) return 'danger';
   if (action.includes('.CONFIRM') || action.includes('.ACTIVATE') || action.includes('.CREATE')) return 'success';
   if (action.includes('.SUSPEND') || action.includes('.MARK_FAULTY')) return 'warn';

@@ -8,7 +8,7 @@ import { money } from '@/lib/money';
 import { fmtAdminStamp } from '@/lib/date';
 import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from '@/lib/grace';
 import { orderTimeSignal, timeSignalChip, msToShort } from '@/lib/order-signals';
-import { endOrderNowGate, DUTY_EXCEPTIONS } from '@/lib/end-order';
+import { endOrderNowGate, DUTY_EXCEPTIONS, dutyDiedWithTerm } from '@/lib/end-order';
 import { SignalChip } from '@/components/admin/SignalChip';
 import { CancelOrderButton, SuspendButton, ResumeButton, ExtendButton, EndOrderNowButton, ReplaceProxyButton, RefundButton, CompleteRefundButton, CloseWithoutRefundButton, DeclineRefundRequestButton } from '@/components/admin/ActionButtons';
 import { OrderDetailActions } from '@/components/admin/toolbars/OrderDetailActions';
@@ -224,13 +224,19 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
   if (orderCancelled) {
     nextLabel = 'None — order cancelled';
   } else if (orderExpired && order.exception && DUTY_EXCEPTIONS.includes(order.exception)) {
-    // A provisioning duty that outlived the term: the sweep never clears it
-    // (End order now does). Name it; do not invent an action that does not
-    // exist on this page once the proxies are gone.
+    // A provisioning duty that outlived the term. While proxies are still
+    // bound only End order now clears it (the sweep leaves held orders alone —
+    // a renewal can revive them); once none are held the sweep clears it at
+    // grace end (step 1b′, dutyDiedWithTerm) — say when, and never suggest an
+    // action that does not exist on this page.
+    const dutyLabel = EXC_LABEL[order.exception]?.short ?? order.exception;
+    const dutyDies = dutyDiedWithTerm({ status: order.status, exception: order.exception, liveAssignments: activeAssignments, expiresAt: order.expiresAt, graceHours: effectiveGraceHours(order.client, tierGrace) }, nowMs);
     nextTone = 'failed';
     nextLabel = endGate.ok
-      ? `Stale “${EXC_LABEL[order.exception]?.short ?? order.exception}” — term ended; End order now clears it`
-      : `Stale “${EXC_LABEL[order.exception]?.short ?? order.exception}” — term ended, no provisioning duty survives; no Resolve exists here — only Extend rewrites it (by starting a new term)`;
+      ? `Stale “${dutyLabel}” — term ended; End order now clears it`
+      : dutyDies ? `Stale “${dutyLabel}” — term ended; the sweep clears it on its next tick`
+      : inGrace ? `Stale “${dutyLabel}” — term ended; the sweep clears it at grace end (${fmtAdminStamp(new Date(graceEndMs))}) — a client Renew before then re-provisions and recomputes it`
+      : `Stale “${dutyLabel}” — term ended, no provisioning duty survives; no Resolve exists here — only Extend rewrites it (by starting a new term)`;
   } else if ((orderExpired || orderSuspended) && order.exception === 'RENEWAL_NOT_EXTENDED') {
     // A confirmed renewal was never applied: Extend to the paid period is the
     // only move — the End-order gate refuses until then (same reason string),

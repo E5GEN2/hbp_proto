@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import type { OrderStatus, CapacityState } from '@prisma/client';
+import type { OrderStatus, CapacityState } from '@/generated/prisma/enums';
 
 // Order statuses that HOLD plan capacity. Single source of truth for the
 // quota math — checkout's per-location "available" and the plan-card sold-out

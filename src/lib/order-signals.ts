@@ -11,7 +11,7 @@
 // destination, shared by every admin surface. Phase 1 renders it on the order
 // detail page; phase 2 moves the list tables onto this same helper.
 
-import type { OrderStatus, RenewalBucket, UserTier } from '@prisma/client';
+import type { OrderStatus, RenewalBucket, UserTier } from '@/generated/prisma/enums';
 import { effectiveGraceHours, renewalClosed, type TierGraceHours } from './grace';
 import { fmtAdminStamp } from './date';
 

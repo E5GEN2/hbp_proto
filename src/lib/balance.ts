@@ -18,7 +18,7 @@
 //   GROUP BY u.id, u.balance
 //   HAVING u.balance <> COALESCE(SUM(l.amount), 0);
 
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 
 type Tx = Prisma.TransactionClient;
 

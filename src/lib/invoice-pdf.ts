@@ -3,7 +3,7 @@
 // invoice content is ASCII/English by design.
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 import { appUrl } from './app-url';
 import { money2dp } from './money';
 import { BRAND_WORDMARK, BRAND_FULL } from './brand';

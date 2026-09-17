@@ -75,7 +75,7 @@ generate strong random ones and print them once when it runs.
    | `NEXTAUTH_SECRET` | a 32-byte random string. Generate with: `openssl rand -base64 32` |
 
 4. **Deploy** — Railway auto-builds with Nixpacks. The build runs:
-   - `pnpm install` → `postinstall` runs `prisma generate`
+   - `pnpm install` → `postinstall` runs `prisma generate` → writes the client to `src/generated/prisma` (git-ignored; import `@/generated/prisma/client` or `@/generated/prisma/enums`, never `@prisma/client`)
    - `pnpm build` → `next build`
    - On start: `prisma migrate deploy && next start -p $PORT`
    - Migrations run automatically every deploy.

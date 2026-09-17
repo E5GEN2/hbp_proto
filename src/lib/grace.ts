@@ -8,7 +8,7 @@
 // and the client buys a new one.
 
 import { prisma } from './prisma';
-import type { UserTier } from '@prisma/client';
+import type { UserTier } from '@/generated/prisma/enums';
 
 // Owner 2026-08-12: VIP 3 days, PRO 2 days, Standard 1 day. Used when Settings
 // → Grace has no explicit per-tier value stored.

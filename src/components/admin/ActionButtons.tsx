@@ -74,12 +74,12 @@ export function CompleteRefundButton({ paymentId, amount }: { paymentId: string;
 
 /* ─── ORDER BUTTONS ────────────────────────────────────────────────── */
 
-export function CancelOrderButton({ orderId, wasPaid = false, assignmentCount = 0 }: { orderId: string; wasPaid?: boolean; assignmentCount?: number }) {
+export function CancelOrderButton({ orderId, wasPaid = false, assignmentCount = 0, pastDue = false }: { orderId: string; wasPaid?: boolean; assignmentCount?: number; pastDue?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button className="btn danger" onClick={() => setOpen(true)}>Cancel order</button>
-      <CancelOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} wasPaid={wasPaid} assignmentCount={assignmentCount} />
+      <CancelOrderModal open={open} onClose={() => setOpen(false)} orderId={orderId} wasPaid={wasPaid} assignmentCount={assignmentCount} pastDue={pastDue} />
     </>
   );
 }

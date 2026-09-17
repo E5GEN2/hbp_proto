@@ -7,9 +7,15 @@ import { cancelOrderAction } from '@/lib/ui-actions/admin-actions';
 
 type RefundMode = 'review' | 'none';
 
+// pastDue: the order is already past its expiry (grace). Cancel and End order
+// now are two different ends — Cancel closes the order with a refund question
+// and tells the client it was cancelled; End order now ends it as Expired
+// (the term ran out) with no refund signal. Say so BEFORE the click, the way
+// the Suspend dialog does, so a past-due order is not cancelled by habit
+// (owner ask 2026-09-17, ORD-48038).
 export function CancelOrderModal({
-  open, onClose, orderId, wasPaid, assignmentCount,
-}: { open: boolean; onClose: () => void; orderId: string; wasPaid: boolean; assignmentCount: number }) {
+  open, onClose, orderId, wasPaid, assignmentCount, pastDue = false,
+}: { open: boolean; onClose: () => void; orderId: string; wasPaid: boolean; assignmentCount: number; pastDue?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   // Refund handling for a PAID order (owner ask 2026-09-04): queue finance
@@ -21,8 +27,14 @@ export function CancelOrderModal({
   const noRefund = wasPaid && refund === 'none';
 
   const impact = [
+    ...(pastDue
+      ? ['⚠ This order is past due — if the term simply ran out, use End order now instead: it ends as Expired (not Cancelled), keeps the client’s auto-renew preference and raises no refund question. Cancel only to close it with a refund decision']
+      : []),
     `${assignmentCount} active ${assignmentCount === 1 ? 'proxy' : 'proxies'} returned to the pool with a security-reset marker`,
     'Credentials revoked; auto-renew turned off',
+    // Unlike End order now (reason audited only), the cancel reason reaches the
+    // client: the portal bell and the order timeline both show it verbatim.
+    'Client notified in the portal (bell + order timeline) — your reason is shown to them verbatim',
     ...(wasPaid
       ? [noRefund
           ? 'No refund — the charge stays ours; no refund-pending signal is raised (any client refund request is declined)'
@@ -32,7 +44,7 @@ export function CancelOrderModal({
 
   const message = (
     <>
-      <div>Cancelling is terminal. The order can be resumed (manual recovery required) but not undone.</div>
+      <div>Cancelling is terminal and cannot be undone — Resume works only on a suspended order, so a cancelled order never returns to Active.</div>
       {wasPaid && (
         <div style={{ marginTop: 12 }}>
           <div className="form-label">Refund handling</div>
@@ -57,6 +69,7 @@ export function CancelOrderModal({
       message={message}
       impact={impact}
       requireReason
+      reasonPlaceholder="Required — shown to the client and audited in the activity log"
       confirmLabel={noRefund ? 'Cancel · no refund' : 'Cancel order'}
       confirmTone="danger"
       onConfirm={async ({ reason }) => {

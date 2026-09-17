@@ -324,7 +324,9 @@ export default async function AdminOrderDetail(props: { params: Promise<{ id: st
   // (Suspend = live disputes only; a suspended order is sweep-blind).
   const suspendBtn = <SuspendButton key="susp" orderId={order.id} pastDue={endGate.ok} />;
   const resumeBtn = <ResumeButton key="res" orderId={order.id} />;
-  const cancelBtn = <CancelOrderButton key="cancel" orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} />;
+  // pastDue (same test as Suspend): the dialog names End order now as the end
+  // for a term that simply ran out; Cancel stays for the refund-question close.
+  const cancelBtn = <CancelOrderButton key="cancel" orderId={order.id} wasPaid={wasPaid} assignmentCount={activeAssignments} pastDue={endGate.ok} />;
 
   // A cancelled paid order carries the refund-pending signal — resolve it HERE,
   // where the Exceptions/bell links land, instead of a dead-end (finding B-4).

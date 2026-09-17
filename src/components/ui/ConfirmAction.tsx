@@ -10,6 +10,9 @@ export type ConfirmActionProps = {
   message: string | React.ReactNode;
   impact?: string[];
   requireReason?: boolean;
+  // Overrides the reason field's hint when the reason travels further than
+  // the activity log (Cancel shows it to the client).
+  reasonPlaceholder?: string;
   requiredPhrase?: string;
   confirmLabel: string;
   confirmTone?: 'primary' | 'danger';
@@ -17,7 +20,7 @@ export type ConfirmActionProps = {
 };
 
 export function ConfirmAction({
-  open, onClose, title, entityLabel, message, impact, requireReason,
+  open, onClose, title, entityLabel, message, impact, requireReason, reasonPlaceholder,
   requiredPhrase, confirmLabel, confirmTone = 'primary', onConfirm,
 }: ConfirmActionProps) {
   const [reason, setReason] = useState('');
@@ -91,7 +94,7 @@ export function ConfirmAction({
             className="form-textarea"
             value={reason}
             onChange={e => setReason(e.target.value)}
-            placeholder="Required — audited in the activity log"
+            placeholder={reasonPlaceholder ?? 'Required — audited in the activity log'}
             rows={3}
             maxLength={500}
             autoFocus

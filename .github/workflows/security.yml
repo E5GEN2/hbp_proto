@@ -39,11 +39,25 @@ jobs:
           fetch-depth: 0
 
       - name: Install gitleaks
+        env:
+          # The release lookup hits api.github.com: anonymous calls share the
+          # runner IP's 60/h budget and 403 under load (flaked 2026-09-17);
+          # the workflow token gets the per-repo authenticated budget.
+          GH_TOKEN: ${{ github.token }}
+          # Last known-good release — used only if the lookup still fails, so
+          # the scan never skips because of GitHub API weather.
+          GITLEAKS_FALLBACK_VERSION: 8.30.1
         run: |
           set -euo pipefail
           # Resolve the latest official release (self-healing). Pin GITLEAKS_VERSION
           # below for reproducibility if you prefer a fixed version.
-          GITLEAKS_VERSION="${GITLEAKS_VERSION:-$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oE '"tag_name": *"v[0-9.]+"' | grep -oE '[0-9.]+' | head -1)}"
+          if [ -z "${GITLEAKS_VERSION:-}" ]; then
+            GITLEAKS_VERSION="$(curl -sSfL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oE '"tag_name": *"v[0-9.]+"' | grep -oE '[0-9.]+' | head -1 || true)"
+          fi
+          if [ -z "${GITLEAKS_VERSION:-}" ]; then
+            echo "::warning::gitleaks release lookup failed — falling back to v${GITLEAKS_FALLBACK_VERSION}"
+            GITLEAKS_VERSION="${GITLEAKS_FALLBACK_VERSION}"
+          fi
           echo "Using gitleaks v${GITLEAKS_VERSION}"
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
           tar -xzf gitleaks.tgz gitleaks

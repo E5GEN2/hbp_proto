@@ -60,10 +60,11 @@ export function endOrderNowGate(o: EndOrderNowInput, nowMs: number): EndOrderNow
 
 // ── What the transaction writes besides the release ─────────────────────────
 
-// Provisioning duties die with the term: nothing is left to assign or replace,
-// and nothing could clear them on an EXPIRED order (the sweep leaves them
-// stale). A refund case (REFUND_PENDING) stays with finance; a paid-but-not-
-// applied renewal (RENEWAL_NOT_EXTENDED) is refused by the gate instead.
+// Provisioning duties die with the term: nothing is left to assign or replace
+// once the order is over. End order now clears them at the end (clearDuty);
+// the sweep clears them at grace end once no proxies are held (dutyDiedWithTerm
+// below, sweep step 1b′). A refund case (REFUND_PENDING) stays with finance; a
+// paid-but-not-applied renewal (RENEWAL_NOT_EXTENDED) is refused by the gate.
 export const DUTY_EXCEPTIONS: OrderException[] = ['PAID_NOT_PROVISIONED', 'REPLACEMENT_PENDING', 'RENEWAL_FAULTY_PROXY'];
 
 export type EndOrderPlanInput = {
@@ -105,6 +106,31 @@ export function endOrderPlan(o: EndOrderPlanInput): EndOrderPlan {
     emailMode: o.status === 'ACTIVE' && o.autoRenew ? 'autoRenewExpired' : rescue ? 'incident' : null,
     rotationDuty: rescue,
   };
+}
+
+// The sweep's mirror of clearDuty: once an EXPIRED order's grace window is
+// over and it holds no proxies, a provisioning duty has nothing left to act on
+// (Assign / Replace gate on ACTIVE / PROVISIONING; a renewal re-provisions
+// from scratch and recomputes the exception) — the duty died with the term.
+// While proxies are still held (auto-release off, or the release tick has not
+// run yet) a contiguous renewal can still revive the order, so the duty stays.
+// Boundary matches sweep 1b: released — and cleared — from graceEnd on. Inside
+// grace the duty stays even with no proxies held: a client Renew is still
+// open and re-provisions from scratch (recomputing the exception), and the
+// Exceptions board keeps saying the term is not over — End order now would
+// clear it earlier, but its gate hides it for exactly this state.
+export type DutyDiedInput = {
+  status: OrderStatus;
+  exception: OrderException | null;
+  liveAssignments: number;
+  expiresAt: Date | null;
+  graceHours: number;
+};
+
+export function dutyDiedWithTerm(o: DutyDiedInput, nowMs: number): boolean {
+  if (o.status !== 'EXPIRED' || o.exception === null || !DUTY_EXCEPTIONS.includes(o.exception)) return false;
+  if (o.liveAssignments > 0 || o.expiresAt === null) return false;
+  return nowMs >= o.expiresAt.getTime() + o.graceHours * 3_600_000;
 }
 
 // The portal bell — the sweep's expiry wording; honest about whether anything

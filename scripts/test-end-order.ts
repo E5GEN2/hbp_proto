@@ -6,7 +6,7 @@
 // channels) and the portal bell copy.
 // Run: pnpm exec tsx scripts/test-end-order.ts
 import {
-  endOrderNowGate, endOrderPlan, endOrderClientNotice,
+  endOrderNowGate, endOrderPlan, endOrderClientNotice, dutyDiedWithTerm,
   END_ORDER_NOW_STATUSES, END_ORDER_REASON_MAX, DUTY_EXCEPTIONS,
   type EndOrderNowGate,
 } from '../src/lib/end-order';
@@ -105,6 +105,22 @@ eq('bell: released, past grace → Start a new order', endOrderClientNotice('ORD
   'Order ORD-21399 expired on Sep 4, 2026 — its proxies were released. Start a new order to get fresh proxies.');
 eq('bell: nothing released → no release claim', endOrderClientNotice('ORD-1', 'Sep 4, 2026', 0, true),
   'Order ORD-1 expired on Sep 4, 2026. Renew to get fresh proxies.');
+
+// ── sweep mirror: a duty dies with the term (EXPIRED · past grace · no proxies) ──
+const DUTY = { status: 'EXPIRED' as const, exception: 'PAID_NOT_PROVISIONED' as const, liveAssignments: 0, expiresAt: at(-48), graceHours: 24 };
+eq('duty: EXPIRED + PNP + 0 live + past grace → dies', dutyDiedWithTerm(DUTY, NOW), true);
+eq('duty: exactly at grace end → dies (sweep 1b boundary)', dutyDiedWithTerm({ ...DUTY, expiresAt: at(-24) }, NOW), true);
+eq('duty: 1ms before grace end → stays', dutyDiedWithTerm({ ...DUTY, expiresAt: new Date(NOW - 24 * H + 1) }, NOW), false);
+eq('duty: in grace → stays (a renewal can revive the order)', dutyDiedWithTerm({ ...DUTY, expiresAt: at(-1) }, NOW), false);
+eq('duty: proxies still held past grace → stays', dutyDiedWithTerm({ ...DUTY, liveAssignments: 1 }, NOW), false);
+eq('duty: ACTIVE → untouched', dutyDiedWithTerm({ ...DUTY, status: 'ACTIVE' }, NOW), false);
+eq('duty: SUSPENDED → untouched', dutyDiedWithTerm({ ...DUTY, status: 'SUSPENDED' }, NOW), false);
+eq('duty: no term → untouched', dutyDiedWithTerm({ ...DUTY, expiresAt: null }, NOW), false);
+eq('duty: REFUND_PENDING is finance, not a duty → stays', dutyDiedWithTerm({ ...DUTY, exception: 'REFUND_PENDING' }, NOW), false);
+eq('duty: RENEWAL_NOT_EXTENDED is not a duty → stays', dutyDiedWithTerm({ ...DUTY, exception: 'RENEWAL_NOT_EXTENDED' }, NOW), false);
+eq('duty: no exception → nothing', dutyDiedWithTerm({ ...DUTY, exception: null }, NOW), false);
+for (const exc of DUTY_EXCEPTIONS) eq(`duty: ${exc} dies with the term`, dutyDiedWithTerm({ ...DUTY, exception: exc }, NOW), true);
+eq('duty: grace 0h → dies right at expiry', dutyDiedWithTerm({ ...DUTY, expiresAt: new Date(NOW), graceHours: 0 }, NOW), true);
 
 console.log(`\nend order now: ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

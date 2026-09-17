@@ -24,7 +24,7 @@ import { loadTierGraceHours, effectiveGraceHours, renewalClosed } from './grace'
 import { targetBucket } from './order-signals';
 import { endOrderNowGate, endOrderPlan, endOrderClientNotice, END_ORDER_NOW_STATUSES, END_ORDER_REASON_MAX } from './end-order';
 import bcrypt from 'bcryptjs';
-import type { Prisma, LogObjectType, NotificationKind, OrderException } from '@prisma/client';
+import type { Prisma, LogObjectType, NotificationKind, OrderException } from '@/generated/prisma/client';
 
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string; name?: string };

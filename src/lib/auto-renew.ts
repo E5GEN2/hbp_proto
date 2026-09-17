@@ -15,7 +15,7 @@ import { money } from './money';
 import { debitBalance, InsufficientBalance } from './balance';
 import { renewalBase, renewalPricing, consumeRenewalDiscountCycle } from './renewal';
 import { sendEmail, autoRenewedEmail } from './email';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 
 export type OrderForAutoRenew = Prisma.OrderGetPayload<{ include: { plan: true; client: true } }>;
 

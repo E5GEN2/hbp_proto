@@ -1,8 +1,16 @@
 // HBP Proto — Prisma schema
 // Unified backend powering both the admin panel and the client portal.
 
+// Prisma 7 default generator: plain TypeScript in the app tree (git-ignored,
+// produced by `prisma generate` in postinstall / build), bundled like the rest
+// of the code. Import from `@/generated/prisma/client` (PrismaClient, Prisma
+// namespace) or `@/generated/prisma/enums` (slim, browser-safe) — never from
+// `@prisma/client`, which now only supplies the runtime. moduleFormat pinned so
+// the output does not silently change with tsconfig.
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
 }
 
 datasource db {

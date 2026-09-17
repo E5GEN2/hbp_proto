@@ -3,7 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 import { peekRateLimit, recordHit, clearRateLimit } from './rate-limit';
-import type { UserRole } from '@prisma/client';
+import type { UserRole } from '@/generated/prisma/enums';
 
 // Login throttle (brute-force / credential-stuffing), by SOURCE IP only.
 // Deliberately NOT by account: hard per-email lockout lets anyone lock a known

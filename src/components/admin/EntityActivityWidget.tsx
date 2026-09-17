@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { fmtAdminStamp } from '@/lib/date';
-import type { LogObjectType } from '@prisma/client';
+import type { LogObjectType } from '@/generated/prisma/enums';
 
 type Bridge = { type: LogObjectType; id: string };
 

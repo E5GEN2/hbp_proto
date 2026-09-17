@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { planDisplayName } from '@/lib/catalog';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { ClientTopbar } from '@/components/client/Topbar';

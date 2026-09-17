@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { fmtAdminStamp } from '@/lib/date';
-import type { NoteObjectType } from '@prisma/client';
+import type { NoteObjectType } from '@/generated/prisma/enums';
 import { AddNoteToolbar } from './toolbars/AddNoteToolbar';
 
 // Canon Notes panel — admin-authored notes only (NOTE_ADD). Lifecycle /

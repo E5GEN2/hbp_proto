@@ -1,4 +1,4 @@
-import { type CatalogKind, type CapacityState, type OrderStatus, type PaymentStatus, type UserRole } from '@prisma/client';
+import type { CatalogKind, CapacityState, OrderStatus, PaymentStatus, UserRole } from '../src/generated/prisma/client';
 import { config as loadEnv } from 'dotenv';
 loadEnv({ quiet: true }); // run directly via tsx: the v7 client does not read .env itself
 import { prisma } from '../src/lib/prisma';

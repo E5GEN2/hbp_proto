@@ -11,7 +11,7 @@
 // never diverge), the write plan and the client copy — so the test suite can
 // pin every boundary and branch without a database.
 
-import type { OrderException, OrderStatus } from '@prisma/client';
+import type { OrderException, OrderStatus } from '@/generated/prisma/enums';
 
 // ACTIVE    = grace form A (auto-renew retrying; the order stays ACTIVE past due)
 // EXPIRED   = grace form B (expired; proxies stay bound until grace end)

@@ -135,3 +135,22 @@ export function adminCryptoAttentionAlert(o: {
     esc(o.adminUrl),
   ].join('\n');
 }
+
+/** A signed IPN asked for a state change that NOWPayments' own record of the
+    charge does not support at all — a forged event (leaked IPN secret), a
+    replay, or a charge that is not ours. Nothing was acted on; this is the
+    "someone holds the IPN secret" signal (one ping per payment per hour —
+    stale/out-of-order IPNs that the API resolves are logged, not pinged). */
+export function adminIpnMismatchAlert(o: {
+  paymentId: string;
+  ipnStatus: string;
+  apiStatus: string;
+  adminUrl: string;        // absolute link to /admin/payments/<id>
+}) {
+  return [
+    `🚨 <b>IPN mismatch — ${esc(o.paymentId)}</b>`,
+    `IPN claimed <code>${esc(o.ipnStatus || '?')}</code>, NOWPayments says <code>${esc(o.apiStatus || '?')}</code>`,
+    `Nothing was acted on. If this repeats, someone holds the IPN secret — rotate NOWPAYMENTS_IPN_SECRET.`,
+    esc(o.adminUrl),
+  ].join('\n');
+}

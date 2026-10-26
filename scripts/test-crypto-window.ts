@@ -2,7 +2,7 @@
 // repo). Run: pnpm exec tsx scripts/test-crypto-window.ts
 import {
   transferDetected, serverWindowClosed, localWindowPassed, showWindowCountdown, statusLine, fmtLeft,
-  classifyIpn, isResurrectable, type PaymentPhase, type IpnAction,
+  classifyIpn, isResurrectable, resolveIpnAction, type PaymentPhase, type IpnAction, type IpnSnapshot, type IpnVerdict,
 } from '../src/lib/crypto-window';
 
 let pass = 0, fail = 0;
@@ -99,6 +99,33 @@ eq('CONFIRMED NOT resurrectable (would double-credit)', isResurrectable('CONFIRM
 eq('AWAITING NOT "resurrect" (that is the normal settle path)', isResurrectable('AWAITING'), false);
 eq('REFUNDED NOT resurrectable', isResurrectable('REFUNDED'), false);
 eq('null status NOT resurrectable', isResurrectable(null), false);
+
+// ── resolveIpnAction — IPN = trigger, API = truth (incident 2026-10-21) ────
+const snap = (status: string, fundsArrived = false): IpnSnapshot => ({ status, fundsArrived });
+const V = (action: IpnAction, source: 'ipn' | 'api', mismatch = false, unverified = false): IpnVerdict => ({ action, source, mismatch, unverified });
+const vcases: [string, IpnSnapshot, IpnSnapshot | null, PaymentPhase, IpnVerdict][] = [
+  ['forged finished, API still waiting → nothing settles, mismatch', snap('finished', true), snap('waiting'), 'AWAITING', V('noop', 'api', true)],
+  ['real finished, API finished → settle', snap('finished', true), snap('finished', true), 'AWAITING', V('settle', 'api')],
+  ['finished but API unreachable → unverified, no action', snap('finished', true), null, 'AWAITING', V('noop', 'ipn', false, true)],
+  ['waiting is informational → no API needed', snap('waiting'), null, 'AWAITING', V('noop', 'ipn')],
+  ['confirming is informational → no API needed', snap('confirming'), null, 'AWAITING', V('noop', 'ipn')],
+  ['expired without funds (open cart) is informational → no API needed', snap('expired'), null, 'AWAITING', V('noop', 'ipn')],
+  ['forged failed, API waiting → nothing fails, mismatch', snap('failed'), snap('waiting'), 'AWAITING', V('noop', 'api', true)],
+  ['IPN failed but API already finished → settle (API wins), mismatch noted', snap('failed'), snap('finished', true), 'AWAITING', V('settle', 'api', true)],
+  ['partially_paid confirmed by API → underpaid alert', snap('partially_paid', true), snap('partially_paid', true), 'AWAITING', V('underpaid_alert', 'api')],
+  ['forged partially_paid, API waiting → no alert, mismatch', snap('partially_paid', true), snap('waiting'), 'AWAITING', V('noop', 'api', true)],
+  ['expired with funds per API on AWAITING → manual review', snap('expired', true), snap('expired', true), 'AWAITING', V('manual_review', 'api')],
+  ['refunded confirmed by API → fail', snap('refunded'), snap('refunded'), 'AWAITING', V('fail', 'api')],
+  ['finished on a CONFIRMED row still routes to settle (idempotent downstream)', snap('finished', true), snap('finished', true), 'CONFIRMED', V('settle', 'api')],
+  ['finished, API unavailable, row CONFIRMED → still unverified', snap('finished', true), null, 'CONFIRMED', V('noop', 'ipn', false, true)],
+  ['IPN says finished with funds, API says finished WITHOUT funds field → still settle (status rules)', snap('finished', true), snap('finished'), 'AWAITING', V('settle', 'api')],
+  // The record decides even for an informational IPN (the API may be ahead)
+  ['IPN confirming but API already finished → settle (API ahead), stale not suspicious', snap('confirming'), snap('finished', true), 'AWAITING', V('settle', 'api', true)],
+  ['IPN waiting, API waiting → noop, no mismatch', snap('waiting'), snap('waiting'), 'AWAITING', V('noop', 'api')],
+  ['IPN confirming, API waiting → both informational → no mismatch', snap('confirming'), snap('waiting'), 'AWAITING', V('noop', 'api')],
+  ['IPN expired (open cart), API expired with funds → manual review (API ahead)', snap('expired'), snap('expired', true), 'AWAITING', V('manual_review', 'api', true)],
+];
+for (const [label, ipn, api, before, want] of vcases) eq(`resolveIpnAction: ${label}`, resolveIpnAction(ipn, api, before), want);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

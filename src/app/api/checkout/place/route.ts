@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   const userId = session.user.id;
 
   const parse = Schema.safeParse(await req.json().catch(() => null));
-  if (!parse.success) return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Bad input' }, { status: 400 });
+  if (!parse.success) return NextResponse.json({ error: parse.error.issues[0]?.message ?? 'Bad input' }, { status: 400 });
   const { planId, qty, autoExtend, paymentMethod, renewOf, expectedTotal } = parse.data;
 
   // Whitelist-validate the coin up front (both the new-order and the renewal

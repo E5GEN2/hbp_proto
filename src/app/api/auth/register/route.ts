@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parse = Schema.safeParse(json);
   if (!parse.success) {
-    return NextResponse.json({ error: parse.error.errors[0]?.message ?? 'Invalid input' }, { status: 400 });
+    return NextResponse.json({ error: parse.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { name, email, password } = parse.data;
   const returnPath = safeReturn(parse.data.return);

@@ -67,6 +67,11 @@ These are the rules the pipeline can only partially enforce — reviewers own th
    same-origin paths.
 8. **Verify webhooks.** The NOWPayments IPN is authenticated by a timing-safe
    HMAC over the raw body and settled idempotently. Keep both properties.
+9. **Audit sign-ins.** Every credential sign-in writes an `AUTH.LOGIN` /
+   `AUTH.LOGIN_FAILED` row (IP, role, trimmed user-agent — never the password,
+   and an unknown address only masked); failed rows are bounded by the per-IP
+   throttle, and an admin sign-in also pings the ops Telegram chat. Keep the
+   trail when touching `authorize()`.
 
 ## Pre-deploy security checklist
 

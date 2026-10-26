@@ -211,7 +211,10 @@ export default async function AdminClientDetail(props: { params: Promise<{ id: s
               </div>
             </div>
 
-            <EntityActivityWidget objectType="CLIENT" objectId={c.id} />
+            {/* AUTH rows (register / verify / sign-in) are keyed by the user id under
+                objectType AUTH — bridge them in so the client's activity shows
+                who signed in from where, not only what admins did to the row. */}
+            <EntityActivityWidget objectType="CLIENT" objectId={c.id} bridges={[{ type: 'AUTH', id: c.id }]} />
           </div>
         </div>
         </div>

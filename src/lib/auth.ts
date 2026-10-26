@@ -3,6 +3,9 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 import { peekRateLimit, recordHit, clearRateLimit } from './rate-limit';
+import { AUTH_LOGIN, AUTH_LOGIN_FAILED, loginDetail, loginFailedDetail, loginUa } from './auth-audit';
+import { sendAdminTelegram, adminSignInAlert } from './telegram';
+import { appUrl } from './app-url';
 import type { UserRole } from '@/generated/prisma/enums';
 
 // Login throttle (brute-force / credential-stuffing), by SOURCE IP only.
@@ -27,6 +30,16 @@ function loginIp(req: unknown): string {
   const first = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim();
   const real = h['x-real-ip'] ?? h['X-Real-Ip'];
   return first || (Array.isArray(real) ? real[0] : real) || 'unknown';
+}
+
+// Best-effort sign-in audit row (AUTH.LOGIN / AUTH.LOGIN_FAILED, see
+// auth-audit.ts). A log failure must never block or fail a sign-in.
+async function audit(action: string, actorId: string | null, objectId: string | null, detail: string) {
+  try {
+    await prisma.log.create({ data: { actorId, action, objectType: 'AUTH', objectId, detail } });
+  } catch (e) {
+    console.warn('[auth] audit log failed', e);
+  }
 }
 
 declare module 'next-auth' {
@@ -84,15 +97,32 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({ where: { email } });
         const ok = user ? await bcrypt.compare(credentials.password, user.passwordHash) : false;
+        const ua = loginUa(req);
         if (!user || !ok) {
           if (throttled) recordHit(ipKey, LOGIN_WINDOW_MS); // count failures only
+          // Audited — and bounded: over-cap attempts are rejected above before
+          // they reach the DB, so a flood cannot grow this table past the cap.
+          await audit(AUTH_LOGIN_FAILED, null, user?.id ?? null,
+            loginFailedDetail({ ip, ua, reason: user ? 'wrong_password' : 'unknown_email', email }));
           return null;
         }
         // Correct password but blocked account: not a brute-force signal — deny
         // without touching the throttle.
-        if (user.status === 'BLOCKED') return null;
+        if (user.status === 'BLOCKED') {
+          await audit(AUTH_LOGIN_FAILED, null, user.id, loginFailedDetail({ ip, ua, reason: 'blocked', email }));
+          return null;
+        }
 
         if (throttled) clearRateLimit(ipKey); // a valid login un-sticks this IP (incl. shared NAT)
+        await audit(AUTH_LOGIN, user.id, user.id, loginDetail({ ip, ua, role: user.role }));
+        if (isAdminRole(user.role)) {
+          // Real-time copy for the owner (Railway incident 2026-10-21 follow-up):
+          // an admin sign-in from an unexpected place must not wait for a log
+          // review. Fire-and-forget — a Telegram outage never delays a sign-in.
+          void sendAdminTelegram(adminSignInAlert({
+            userId: user.id, name: user.name, role: user.role, ip, ua, adminUrl: appUrl('/admin/logs?type=auth'),
+          })).catch(() => {});
+        }
         return {
           id: user.id,
           email: user.email,

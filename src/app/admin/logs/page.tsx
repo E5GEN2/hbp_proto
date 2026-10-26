@@ -21,7 +21,7 @@ const LOG_ACTION_CHIP: Record<string, string> = {
   'PLAN.UPDATE': 'active', 'PLAN.CREATE': 'new', 'PLAN.DELETE': 'suspended',
   'CLIENT.BLOCK': 'suspended', 'CLIENT.UNBLOCK': 'active', 'CLIENT.RISK_UPDATE': 'pending',
   'CRON.HEALTH_CHECK': 'provisioning', 'FLAG.UPDATE': 'active', 'PROVIDER.UPDATE': 'active',
-  'AUTH.LOGIN': 'assigned',
+  'AUTH.LOGIN': 'assigned', 'AUTH.LOGIN_FAILED': 'failed',
 };
 
 const ROLE_SLUG: Record<string, string> = {

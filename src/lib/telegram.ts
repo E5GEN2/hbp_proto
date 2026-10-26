@@ -94,6 +94,25 @@ export function adminNewOrderAlert(o: {
   ].join('\n');
 }
 
+/** Admin credential sign-in — the owner's real-time "who just entered the
+    admin panel" signal (Railway incident 2026-10-21 follow-up). The durable
+    copy is the AUTH.LOGIN log row; this is the push. */
+export function adminSignInAlert(o: {
+  userId: string;
+  name: string;
+  role: string;
+  ip: string;
+  ua: string;              // already trimmed (auth-audit trimUa)
+  adminUrl: string;        // absolute link to /admin/logs?type=auth
+}) {
+  return [
+    `🔐 <b>Admin sign-in — ${esc(o.name)} (${esc(o.userId)})</b>`,
+    `Role: ${esc(o.role)} · from ${esc(o.ip)}`,
+    `UA: ${esc(o.ua || '—')}`,
+    esc(o.adminUrl),
+  ].join('\n');
+}
+
 /** Crypto payment that arrived but did NOT auto-settle — the "client paid a
     late/expired rate address, order stuck" case. Pushes the exact payment to
     the ops chat so nobody hunts for it in the NOWPayments dashboard. */

@@ -15,7 +15,7 @@ const LOG_ACTION_CHIP: Record<string, string> = {
   'ORDER.EXPIRE': 'expired', 'ORDER.SUSPEND': 'suspended', 'ORDER.RESUME': 'active',
   'ORDER.CANCEL': 'suspended', 'ORDER.EXTEND': 'active', 'ORDER.RELEASE': 'released', 'ORDER.EXCEPTION_CLEAR': 'expired',
   'PAYMENT.CONFIRM': 'paid', 'PAYMENT.PENDING': 'pending', 'PAYMENT.FAILED': 'failed',
-  'PAYMENT.REFUND': 'replacement', 'PAYMENT.REFUND_REQUEST': 'replacement',
+  'PAYMENT.REFUND': 'replacement', 'PAYMENT.REFUND_REQUEST': 'replacement', 'PAYMENT.IPN_MISMATCH': 'failed', 'PAYMENT.IPN_STALE': 'pending',
   'PROXY.ASSIGN': 'assigned', 'PROXY.MARK_FAULTY': 'faulty', 'PROXY.REGISTER': 'provisioning',
   'PROXY.RELEASE': 'released',
   'PLAN.UPDATE': 'active', 'PLAN.CREATE': 'new', 'PLAN.DELETE': 'suspended',

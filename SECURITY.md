@@ -65,8 +65,13 @@ These are the rules the pipeline can only partially enforce — reviewers own th
    parameterized queries (tagged-template `$queryRaw` — never string-built SQL).
 7. **No untrusted redirects.** `returnTo`/`callbackUrl` must be allowlisted to
    same-origin paths.
-8. **Verify webhooks.** The NOWPayments IPN is authenticated by a timing-safe
-   HMAC over the raw body and settled idempotently. Keep both properties.
+8. **Verify webhooks — signature AND source of truth.** The NOWPayments IPN is
+   authenticated by a timing-safe HMAC over the raw body, but the signature
+   only earns the event a look: any IPN that asks for a state change (settle /
+   fail / park for review) is cross-checked against NOWPayments' own record of
+   the charge (`GET /payment/{id}` with the API key) and the API's status is
+   what gets acted on — a leaked IPN secret cannot settle a charge. Settlement
+   stays idempotent. Keep all three properties.
 9. **Audit sign-ins.** Every credential sign-in writes an `AUTH.LOGIN` /
    `AUTH.LOGIN_FAILED` row (IP, role, trimmed user-agent — never the password,
    and an unknown address only masked); failed rows are bounded by the per-IP

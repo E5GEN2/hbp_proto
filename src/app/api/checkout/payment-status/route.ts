@@ -6,8 +6,9 @@ import { prisma } from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 // Poll target for the in-portal pay panel. Reads OUR payment row only — the
-// IPN webhook is the sole writer (settlement + npStatus mirror), so this
-// endpoint never talks to NOWPayments and can be polled cheaply.
+// IPN webhook and the 5-minute reconciler are its writers (settlement +
+// npStatus mirror, both API-confirmed), so this endpoint never talks to
+// NOWPayments and can be polled cheaply.
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

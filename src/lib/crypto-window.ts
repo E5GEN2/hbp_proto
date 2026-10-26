@@ -115,3 +115,35 @@ export function classifyIpn(status: string, fundsArrived: boolean, beforeStatus:
   }
   return 'noop'; // waiting / confirming / confirmed / sending
 }
+
+// ── IPN = trigger, API = truth ──────────────────────────────────────────────
+// Railway incident 2026-10-21 follow-up: an IPN carries only an HMAC over its
+// own body, so a leaked NOWPAYMENTS_IPN_SECRET lets anyone post a "finished"
+// for any AWAITING charge. The signature therefore only earns the event a
+// LOOK; what we ACT on is NOWPayments' own record of the charge (GET
+// /payment/{id}, authenticated by the API key). `api` is that record's status
+// snapshot (null = could not be fetched). Pure, so the policy is unit-tested
+// next to classifyIpn.
+export type IpnSnapshot = { status: string; fundsArrived: boolean };
+export type IpnVerdict = {
+  action: IpnAction;     // what to do — the API's answer whenever the IPN asked for a state change
+  source: 'ipn' | 'api'; // which record decided
+  mismatch: boolean;     // the IPN asked for something the API record does not support
+  unverified: boolean;   // the IPN asked for a state change but the API record was unavailable — act on nothing
+};
+
+export function resolveIpnAction(ipn: IpnSnapshot, api: IpnSnapshot | null, before: PaymentPhase): IpnVerdict {
+  const asked = classifyIpn(ipn.status, ipn.fundsArrived, before);
+  // Whenever the caller holds the API's record, that record decides — even
+  // when the IPN itself was only informational (the API may be ahead of it).
+  // `mismatch` compares the two ACTIONS, not the raw status strings, so
+  // waiting-vs-confirming is not a mismatch while finished-vs-waiting is.
+  if (api) {
+    const truth = classifyIpn(api.status, api.fundsArrived, before);
+    return { action: truth, source: 'api', mismatch: truth !== asked, unverified: false };
+  }
+  // No record: an informational IPN changes nothing locally and needs none;
+  // a state-changing one without it must not be acted on.
+  if (asked === 'noop') return { action: 'noop', source: 'ipn', mismatch: false, unverified: false };
+  return { action: 'noop', source: 'ipn', mismatch: false, unverified: true };
+}

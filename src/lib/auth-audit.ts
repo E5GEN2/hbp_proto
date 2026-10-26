@@ -25,12 +25,19 @@ export function trimUa(ua: string | undefined | null): string {
   return clean.length > UA_MAX ? clean.slice(0, UA_MAX - 1) + '…' : clean;
 }
 
+const DOMAIN_MAX = 64;
+
 /** `n***@example.com` — enough to recognise a typo'd own address in the
-    admin log, not enough to harvest addresses from it. */
+    admin log, not enough to harvest addresses from it. The address is
+    attacker-controlled (the credentials form has no length limit), so the
+    tail is sanitised like a user-agent and capped at DOMAIN_MAX. */
 export function maskEmail(email: string): string {
-  const at = email.indexOf('@');
+  const clean = (email ?? '').replace(/[\u0000-\u001f\u007f\s]+/g, '').slice(0, 254);
+  const at = clean.indexOf('@');
   if (at <= 0) return '***';
-  return `${email[0]}***${email.slice(at)}`;
+  const domain = clean.slice(at + 1);
+  const tail = domain.length > DOMAIN_MAX ? domain.slice(0, DOMAIN_MAX - 1) + '…' : domain;
+  return `${clean[0]}***@${tail}`;
 }
 
 function roleLabel(role: string): string {

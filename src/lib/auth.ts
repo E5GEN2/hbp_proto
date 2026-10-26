@@ -102,19 +102,22 @@ export const authOptions: NextAuthOptions = {
           if (throttled) recordHit(ipKey, LOGIN_WINDOW_MS); // count failures only
           // Audited — and bounded: over-cap attempts are rejected above before
           // they reach the DB, so a flood cannot grow this table past the cap.
-          await audit(AUTH_LOGIN_FAILED, null, user?.id ?? null,
+          // Fire-and-forget (audit() never rejects): the row must not add a
+          // round-trip — or, with an exhausted pool, a connect-timeout wait —
+          // to the sign-in path.
+          void audit(AUTH_LOGIN_FAILED, null, user?.id ?? null,
             loginFailedDetail({ ip, ua, reason: user ? 'wrong_password' : 'unknown_email', email }));
           return null;
         }
         // Correct password but blocked account: not a brute-force signal — deny
         // without touching the throttle.
         if (user.status === 'BLOCKED') {
-          await audit(AUTH_LOGIN_FAILED, null, user.id, loginFailedDetail({ ip, ua, reason: 'blocked', email }));
+          void audit(AUTH_LOGIN_FAILED, null, user.id, loginFailedDetail({ ip, ua, reason: 'blocked', email }));
           return null;
         }
 
         if (throttled) clearRateLimit(ipKey); // a valid login un-sticks this IP (incl. shared NAT)
-        await audit(AUTH_LOGIN, user.id, user.id, loginDetail({ ip, ua, role: user.role }));
+        void audit(AUTH_LOGIN, user.id, user.id, loginDetail({ ip, ua, role: user.role }));
         if (isAdminRole(user.role)) {
           // Real-time copy for the owner (Railway incident 2026-10-21 follow-up):
           // an admin sign-in from an unexpected place must not wait for a log

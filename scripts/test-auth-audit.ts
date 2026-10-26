@@ -25,6 +25,10 @@ eq('maskEmail: first char + domain', maskEmail('nobody@example.com'), 'n***@exam
 eq('maskEmail: no @ → opaque', maskEmail('garbage'), '***');
 eq('maskEmail: @ first → opaque', maskEmail('@x.com'), '***');
 eq('maskEmail: unicode local part', maskEmail('ñandu@x.io'), 'ñ***@x.io');
+eq('maskEmail: 500 KB domain is capped', maskEmail('a@' + 'x'.repeat(500_000) + '.com').length <= 70, true);
+eq('maskEmail: capped tail ends with an ellipsis', maskEmail('a@' + 'x'.repeat(200) + '.com').endsWith('…'), true);
+eq('maskEmail: control chars and whitespace stripped', maskEmail('a\u0000b\n c@ex\tample.com'), 'a***@example.com');
+eq('maskEmail: undefined-safe', maskEmail(undefined as unknown as string), '***');
 
 // ── success line ──────────────────────────────────────────────────────────
 eq('loginDetail: client', loginDetail({ ip: '1.2.3.4', ua: 'curl/8', role: 'CLIENT' }), 'Signed in from 1.2.3.4 · client · curl/8');

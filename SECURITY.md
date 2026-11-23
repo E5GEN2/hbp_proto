@@ -84,7 +84,8 @@ Before opening the portal to real clients / any production release:
 
 - [ ] `ALLOW_MOCK_PAYMENTS=false` and `NOWPAYMENTS_SANDBOX` unset on the service.
 - [ ] Seed/demo accounts (`admin@hbp.local`, `demo@example.com`, …) removed or
-      given strong unique passwords — the seed passwords are in this public repo.
+      given strong unique passwords. Since #207 the seed takes passwords from env
+      or generates random ones; accounts seeded before that need new passwords.
 - [ ] All required secrets set on the service and **none** in the repo/history.
 - [ ] Security response headers present (CSP, HSTS, X-Frame-Options,
       X-Content-Type-Options, Referrer-Policy, Permissions-Policy).
@@ -96,4 +97,5 @@ Before opening the portal to real clients / any production release:
 
 Only the current `main` (the deployed revision) is supported. Keep runtime
 dependencies patched via Dependabot; do not pin below a version that carries a
-known advisory (e.g. `next` ≥ 14.2.25 for CVE-2025-29927).
+known advisory (e.g. `next` ≥ 15.5.24, which patched GHSA-p293-qw3h-jr36 and
+GHSA-2xp9-vwfh-vxw4 — see #221 / #222).

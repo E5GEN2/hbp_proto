@@ -4,19 +4,33 @@ Single source of truth for what happens to an order and its proxies in every
 scenario: the **statuses** assigned, the **admin signals** (dashboard / bell +
 where they link + the filter they land on), the **client signals** (portal +
 notifications), and the **next action**. Reflects the state after the
-coherence fix (PR #104).
+coherence fix (PR #104) and the later lifecycle changes through PR #229
+(manual refunds #159, cancel at any moment #216, End order now #220, duty
+clearing at term end #229).
 
 ## State model (invariants)
 
 **Order.status:** `NEW` → `PROVISIONING` → `ACTIVE` → `EXPIRED` / `CANCELLED` / `SUSPENDED`. `SUSPENDED` → `ACTIVE`/`PROVISIONING` (Resume), `EXPIRED` (End order now — past due only, §7) or `CANCELLED`.
 
-**Proxy.status:** `AVAILABLE` · `ASSIGNED` · `RELEASED` · `FAULTY` · `MAINTENANCE`.
-**Proxy.health:** `HEALTHY` · `DEGRADED` · `OFFLINE`.
+**Proxy.status:** `AVAILABLE` · `ASSIGNED` · `RELEASED` · `FAULTY` · `MAINTENANCE` (the enum also holds `PROVISIONING`, which no flow sets).
+**Proxy.health:** `HEALTHY` · `DEGRADED` · `OFFLINE` (`DEGRADED` appears only in seed data — no flow sets it).
 
 Invariants (enforced by the transitions, repaired by migration 20260718100000):
 - `AVAILABLE` or `ASSIGNED` ⟹ `HEALTHY`. A pooled/serving proxy is never OFFLINE.
-- `OFFLINE` only ever coexists with `FAULTY`.
+- `OFFLINE` only ever coexists with `FAULTY` — or with `RELEASED`, for a faulty proxy that was released or swapped out (§3, §4); Return to pool resets it to `HEALTHY`.
 - Auto-fill / assign / replace only ever draw `AVAILABLE + HEALTHY` candidates.
+
+**Rotation markers.** Where this map says *rotation markers stamped*, the
+portal records `securityResetAt` / `passwordRotatedAt` / `ipRotatedAt` on the
+proxy; nothing changes upstream. Rotating the proxy password and IP-rotation
+link upstream stays a manual operator step.
+
+**Client channels.** *(bell + incident email)* below = a portal **bell** item
+plus an **incident email** when the client keeps *Service incidents* emails on
+(Settings). The code also queues a client Telegram DM, but it is delivered only
+to a client whose `User.telegramChatId` is set, and no flow sets it yet (the
+bot linking step is not built) — so client Telegram messages are not delivered
+today.
 
 **Deficit = the one proxy-shortage signal.** A PAID order in `ACTIVE` **or**
 `PROVISIONING` whose *effectively-live* assignments (excluding FAULTY/OFFLINE
@@ -42,41 +56,41 @@ Pay, but fewer than `qty` `AVAILABLE+HEALTHY` proxies exist.
 
 ### 3. Proxy faulty · auto-replace ON, candidate available
 Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the pool.
-- Old proxy → `RELEASED` (credentials rotated); new proxy → `ASSIGNED`; order stays `ACTIVE`; no deficit.
-- Client: "a proxy was automatically replaced — no action needed" (bell + Telegram).
+- Old proxy → `RELEASED` (health stays `OFFLINE`; this path stamps no rotation markers — Return to pool does, §5); new proxy → `ASSIGNED`; order stays `ACTIVE`; no deficit.
+- Client: "a proxy was automatically replaced — no action needed" (bell + incident email).
 
 ### 4. Proxy faulty · no candidate (or auto-replace OFF)
 - Proxy → `FAULTY + OFFLINE`; its assignment stays **open** (heal-in-place); order `ACTIVE` but effectively-live < qty → **deficit**; `exception = REPLACEMENT_PENDING`.
 - Admin: **«Paid orders missing proxies»**; the faulty proxy shows in **Proxies → ⚠ Health Issues** (status FAULTY). Order badge = Replacement pending.
-- Client: "a proxy on your order was flagged faulty — a replacement is being arranged (K/M attached)" (bell + Telegram).
+- Client: "a proxy on your order was flagged faulty — a replacement is being arranged (K/M attached)" (bell + incident email).
 - **Next action:** **Replace** (swap for a fresh proxy), **Mark healthy** (if it recovered → back to ASSIGNED), or **Release** (drop it → order still deficit until refilled).
 
 ### 5. Proxy released manually
 - Proxy → `RELEASED`; assignment closed; order `ACTIVE` but deficit.
 - Admin: **«Paid orders missing proxies»**; the order surfaces on Missing proxies.
-- Client: "a proxy on your order was released — a replacement is being arranged" (bell + Telegram).
-- **Next action:** Replace on the order, or the released proxy → **Return to pool** (→ `AVAILABLE+HEALTHY`, rotates credentials) to make it assignable again.
+- Client: "a proxy on your order was released — a replacement is being arranged" (bell + incident email; no second email when the proxy was already flagged faulty).
+- **Next action:** Replace on the order, or the released proxy → **Return to pool** (→ `AVAILABLE+HEALTHY`, rotation markers stamped) to make it assignable again.
 
 ### 6. Replace (the standalone action — Proxy / Proxies / Order surfaces)
-- Old proxy → `RELEASED` (credentials rotated); a fresh `AVAILABLE+HEALTHY` proxy from the same pool → `ASSIGNED`; order's live count unchanged; deficit clears if it was the only gap.
-- Client: "a proxy on your order was replaced — {new} is ready with fresh credentials" (bell + Telegram).
+- Old proxy → `RELEASED` (rotation markers stamped); a fresh `AVAILABLE+HEALTHY` proxy from the same pool → `ASSIGNED`; order's live count unchanged; deficit clears if it was the only gap.
+- Client: "a proxy on your order was replaced — {new} is ready with fresh credentials" (bell + incident email).
 - Guard: if no healthy candidate exists, the action fails with a clear message (nothing is released).
 
 ### 7. Order expires
-- Grace has two forms, both decided by the **clock** (`expiresAt` + the client's grace hours, `lib/grace.ts`): **(A) auto-renew ON** — the sweep tries the balance charge first and, when it fails, keeps the order `ACTIVE` (bucket `GRACE`) retrying every 24h until grace ends, then expires it; **(B) auto-renew OFF** — past `expiresAt` → `EXPIRED` at once. In both forms **proxies are kept through the grace window** (client keeps using them). After grace ends → assignments closed (reason `ORDER_EXPIRED`), proxies → `AVAILABLE + HEALTHY` (credentials rotated), and a provisioning duty still on the order (`PAID_NOT_PROVISIONED` / `REPLACEMENT_PENDING` / `RENEWAL_FAULTY_PROXY`) is cleared (`ORDER.EXCEPTION_CLEAR`) — nothing can act on it once no proxies are held (the same rule End order now applies); an expired order that holds no proxies at all gets the same clearing at grace end. Expiry never touches the auto-renew preference.
+- Grace has two forms, both decided by the **clock** (`expiresAt` + the client's grace hours, `lib/grace.ts`): **(A) auto-renew ON** — the sweep tries the balance charge first and, when it fails, keeps the order `ACTIVE` (bucket `GRACE`) retrying every 24h until grace ends, then expires it; **(B) auto-renew OFF** — past `expiresAt` → `EXPIRED` at once. In both forms **proxies are kept through the grace window** (client keeps using them). After grace ends → assignments closed (reason `ORDER_EXPIRED`), proxies → `AVAILABLE + HEALTHY` (rotation markers stamped), and a provisioning duty still on the order (`PAID_NOT_PROVISIONED` / `REPLACEMENT_PENDING` / `RENEWAL_FAULTY_PROXY`) is cleared (`ORDER.EXCEPTION_CLEAR`) — nothing can act on it once no proxies are held (the same rule End order now applies); an expired order that holds no proxies at all gets the same clearing at grace end. Expiry never touches the auto-renew preference.
 - Client: "expired — proxies keep working until {graceEnd}; renew to keep them" (or the auto-renew-failed variants), then "grace ended, proxies released".
 - Renewal during grace = plain extension (keeps the proxies); renewal after release re-provisions fresh ones (a new term from the renewal).
 - **Admin: End order now** (order page; owner ask 2026-09-05, ORD-21399) — for a **past-due** order in `ACTIVE` (form A), `EXPIRED` (form B, proxies still bound) or `SUSPENDED` (the rescue of the old Suspend → Cancel workaround): the grace-end outcome on the admin's clock — order → `EXPIRED`, all assignments closed (reason `ORDER_EXPIRED`, «Ended by admin · reason»), proxies → `AVAILABLE + HEALTHY` with the rotation markers stamped (the upstream rotation itself stays the manual step it is after any release; the suspended rescue carries the duty recorded at suspension into the log and the dialog). The auto-renew preference is kept (inert while expired, applies again after a renewal; the suspended rescue restores it like Resume would). No refund signal (the term ran out; an open refund case stays with finance). Provisioning duties (`PAID_NOT_PROVISIONED` / `REPLACEMENT_PENDING` / `RENEWAL_FAULTY_PROXY`) clear with the term; refused while `RENEWAL_NOT_EXTENDED` (apply the paid renewal first). Bucket = the sweep's own classification (`GRACE` while the clock is inside grace, `EXPIRED` past it), so the ended order sits on Renewals → *In grace* with the live «In grace» chip until grace ends — coherent with the clock; the next tick re-buckets nothing (it flips to `EXPIRED` at grace end like any expired order). Client: bell "expired on {date}[ — its proxies were released]; Renew / Start a new order to get fresh proxies"; form A additionally gets the sweep's own «term ended» email (the client held an emailed «proxies keep working until {graceEnd}» promise), the suspended rescue an incident email (if enabled), form B the bell only — like the sweep. Renew (re-provision) stays open while the grace clock runs, then Buy again. Not offered before expiry (that is a Cancel, with the refund question) nor on an expired order whose proxies are already released (already the end state).
 
 ### 8. Order cancelled
 - Path: Cancel is offered directly on every non-terminal status, including `ACTIVE` and `PROVISIONING`-with-proxies (owner ask 2026-09-04: cancel at any moment); Suspend remains the reversible alternative for a live dispute. A **past-due** order is finished with **End order now** (§7) — never cancelled or suspended to end it. For a PAID order the cancel dialog asks how to handle the refund — **Queue for refund review** (raises `REFUND_PENDING`) or **No refund** (closes the case with no refund; same waiver as the *Close without refund* button on an order already in refund review).
-- All assignments closed; proxies → `AVAILABLE + HEALTHY` (credentials rotated) — including a formerly FAULTY proxy (no AVAILABLE+OFFLINE leak).
+- All assignments closed; proxies → `AVAILABLE + HEALTHY` (rotation markers stamped) — including a formerly FAULTY proxy (no AVAILABLE+OFFLINE leak).
 - Order → `CANCELLED`; History tab (per-client) records the released assignments with reason.
-- A **paid** cancel raises `exception = REFUND_PENDING` → see §12.
+- A **paid** cancel with *Queue for refund review* raises `exception = REFUND_PENDING` → see §12.
 
 ### 9. Proxy maintenance
 - Proxy → `MAINTENANCE` (assignment preserved — the client keeps it "on paper").
-- Client: portal shows a **«Maintenance»** chip on the proxy (list + detail) and a "under maintenance — service may be briefly interrupted" notification (bell + Telegram); a second one when it leaves maintenance.
+- Client: portal shows a **«Maintenance»** chip on the proxy (list + detail) and a "under maintenance — service may be briefly interrupted" notification (bell + incident email); a second one when it leaves maintenance.
 - Admin: **Proxies → Maintenance** tab. Not counted as a deficit (still assigned).
 
 ### 10. Order suspended
@@ -87,9 +101,12 @@ Mark faulty with auto-replace, and an `AVAILABLE+HEALTHY` proxy exists in the po
 - When ON, each sweep tops up every deficit order — `ACTIVE` **and** `PROVISIONING` — from `AVAILABLE+HEALTHY` pool proxies (pool-first). **Zero-proxy orders are served first** (a client with nothing beats topping 4/5 up), then oldest-first. FAULTY proxies are never auto-touched — a slot held by a faulty proxy stays with it for heal-in-place; that deficit resolves via **Replace / Mark healthy**, not backfill. When OFF (default), deficits wait for manual Assign/Replace.
 - A `PROVISIONING` order that reaches full quota **activates**: status → `ACTIVE`, the term clock starts at activation (same contract as manual Assign), client gets «Order activated — N proxies ready».
 
-### 12. Refund lifecycle (cancel of a paid order)
-- Cancel of a paid order → `exception = REFUND_PENDING` («needs review»); a client refund request sets the same tag. Signals: bell/Exceptions «refund review pending» → Orders · Exceptions · Refund review, **and the cancelled order itself carries a Refund button** (resolves right where the link lands).
-- Issuing the refund (order page button or Payments → payment detail) credits the client balance and **clears the exception** — the pending counter counts only unresolved reviews, never settled refunds.
+### 12. Refund lifecycle (manual, two-step — PR #159)
+- Cancel of a paid order with *Queue for refund review* → `exception = REFUND_PENDING` («needs review»); a client refund request sets the same tag (the transition exists; the client portal has no refund-request button yet). Signals: bell/Exceptions «refund review pending» → Orders · Exceptions · Refund review, **and the cancelled order itself carries a Refund button** (resolves right where the link lands).
+- **Refund** (order page button or Payments → payment detail) = step 1, *initiate*: amount + reason → payment `REFUND_IN_PROGRESS`; client bell "refund … is being processed". The admin returns the money **outside the portal** (e.g. crypto back to the client's wallet) — the portal does **not** credit the client balance.
+- **Complete refund** = step 2: the admin records the proof (tx hash / reference) → payment `REFUNDED`; client bell "refund … has been sent". This **clears the exception** once no other reviewable payment remains on the order — the pending counter counts only unresolved reviews, never settled refunds. Between the two steps the payment sits on Payments → *Refund requested* (bell «N refund requests» → Payments).
+- Deposits (balance top-ups) are not refundable — correct a balance with **Adjust balance** on the client.
+- Closing the case with no money moving: **Close without refund**, or **Decline request** when the client asked (the order continues) — the same waiver as the cancel dialog's *No refund* (§8).
 
 ## Signal coherence rules (why the above is trustworthy)
 

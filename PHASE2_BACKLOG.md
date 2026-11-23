@@ -1,8 +1,9 @@
 # Phase 2 backlog
 
-Deferred features surfaced during owner page-by-page review. Each item is
+Deferred features surfaced during owner page-by-page review. Each open item is
 **not started** — the UI either shows an honest placeholder (a dash, a removed
-control) or is listed here until the backing functionality is built.
+control) or is listed here until the backing functionality is built. Items that
+shipped later are marked **Done** with their PRs.
 
 ## Proxy telemetry (live data)
 
@@ -32,16 +33,21 @@ rotation call against the upstream rotation URL and/or a monitoring pipeline:
 
 (`Copy credentials` stays — it works, and now copies the selected proxies' credentials **with** their rotation URLs.)
 
-## Table column layout overhaul (both portals)
+## Table column layout overhaul (both portals) — Done
 
-Owner flagged the current table column arrangement/sizing as inconsistent
-("бардак", 2026-07-28). A dedicated pass should standardise, across every table
-in both portals:
+Owner flagged the table column arrangement/sizing as inconsistent
+(2026-07-28). Delivered:
 
-- column order and which columns each table shows,
-- fixed vs flexible widths (atomic columns — checkbox / status / id / numeric /
-  date — sized to never truncate; text columns wrap),
-- the P1 no-ellipsis rule applied uniformly (currently scoped to `.dt-proxies`).
+- the P1 no-ellipsis rule generalized from `.dt-proxies` to every `table.dt` in
+  both portals — text columns wrap, atomic columns clip without dots, mono
+  credential / hardware columns keep ellipsis + tooltip (#122, 2026-07-29);
+- the client table system (CTS) for the portal's two tables, Billing and
+  Proxies — atomic columns (checkbox / id / status / numeric / date) sized from
+  real content so they never truncate, one flexible text column, left
+  alignment (#132, 2026-08-03);
+- the admin table system (ATS) — the same rules across the admin tables; the
+  widest ones (Orders, Plans, Proxies) keep every column (owner's call) and get
+  a minimum width instead (#133, 2026-08-04).
 
 ## Additional table filters (both portals)
 
